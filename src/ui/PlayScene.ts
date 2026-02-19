@@ -19,6 +19,8 @@ export class PlayScene extends Phaser.Scene {
   private latestFrames: PitchFrame[] = [];
   private waitingStartMs: number | null = null;
   private songStartAudioTime: number | null = null;
+  private laneLayer?: Phaser.GameObjects.Graphics;
+  private targetLayer?: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('PlayScene');
@@ -29,8 +31,16 @@ export class PlayScene extends Phaser.Scene {
     const loaded = await loadMidiFromUrl(data.songUrl);
     this.targets = generateTargetNotes(loaded.sourceNotes, difficulty, loaded.tempoMap);
 
+    this.laneLayer = this.add.graphics();
+    this.targetLayer = this.add.graphics();
+
     this.drawLanes();
     this.drawTargets();
+
+    this.scale.on('resize', () => {
+      this.drawLanes();
+      this.drawTargets();
+    });
 
     const audioCtx = new AudioContext();
     const synth = new SimpleSynth(audioCtx);
@@ -83,25 +93,54 @@ export class PlayScene extends Phaser.Scene {
         if (this.runtime.active_target_index >= this.targets.length) {
           this.runtime.state = PlayState.Finished;
           const summary = summarizeScores(this.scoreEvents);
-          this.add.text(520, 30, formatSummary(summary), { color: '#ffffff', fontSize: '16px' });
+          const fontSize = Math.max(15, Math.floor(this.scale.width * 0.02));
+          this.add.text(this.scale.width * 0.58, this.scale.height * 0.06, formatSummary(summary), {
+            color: '#ffffff',
+            fontSize: `${fontSize}px`
+          });
         }
       }
     });
   }
 
   private drawLanes(): void {
+    if (!this.laneLayer) return;
+
+    const { width, height } = this.scale;
+    const left = width * 0.12;
+    const laneAreaWidth = width * 0.8;
+    const top = height * 0.14;
+    const spacing = (height * 0.72) / 5;
+
+    this.laneLayer.clear();
+
     for (let i = 0; i < 6; i += 1) {
-      this.add.rectangle(400, 80 + i * 70, 760, 2, 0x666666);
+      this.laneLayer.fillStyle(0x666666, 1);
+      this.laneLayer.fillRect(left, top + i * spacing, laneAreaWidth, 2);
     }
-    this.add.rectangle(140, 260, 3, 420, 0xffffff);
+
+    this.laneLayer.fillStyle(0xffffff, 1);
+    this.laneLayer.fillRect(left, height * 0.1, 3, height * 0.8);
   }
 
   private drawTargets(): void {
+    if (!this.targetLayer) return;
+
+    const { width, height } = this.scale;
+    const startX = width * 0.16;
+    const pxPerTick = Math.max(0.08, width / 5000);
+    const top = height * 0.14;
+    const spacing = (height * 0.72) / 5;
+    const noteHeight = Math.max(14, height * 0.03);
+
+    this.targetLayer.clear();
+
     for (const target of this.targets) {
-      const x = 180 + target.tick * 0.2;
-      const y = 80 + (target.string - 1) * 70;
-      const w = Math.max(20, target.duration_ticks * 0.15);
-      this.add.rectangle(x, y, w, 18, FINGER_COLORS[target.finger] ?? 0xffffff);
+      const x = startX + target.tick * pxPerTick;
+      const y = top + (target.string - 1) * spacing;
+      const w = Math.max(20, target.duration_ticks * (pxPerTick * 0.75));
+      this.targetLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, 1);
+      this.targetLayer.fillRoundedRect(x, y - noteHeight / 2, w, noteHeight, noteHeight / 4);
     }
   }
 }
