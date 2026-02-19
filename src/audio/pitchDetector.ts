@@ -71,14 +71,29 @@ export function isValidHeldHit(
   minConfidence = 0.7
 ): boolean {
   if (frames.length < 2) return false;
-  const valid = frames.filter((f) =>
-    f.midi_estimate !== null &&
-    f.confidence >= minConfidence &&
-    Math.abs(f.midi_estimate - expectedMidi) <= tolerance
-  );
 
-  if (valid.length === 0) return false;
-  const start = valid[0].t_seconds;
-  const end = valid[valid.length - 1].t_seconds;
-  return (end - start) * 1000 >= holdMs;
+  let streakStartSeconds: number | null = null;
+
+  for (const frame of frames) {
+    const isValid =
+      frame.midi_estimate !== null &&
+      frame.confidence >= minConfidence &&
+      Math.abs(frame.midi_estimate - expectedMidi) <= tolerance;
+
+    if (!isValid) {
+      streakStartSeconds = null;
+      continue;
+    }
+
+    if (streakStartSeconds === null) {
+      streakStartSeconds = frame.t_seconds;
+      continue;
+    }
+
+    if ((frame.t_seconds - streakStartSeconds) * 1000 >= holdMs) {
+      return true;
+    }
+  }
+
+  return false;
 }

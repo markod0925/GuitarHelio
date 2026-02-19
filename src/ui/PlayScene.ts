@@ -18,6 +18,7 @@ export class PlayScene extends Phaser.Scene {
   private scoreEvents: ScoreEvent[] = [];
   private latestFrames: PitchFrame[] = [];
   private waitingStartMs: number | null = null;
+  private songStartAudioTime: number | null = null;
 
   constructor() {
     super('PlayScene');
@@ -45,6 +46,7 @@ export class PlayScene extends Phaser.Scene {
     detector.start(micSource);
 
     await audioCtx.resume();
+    this.songStartAudioTime = audioCtx.currentTime;
     scheduler.start();
 
     this.time.addEvent({
@@ -54,7 +56,8 @@ export class PlayScene extends Phaser.Scene {
         if (this.runtime.state === PlayState.Finished) return;
 
         if (this.runtime.state === PlayState.Playing) {
-          this.runtime.current_tick += 8;
+          const elapsedSeconds = Math.max(0, audioCtx.currentTime - (this.songStartAudioTime ?? audioCtx.currentTime));
+          this.runtime.current_tick = loaded.tempoMap.secondsToTick(elapsedSeconds);
         }
 
         const active = this.targets[this.runtime.active_target_index];
