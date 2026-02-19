@@ -1,0 +1,9 @@
+{
+  "songs": [
+    {
+      "id": "example",
+      "name": "Example Song",
+      "file": "/songs/example.mid"
+    }
+  ]
+}
