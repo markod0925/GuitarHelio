@@ -10,7 +10,9 @@
     "test": "vitest run",
     "lint": "tsc --noEmit",
     "midi:sample": "node scripts/generate-sample-midi.mjs",
-    "midi:cli": "node scripts/cli-midi-player.mjs"
+    "midi:cli": "node scripts/cli-midi-player.mjs",
+    "dev:mobile": "vite --host 0.0.0.0 --port 5173",
+    "preview:mobile": "vite preview --host 0.0.0.0 --port 4173"
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
