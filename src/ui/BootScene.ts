@@ -7,6 +7,7 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     this.load.text('songManifest', '/songs/manifest.json');
+    this.load.image('handReminder', '/ui/hand-reminder.png');
   }
 
   create(): void {

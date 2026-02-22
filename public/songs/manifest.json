@@ -4,6 +4,11 @@
       "id": "example",
       "name": "Example Song",
       "file": "/songs/example.mid"
+    },
+    {
+      "id": "Star Wars",
+      "name": "Star Wars",
+      "file": "/songs/Star Wars.mid"
     }
   ]
 }

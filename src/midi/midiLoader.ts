@@ -10,7 +10,21 @@ export type LoadedMidi = {
 
 export async function loadMidiFromUrl(url: string): Promise<LoadedMidi> {
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch MIDI from "${url}" (${response.status} ${response.statusText})`);
+  }
+
   const buffer = await response.arrayBuffer();
+  if (buffer.byteLength < 4) {
+    throw new Error(`MIDI file "${url}" is empty or too small (${buffer.byteLength} bytes).`);
+  }
+
+  const header = new Uint8Array(buffer, 0, 4);
+  const isMidiHeader = header[0] === 0x4d && header[1] === 0x54 && header[2] === 0x68 && header[3] === 0x64;
+  if (!isMidiHeader) {
+    throw new Error(`Invalid MIDI header for "${url}". Expected "MThd".`);
+  }
+
   return loadMidiFromArrayBuffer(buffer);
 }
 

@@ -179,6 +179,7 @@ Only TargetNotes:
 type DifficultyProfile = {
   allowed_strings: number[]
   allowed_frets: { min: number; max: number }
+  allowed_fret_list?: number[]
   allowed_fingers: number[]
   avg_seconds_per_note?: number
   target_notes_per_minute?: number
@@ -481,14 +482,17 @@ Properties:
 
 * width proportional to duration
 * color based on finger
+* show the fret number directly on each target bar (no circular background)
+* fret number must be visible as soon as the note appears on screen, not only during waiting state
 
 Suggested finger colors:
 
 ```
-1 → #4FC3F7
-2 → #81C784
-3 → #FFB74D
-4 → #E57373
+0 (open string) → gray
+1 (index) → yellow
+2 (middle) → purple
+3 (ring) → blue
+4 (pinky) → red
 ```
 
 ---
@@ -505,6 +509,97 @@ Suggested finger colors:
 * bounces on beat
 * freezes during WaitingForHit
 * resumes afterward
+
+---
+
+## 11.5 In-session back/escape menu
+
+During active gameplay (Playing or WaitingForHit), pressing:
+
+* `Esc` (desktop keyboard)
+* hardware/software `Back` on smartphone
+
+MUST open a pause menu with exactly two actions:
+
+* `Reset` → restart the current session with the same song and difficulty
+* `Back to Start` → leave gameplay and return to `SongSelectScene`
+
+While this menu is open, runtime progression and playback MUST remain paused.
+
+---
+
+## 11.6 Waiting HUD text
+
+During `WaitingForHit`, the HUD MUST NOT show `Play MIDI xx`.
+It may show only generic waiting text and optional remaining timeout.
+
+---
+
+## 11.7 Start screen settings menu
+
+The difficulty selector in start screen MUST be a dropdown menu (`Easy`, `Medium`, `Hard`).
+The start screen MUST provide a `Settings` button under the difficulty selector.
+Pressing this button MUST open a modal settings panel with a dimmed background overlay.
+
+Inside this panel, the user can choose:
+
+* allowed strings as an explicit list from 1 to 6 (non-contiguous selections allowed)
+* allowed fingers as an explicit list from 1 to 4 (non-contiguous selections allowed)
+* allowed frets as an explicit list from 0 to 21 (non-contiguous selections allowed)
+
+The number of active fingers is defined by how many fingers are selected.
+
+These settings MUST be applied when generating TargetNotes for the session.
+
+---
+
+## 11.8 Fingering assignment rules
+
+Fingering MUST follow a position/box model with the rule "one finger per fret" in the active box:
+
+* index (1) on the lowest fret of the box
+* middle (2) on next fret
+* ring (3) on next fret
+* pinky (4) on highest fret of the box
+
+Additional constraints:
+
+* minimize hand movement and box shifts between consecutive notes
+* avoid reusing the same finger on consecutive notes when frets differ (except slide-like same-fret reuse)
+* open strings use finger `0`
+
+---
+
+## 11.9 Finger color reminder widget
+
+During gameplay, show a small hand/finger reminder in the bottom-right corner.
+The widget must display finger colors mapped as:
+
+* 0: gray
+* 1: yellow
+* 2: purple
+* 3: blue
+* 4: red
+
+---
+
+## 11.10 Debug play-target button
+
+During gameplay, a debug button must be available to play the current required target note (`expected_midi`) through the app synth.
+If pressed while in `WaitingForHit`, it MUST also validate the hit and advance progression as if the correct pitch had been detected.
+
+---
+
+## 11.11 Start-screen tuner
+
+The start screen MUST include a tuner menu opened by a dedicated button.
+Inside this tuner menu, show a tuner panel that:
+
+* lets the user select which string to tune (1–6)
+* starts/stops microphone listening
+* shows a tuning slider/needle that moves based on cents distance from the target string pitch
+
+The tuner must update in real time while active.
 
 ---
 

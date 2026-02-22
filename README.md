@@ -71,3 +71,8 @@ Snippet atteso:
 ```
 
 Inoltre il permesso va richiesto a runtime (Capacitor/Android) prima di iniziare il rilevamento pitch.
+
+## QA
+
+- Checklist di conformità implementativa al GDD: `IMPLEMENTATION_QA_CHECKLIST.md`
+- Suite test manuali runtime (Desktop + Android): `MANUAL_QA_RUNTIME_SUITE.md`

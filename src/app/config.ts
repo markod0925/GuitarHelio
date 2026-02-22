@@ -34,8 +34,9 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
 };
 
 export const FINGER_COLORS: Record<number, number> = {
-  1: 0x4fc3f7,
-  2: 0x81c784,
-  3: 0xffb74d,
-  4: 0xe57373
+  0: 0x9ca3af,
+  1: 0xfacc15,
+  2: 0xa855f7,
+  3: 0x2563eb,
+  4: 0xef4444
 };

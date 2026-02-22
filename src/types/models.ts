@@ -21,6 +21,7 @@ export type TargetNote = {
 export type DifficultyProfile = {
   allowed_strings: number[];
   allowed_frets: { min: number; max: number };
+  allowed_fret_list?: number[];
   allowed_fingers: number[];
   avg_seconds_per_note?: number;
   target_notes_per_minute?: number;
