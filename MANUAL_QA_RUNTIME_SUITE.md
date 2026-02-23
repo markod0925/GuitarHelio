@@ -30,7 +30,7 @@ Related docs:
    npm run dev:mobile
    ```
 2. Apri URL locale su browser desktop.
-3. Verifica che `public/songs/example.mid` sia disponibile in song select.
+3. Verifica che `public/songs/example/song.mid` sia disponibile in song select.
 
 ### Android debug
 
@@ -137,6 +137,18 @@ Related docs:
   - Elementi restano visibili e leggibili.
   - Nessun overlap critico o canvas corrotto.
 
+### DSK-09 - Priorità backing track audio
+
+- Obiettivo: verificare priorità playback WAV/MP3 rispetto al MIDI.
+- Passi:
+  1. Configura una song con `audio` valido (`.mp3`/`.wav`) e `midi` valido.
+  2. Avvia sessione e ascolta il playback.
+  3. Rinomina/rimuovi temporaneamente il file audio della stessa song.
+  4. Riavvia sessione.
+- Expected:
+  - Con audio presente: viene usato il backing track WAV/MP3.
+  - Senza audio: il playback passa al MIDI senza bloccare la sessione.
+
 ## 5. Test cases Android
 
 ### AND-01 - Avvio app e permission mic
@@ -210,6 +222,7 @@ Risultati test:
 | DSK-06 |  |  |  |
 | DSK-07 |  |  |  |
 | DSK-08 |  |  |  |
+| DSK-09 |  |  |  |
 | AND-01 |  |  |  |
 | AND-02 |  |  |  |
 | AND-03 |  |  |  |

@@ -1,0 +1,17 @@
+{
+  "name": "audio-midi-converter-workflow",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Standalone WAV/MP3 to MIDI conversion workflow based on Basic Pitch",
+  "bin": {
+    "convert-audio-to-midi": "./bin/convert-audio-to-midi.mjs"
+  },
+  "dependencies": {
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tensorflow/tfjs": "^4.17.0",
+    "@tensorflow/tfjs-node": "^4.17.0",
+    "@tonejs/midi": "^2.0.28",
+    "audio-decode": "^2.2.3"
+  }
+}

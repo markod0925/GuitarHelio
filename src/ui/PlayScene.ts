@@ -1,9 +1,22 @@
 import Phaser from 'phaser';
-import { DEFAULT_HOLD_MS, DEFAULT_MIN_CONFIDENCE, DIFFICULTY_PRESETS, FINGER_COLORS } from '../app/config';
+import {
+  BALL_BOUNCE_AMPLITUDE_FACTOR,
+  BALL_BOUNCE_AMPLITUDE_MAX_PX,
+  BALL_BOUNCE_AMPLITUDE_MIN_PX,
+  BALL_GHOST_TRAIL_COUNT,
+  BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS,
+  BALL_GHOST_TRAIL_SAMPLE_STEP,
+  DEFAULT_HOLD_MS,
+  DEFAULT_MIN_CONFIDENCE,
+  DIFFICULTY_PRESETS,
+  FINGER_COLORS,
+  TARGET_HIT_GRACE_SECONDS
+} from '../app/config';
 import { createMicNode } from '../audio/micInput';
+import { JzzTinySynth } from '../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../audio/midiScrubPlayer';
 import { PitchDetectorService, isValidHeldHit } from '../audio/pitchDetector';
-import { SimpleSynth } from '../audio/synth';
+import { buildPlaybackNotes } from '../audio/playbackNotes';
 import { rateHit, summarizeScores } from '../game/scoring';
 import { createInitialRuntimeState, type RuntimeTransition, updateRuntimeState } from '../game/stateMachine';
 import { generateTargetNotes } from '../guitar/targetGenerator';
@@ -12,9 +25,11 @@ import { TempoMap } from '../midi/tempoMap';
 import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
 import { formatSummary } from './hud';
+import { RoundedBox } from './RoundedBox';
 
 type SceneData = {
-  songUrl: string;
+  midiUrl: string;
+  audioUrl: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
   allowedStrings?: number[];
   allowedFingers?: number[];
@@ -30,8 +45,9 @@ type Layout = {
   hitLineX: number;
   pxPerTick: number;
   noteHeight: number;
-  ballBaseY: number;
 };
+
+type PlaybackMode = 'midi' | 'audio';
 
 export class PlayScene extends Phaser.Scene {
   private sceneData?: SceneData;
@@ -49,22 +65,27 @@ export class PlayScene extends Phaser.Scene {
   private fallbackTimeoutSeconds: number | undefined;
   private feedbackText = '';
   private feedbackUntilMs = 0;
+  private playbackMode: PlaybackMode = 'midi';
+  private backingTrackAudio?: HTMLAudioElement;
 
   private laneLayer?: Phaser.GameObjects.Graphics;
   private targetLayer?: Phaser.GameObjects.Graphics;
   private ball?: Phaser.GameObjects.Arc;
+  private ballTrail: Phaser.GameObjects.Arc[] = [];
+  private ballTrailHistory: Array<{ x: number; y: number }> = [];
+  private lastBallTrailPoint?: { x: number; y: number };
   private handReminderImage?: Phaser.GameObjects.Image;
   private fretLabels: Phaser.GameObjects.Text[] = [];
   private statusText?: Phaser.GameObjects.Text;
   private liveScoreText?: Phaser.GameObjects.Text;
-  private debugButton?: Phaser.GameObjects.Rectangle;
+  private debugButton?: RoundedBox;
   private debugButtonLabel?: Phaser.GameObjects.Text;
   private resultsOverlay?: Phaser.GameObjects.Container;
   private pauseOverlay?: Phaser.GameObjects.Container;
   private runtimeTimer?: Phaser.Time.TimerEvent;
 
   private audioCtx?: AudioContext;
-  private debugSynth?: SimpleSynth;
+  private debugSynth?: JzzTinySynth;
   private scrubPlayer?: MidiScrubPlayer;
   private detector?: PitchDetectorService;
   private onResize?: () => void;
@@ -83,11 +104,11 @@ export class PlayScene extends Phaser.Scene {
 
     let loaded;
     try {
-      loaded = await loadMidiFromUrl(data.songUrl);
+      loaded = await loadMidiFromUrl(data.midiUrl);
     } catch (error) {
-      console.error('Failed to load MIDI', { songUrl: data.songUrl, error });
+      console.error('Failed to load MIDI', { midiUrl: data.midiUrl, audioUrl: data.audioUrl, error });
       this.add
-        .text(this.scale.width / 2, this.scale.height / 2, `Could not load song file:\n${data.songUrl}`, {
+        .text(this.scale.width / 2, this.scale.height / 2, `Could not load song file:\n${data.midiUrl}`, {
           color: '#ffb4b4',
           align: 'center',
           fontSize: `${Math.max(16, Math.floor(this.scale.width * 0.02))}px`
@@ -110,30 +131,45 @@ export class PlayScene extends Phaser.Scene {
     this.feedbackText = '';
     this.feedbackUntilMs = 0;
     this.fallbackTimeoutSeconds = undefined;
+    this.playbackMode = 'midi';
 
     this.laneLayer = this.add.graphics();
     this.targetLayer = this.add.graphics();
-    this.ball = this.add.circle(0, 0, 10, 0xfef08a, 1);
+    this.ball = this.add.circle(0, 0, 10, 0xfef08a, 1).setDepth(260);
+    this.createBallTrail();
     if (this.textures.exists('handReminder')) {
       this.handReminderImage = this.add.image(0, 0, 'handReminder').setOrigin(1, 1).setDepth(300);
     }
 
     this.statusText = this.add.text(0, 0, '', {
       color: '#dbeafe',
+      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontStyle: 'bold',
       fontSize: `${Math.max(14, Math.floor(this.scale.width * 0.016))}px`
     });
     this.liveScoreText = this.add.text(0, 0, '', {
       color: '#e2e8f0',
+      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontStyle: 'bold',
       fontSize: `${Math.max(13, Math.floor(this.scale.width * 0.015))}px`
     }).setOrigin(1, 0);
-    this.debugButton = this.add
-      .rectangle(0, 0, Math.max(116, Math.floor(this.scale.width * 0.14)), 34, 0x1e3a8a, 1)
-      .setStrokeStyle(2, 0x93c5fd)
+    this.debugButton = new RoundedBox(
+      this,
+      0,
+      0,
+      Math.max(126, Math.floor(this.scale.width * 0.15)),
+      36,
+      0x1f3b74,
+      0.9
+    )
+      .setStrokeStyle(2, 0x60a5fa, 0.65)
       .setInteractive({ useHandCursor: true })
       .setDepth(350);
     this.debugButtonLabel = this.add
-      .text(0, 0, 'Play Note', {
+      .text(0, 0, 'Debug Note', {
         color: '#eff6ff',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
         fontSize: `${Math.max(13, Math.floor(this.scale.width * 0.014))}px`
       })
       .setOrigin(0.5)
@@ -169,9 +205,18 @@ export class PlayScene extends Phaser.Scene {
   private async setupAudioStack(sourceNotes: SourceNote[]): Promise<void> {
     const audioCtx = new AudioContext();
     this.audioCtx = audioCtx;
-    const synth = new SimpleSynth(audioCtx);
+    let synth: JzzTinySynth;
+    try {
+      synth = new JzzTinySynth(audioCtx);
+    } catch (error) {
+      console.error('JZZ Tiny synth setup failed', error);
+      this.feedbackText = 'Playback synth unavailable.';
+      this.feedbackUntilMs = Number.POSITIVE_INFINITY;
+      return;
+    }
     this.debugSynth = synth;
-    this.scrubPlayer = new MidiScrubPlayer(synth, sourceNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
+    const playbackNotes = buildPlaybackNotes(sourceNotes, this.ticksPerQuarter);
+    this.scrubPlayer = new MidiScrubPlayer(synth, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
 
     try {
       const micSource = await createMicNode(audioCtx);
@@ -179,7 +224,7 @@ export class PlayScene extends Phaser.Scene {
       await detector.init();
       detector.onPitch((frame) => {
         if (this.pauseOverlay) return;
-        if (this.runtime.state !== PlayState.WaitingForHit) return;
+        if (this.runtime.state === PlayState.Finished) return;
         this.latestFrames.push(frame);
         if (this.latestFrames.length > 64) this.latestFrames.shift();
       });
@@ -198,22 +243,40 @@ export class PlayScene extends Phaser.Scene {
 
     await audioCtx.resume();
     this.startPlaybackClock(0);
-    this.scrubPlayer.resume(0);
+    const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, 0);
+    if (!startedBackingAudio) {
+      this.playbackMode = 'midi';
+      this.scrubPlayer.resume(0, audioCtx.currentTime);
+    }
   }
 
   private tickRuntime(): void {
     if (!this.audioCtx || !this.tempoMap || this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
+    const previousState = this.runtime.state;
+    let songSecondsNow: number | undefined;
 
     if (this.runtime.state === PlayState.Playing) {
-      const elapsedSongSeconds = this.getSongSecondsNow();
-      this.runtime.current_tick = this.tempoMap.secondsToTick(elapsedSongSeconds);
-      this.scrubPlayer?.updateToTick(this.runtime.current_tick, this.audioCtx.currentTime);
+      songSecondsNow = this.getSongSecondsNow();
+      this.runtime.current_tick = this.tempoMap.secondsToTick(songSecondsNow);
+      if (this.playbackMode === 'midi') {
+        this.scrubPlayer?.updateToTick(this.runtime.current_tick, this.audioCtx.currentTime);
+      }
     }
 
     const active = this.targets[this.runtime.active_target_index];
+    const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
+    const isWithinGraceWindow =
+      active !== undefined &&
+      this.runtime.state === PlayState.Playing &&
+      songSecondsNow !== undefined &&
+      targetSeconds !== undefined &&
+      songSecondsNow >= targetSeconds - TARGET_HIT_GRACE_SECONDS &&
+      songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
+    const canValidateHit =
+      active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
     const validHit =
       active !== undefined &&
-      this.runtime.state === PlayState.WaitingForHit &&
+      canValidateHit &&
       isValidHeldHit(
         this.latestFrames,
         active.expected_midi,
@@ -223,11 +286,13 @@ export class PlayScene extends Phaser.Scene {
       );
 
     const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
-      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds
+      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
+      targetTimeSeconds: targetSeconds,
+      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS
     });
 
     this.runtime = update.state;
-    this.handleTransition(update.transition, update.target);
+    this.handleTransition(update.transition, update.target, previousState);
 
     this.redrawTargetsAndBall();
     this.updateHud();
@@ -237,10 +302,10 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private handleTransition(transition: RuntimeTransition, target?: TargetNote): void {
+  private handleTransition(transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
     if (transition === 'entered_waiting') {
       this.pausePlaybackClock();
-      this.scrubPlayer?.pause(this.runtime.current_tick);
+      this.pauseBackingPlayback();
       this.waitingStartMs = performance.now();
       this.latestFrames = [];
       this.feedbackText = 'Waiting...';
@@ -249,10 +314,10 @@ export class PlayScene extends Phaser.Scene {
     }
 
     if (transition === 'validated_hit' && target) {
-      const resumeSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
-      this.startPlaybackClock(resumeSeconds);
-      this.scrubPlayer?.resume(this.runtime.current_tick);
-      const deltaMs = this.waitingStartMs === null ? 0 : performance.now() - this.waitingStartMs;
+      if (previousState === PlayState.WaitingForHit) {
+        this.resumeBackingPlayback();
+      }
+      const deltaMs = this.measureHitDeltaMs(target, previousState);
       const rated = rateHit(deltaMs);
       this.scoreEvents.push({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
       this.waitingStartMs = null;
@@ -263,9 +328,9 @@ export class PlayScene extends Phaser.Scene {
     }
 
     if (transition === 'timeout_miss' && target) {
-      const resumeSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
-      this.startPlaybackClock(resumeSeconds);
-      this.scrubPlayer?.resume(this.runtime.current_tick);
+      if (previousState === PlayState.WaitingForHit) {
+        this.resumeBackingPlayback();
+      }
       const fallbackDeltaMs = (this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds ?? 0) * 1000;
       const deltaMs = this.waitingStartMs === null ? fallbackDeltaMs : performance.now() - this.waitingStartMs;
       this.scoreEvents.push({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
@@ -279,13 +344,14 @@ export class PlayScene extends Phaser.Scene {
   private finishSong(): void {
     if (this.resultsOverlay) return;
     this.closePauseMenu();
+    this.setBallAndTrailVisible(false);
     this.debugButton?.disableInteractive().setVisible(false);
     this.debugButtonLabel?.setVisible(false);
 
     this.runtimeTimer?.remove(false);
     this.runtimeTimer = undefined;
 
-    this.scrubPlayer?.stop();
+    this.stopBackingPlayback();
     this.detector?.stop();
 
     const summary = summarizeScores(this.scoreEvents);
@@ -293,23 +359,28 @@ export class PlayScene extends Phaser.Scene {
     const panelWidth = Math.min(620, width * 0.82);
     const panelHeight = Math.min(380, height * 0.72);
 
-    const panel = this.add.rectangle(width / 2, height / 2, panelWidth, panelHeight, 0x020617, 0.94)
-      .setStrokeStyle(2, 0x475569);
+    const panelGlow = new RoundedBox(this, width / 2, height / 2, panelWidth + 10, panelHeight + 10, 0x60a5fa, 0.16);
+    const panel = new RoundedBox(this, width / 2, height / 2, panelWidth, panelHeight, 0x101c3c, 0.95)
+      .setStrokeStyle(2, 0x60a5fa, 0.58);
     const title = this.add.text(width / 2, height * 0.26, 'Session Complete', {
       color: '#f8fafc',
+      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontStyle: 'bold',
       fontSize: `${Math.max(24, Math.floor(width * 0.035))}px`
     }).setOrigin(0.5);
     const summaryText = this.add.text(width / 2, height * 0.34, formatSummary(summary), {
       color: '#e2e8f0',
+      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
       align: 'left',
       fontSize: `${Math.max(16, Math.floor(width * 0.02))}px`
     }).setOrigin(0.5, 0);
     const hint = this.add.text(width / 2, height * 0.73, 'Tap or press Enter to return', {
-      color: '#93c5fd',
+      color: '#bfdbfe',
+      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
       fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
     }).setOrigin(0.5);
 
-    this.resultsOverlay = this.add.container(0, 0, [panel, title, summaryText, hint]);
+    this.resultsOverlay = this.add.container(0, 0, [panelGlow, panel, title, summaryText, hint]);
 
     const goBack = (): void => {
       this.scene.start('SongSelectScene');
@@ -355,7 +426,7 @@ export class PlayScene extends Phaser.Scene {
     }
     if (this.playbackWasRunningBeforePauseMenu) {
       this.pausePlaybackClock();
-      this.scrubPlayer?.pause(this.runtime.current_tick);
+      this.pauseBackingPlayback();
     }
     this.latestFrames = [];
 
@@ -365,14 +436,16 @@ export class PlayScene extends Phaser.Scene {
     const centerX = width / 2;
     const centerY = height / 2;
 
-    const backdrop = this.add
-      .rectangle(centerX, centerY, width, height, 0x000000, 0.55)
+    const backdrop = new RoundedBox(this, centerX, centerY, width, height, 0x000000, 0.55, 0)
       .setInteractive({ useHandCursor: false });
 
-    const panel = this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0x020617, 0.96).setStrokeStyle(2, 0x64748b);
+    const panelGlow = new RoundedBox(this, centerX, centerY, panelWidth + 8, panelHeight + 8, 0x60a5fa, 0.14);
+    const panel = new RoundedBox(this, centerX, centerY, panelWidth, panelHeight, 0x101c3c, 0.96).setStrokeStyle(2, 0x60a5fa, 0.58);
     const title = this.add
       .text(centerX, centerY - panelHeight * 0.33, 'Pause Menu', {
         color: '#f8fafc',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
         fontSize: `${Math.max(22, Math.floor(width * 0.03))}px`
       })
       .setOrigin(0.5);
@@ -380,24 +453,26 @@ export class PlayScene extends Phaser.Scene {
     const resetButtonY = centerY - panelHeight * 0.04;
     const backButtonY = centerY + panelHeight * 0.22;
 
-    const resetButton = this.add
-      .rectangle(centerX, resetButtonY, panelWidth * 0.72, 54, 0x1d4ed8, 1)
-      .setStrokeStyle(1, 0x93c5fd)
+    const resetButton = new RoundedBox(this, centerX, resetButtonY, panelWidth * 0.72, 54, 0xf97316, 1)
+      .setStrokeStyle(1, 0xfed7aa, 0.9)
       .setInteractive({ useHandCursor: true });
     const resetLabel = this.add
       .text(centerX, resetButtonY, 'Reset', {
-        color: '#f8fafc',
+        color: '#fff7ed',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
       .setOrigin(0.5);
 
-    const backButton = this.add
-      .rectangle(centerX, backButtonY, panelWidth * 0.72, 54, 0x334155, 1)
-      .setStrokeStyle(1, 0x94a3b8)
+    const backButton = new RoundedBox(this, centerX, backButtonY, panelWidth * 0.72, 54, 0x1e293b, 1)
+      .setStrokeStyle(1, 0x64748b, 0.9)
       .setInteractive({ useHandCursor: true });
     const backLabel = this.add
       .text(centerX, backButtonY, 'Back to Start', {
-        color: '#f8fafc',
+        color: '#e2e8f0',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
       .setOrigin(0.5);
@@ -405,7 +480,7 @@ export class PlayScene extends Phaser.Scene {
     resetButton.on('pointerdown', () => this.resetSession());
     backButton.on('pointerdown', () => this.goBackToStart());
 
-    this.pauseOverlay = this.add.container(0, 0, [backdrop, panel, title, resetButton, resetLabel, backButton, backLabel]);
+    this.pauseOverlay = this.add.container(0, 0, [backdrop, panelGlow, panel, title, resetButton, resetLabel, backButton, backLabel]);
     this.pauseOverlay.setDepth(1000);
   }
 
@@ -419,8 +494,7 @@ export class PlayScene extends Phaser.Scene {
       this.runtimeTimer.paused = false;
     }
     if (this.playbackWasRunningBeforePauseMenu) {
-      this.startPlaybackClock(this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? this.pausedSongSeconds);
-      this.scrubPlayer?.resume(this.runtime.current_tick);
+      this.resumeBackingPlayback();
     }
     this.latestFrames = [];
     this.playbackWasRunningBeforePauseMenu = false;
@@ -450,20 +524,29 @@ export class PlayScene extends Phaser.Scene {
     this.laneLayer.clear();
 
     const { width, height } = this.scale;
-    this.laneLayer.fillStyle(0x020409, 1);
+    this.laneLayer.fillGradientStyle(0x040b1f, 0x0b1a45, 0x030915, 0x071632, 1, 1, 1, 1);
     this.laneLayer.fillRect(0, 0, width, height);
 
-    this.laneLayer.fillStyle(0x060b14, 1);
+    this.laneLayer.fillStyle(0x09122a, 0.75);
     this.laneLayer.fillRect(0, 0, width, layout.top - 8);
-    this.laneLayer.fillStyle(0x0f1624, 1);
+    this.laneLayer.fillStyle(0x0c1938, 0.82);
     this.laneLayer.fillRect(0, layout.top - 8, width, height - (layout.top - 8));
 
-    this.laneLayer.fillStyle(0xcbd5e1, 0.2);
+    this.laneLayer.fillStyle(0xbfdbfe, 0.18);
     for (let i = 0; i < 65; i += 1) {
       const x = ((i * 137) % width) + (i % 3) * 0.35;
       const y = (i * 97) % Math.max(40, Math.floor(layout.top - 14));
       const r = i % 11 === 0 ? 2 : 1;
       this.laneLayer.fillCircle(x, y, r);
+    }
+
+    this.laneLayer.lineStyle(1.8, 0x93c5fd, 0.22);
+    for (let i = 0; i < 4; i += 1) {
+      const y = layout.top - 20 + i * (layout.laneSpacing * 1.2);
+      this.laneLayer.beginPath();
+      this.laneLayer.moveTo(0, y);
+      this.laneLayer.lineTo(width, y);
+      this.laneLayer.strokePath();
     }
 
     const fretTopY = layout.top + 6;
@@ -473,7 +556,7 @@ export class PlayScene extends Phaser.Scene {
     const fretBottomLeft = layout.left - 18;
     const fretBottomRight = layout.right + 18;
 
-    this.laneLayer.fillStyle(0x2b2b2b, 1);
+    this.laneLayer.fillStyle(0x1f2937, 0.92);
     this.laneLayer.beginPath();
     this.laneLayer.moveTo(fretTopLeft, fretTopY);
     this.laneLayer.lineTo(fretTopRight, fretTopY);
@@ -482,7 +565,7 @@ export class PlayScene extends Phaser.Scene {
     this.laneLayer.closePath();
     this.laneLayer.fillPath();
 
-    this.laneLayer.lineStyle(1.2, 0x6b7280, 0.85);
+    this.laneLayer.lineStyle(1.2, 0x64748b, 0.72);
     for (let i = 0; i < 16; i += 1) {
       const t = i / 15;
       const xTop = Phaser.Math.Linear(fretTopLeft, fretTopRight, t);
@@ -493,7 +576,7 @@ export class PlayScene extends Phaser.Scene {
       this.laneLayer.strokePath();
     }
 
-    this.laneLayer.lineStyle(2, 0xe5e7eb, 0.95);
+    this.laneLayer.lineStyle(2, 0xcbd5e1, 0.86);
     for (let i = 0; i < 6; i += 1) {
       const y = layout.top + i * layout.laneSpacing + 10;
       this.laneLayer.beginPath();
@@ -502,7 +585,7 @@ export class PlayScene extends Phaser.Scene {
       this.laneLayer.strokePath();
     }
 
-    this.laneLayer.lineStyle(2.6, 0xffffff, 1);
+    this.laneLayer.lineStyle(2.6, 0xfef3c7, 0.95);
     this.laneLayer.beginPath();
     this.laneLayer.moveTo(layout.hitLineX, layout.top - 18);
     this.laneLayer.lineTo(layout.hitLineX, layout.bottom + 26);
@@ -563,18 +646,27 @@ export class PlayScene extends Phaser.Scene {
     this.feedbackText = `Debug note: ${target.expected_midi}`;
     this.feedbackUntilMs = performance.now() + 600;
 
-    if (this.runtime.state === PlayState.WaitingForHit && this.audioCtx) {
+    if (
+      this.audioCtx &&
+      (this.runtime.state === PlayState.WaitingForHit ||
+        (this.runtime.state === PlayState.Playing && this.isInsideLiveHitWindow(target)))
+    ) {
       this.consumeDebugHit();
     }
   }
 
   private consumeDebugHit(): void {
     if (!this.audioCtx) return;
+    const previousState = this.runtime.state;
+    const active = this.targets[this.runtime.active_target_index];
+    const targetTimeSeconds = active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined;
     const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, true, {
-      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds
+      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
+      targetTimeSeconds,
+      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS
     });
     this.runtime = update.state;
-    this.handleTransition(update.transition, update.target);
+    this.handleTransition(update.transition, update.target, previousState);
     this.redrawTargetsAndBall();
     this.updateHud();
     if (update.transition === 'finished') {
@@ -584,6 +676,12 @@ export class PlayScene extends Phaser.Scene {
 
   private redrawTargetsAndBall(): void {
     if (!this.targetLayer || !this.ball) return;
+
+    if (this.runtime.state === PlayState.Finished) {
+      this.setBallAndTrailVisible(false);
+      return;
+    }
+    this.setBallAndTrailVisible(true);
 
     const layout = this.layout();
     const currentTick = this.runtime.current_tick;
@@ -625,12 +723,22 @@ export class PlayScene extends Phaser.Scene {
     }
 
     this.ball.x = layout.hitLineX;
-    if (this.runtime.state !== PlayState.WaitingForHit && this.runtime.state !== PlayState.Finished) {
-      const beatTick = ((this.runtime.current_tick % this.ticksPerQuarter) + this.ticksPerQuarter) % this.ticksPerQuarter;
-      const beatPhase = beatTick / this.ticksPerQuarter;
-      const amplitude = Math.max(14, layout.laneSpacing * 0.7);
-      this.ball.y = layout.ballBaseY - Math.sin(beatPhase * Math.PI) * amplitude;
+    const anchorY = this.getBallAnchorY(layout);
+    if (this.runtime.state === PlayState.WaitingForHit) {
+      this.ball.y = anchorY;
+      this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
+      return;
     }
+
+    const beatTick = ((this.runtime.current_tick % this.ticksPerQuarter) + this.ticksPerQuarter) % this.ticksPerQuarter;
+    const beatPhase = beatTick / this.ticksPerQuarter;
+    const amplitude = Phaser.Math.Clamp(
+      layout.laneSpacing * BALL_BOUNCE_AMPLITUDE_FACTOR,
+      BALL_BOUNCE_AMPLITUDE_MIN_PX,
+      BALL_BOUNCE_AMPLITUDE_MAX_PX
+    );
+    this.ball.y = anchorY - Math.sin(beatPhase * Math.PI) * amplitude;
+    this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
   }
 
   private updateHud(): void {
@@ -675,9 +783,93 @@ export class PlayScene extends Phaser.Scene {
       laneSpacing,
       hitLineX: left + (right - left) * 0.19,
       pxPerTick: Math.max(0.09, width / 5200),
-      noteHeight: Math.max(14, laneSpacing * 0.38),
-      ballBaseY: top - Math.max(18, height * 0.04)
+      noteHeight: Math.max(14, laneSpacing * 0.38)
     };
+  }
+
+  private getBallAnchorY(layout: Layout): number {
+    const activeTarget = this.targets[this.runtime.active_target_index];
+    if (!activeTarget) {
+      return layout.top - Math.max(18, this.scale.height * 0.04);
+    }
+    return layout.top + (activeTarget.string - 1) * layout.laneSpacing;
+  }
+
+  private createBallTrail(): void {
+    this.destroyBallTrail();
+    for (let i = 0; i < BALL_GHOST_TRAIL_COUNT; i += 1) {
+      const ghost = this.add
+        .circle(0, 0, 10, 0xfef08a, 1)
+        .setDepth(250 - i)
+        .setAlpha(0)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.ballTrail.push(ghost);
+    }
+  }
+
+  private destroyBallTrail(): void {
+    for (const ghost of this.ballTrail) {
+      ghost.destroy();
+    }
+    this.ballTrail = [];
+    this.ballTrailHistory = [];
+    this.lastBallTrailPoint = undefined;
+  }
+
+  private pushBallTrailPoint(x: number, y: number): void {
+    this.ballTrailHistory.push({ x, y });
+    const maxHistory =
+      BALL_GHOST_TRAIL_COUNT * BALL_GHOST_TRAIL_SAMPLE_STEP + BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS + 8;
+    if (this.ballTrailHistory.length > maxHistory) {
+      this.ballTrailHistory.splice(0, this.ballTrailHistory.length - maxHistory);
+    }
+  }
+
+  private updateBallTrail(x: number, y: number, laneSpacing: number): void {
+    if (this.ballTrail.length === 0) return;
+
+    const previous = this.lastBallTrailPoint;
+    if (!previous) {
+      this.pushBallTrailPoint(x, y);
+      this.lastBallTrailPoint = { x, y };
+    } else {
+      const distance = Phaser.Math.Distance.Between(previous.x, previous.y, x, y);
+      if (distance > laneSpacing * 4) {
+        this.ballTrailHistory = [];
+        this.pushBallTrailPoint(x, y);
+        this.lastBallTrailPoint = { x, y };
+      } else if (distance > 0.15) {
+        const interpolationSteps = distance > laneSpacing * 0.7 ? BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS : 1;
+        for (let i = 1; i <= interpolationSteps; i += 1) {
+          const t = i / interpolationSteps;
+          this.pushBallTrailPoint(Phaser.Math.Linear(previous.x, x, t), Phaser.Math.Linear(previous.y, y, t));
+        }
+        this.lastBallTrailPoint = { x, y };
+      }
+    }
+
+    const historyCount = this.ballTrailHistory.length;
+    const basePoint = historyCount > 0 ? this.ballTrailHistory[0] : undefined;
+    const alphaNear = 0.62;
+    const alphaFar = 0.08;
+    const scaleNear = 0.95;
+    const scaleFar = 0.45;
+    const denom = Math.max(1, this.ballTrail.length - 1);
+
+    for (let i = 0; i < this.ballTrail.length; i += 1) {
+      const historyIndex = historyCount - 1 - i * BALL_GHOST_TRAIL_SAMPLE_STEP;
+      const point = historyIndex >= 0 ? this.ballTrailHistory[historyIndex] : basePoint;
+      const ghost = this.ballTrail[i];
+      if (!point) {
+        ghost.setAlpha(0);
+        continue;
+      }
+      const t = i / denom;
+      ghost
+        .setPosition(point.x, point.y)
+        .setAlpha(Phaser.Math.Linear(alphaNear, alphaFar, t))
+        .setScale(Phaser.Math.Linear(scaleNear, scaleFar, t));
+    }
   }
 
   private buildProfileWithSettings(
@@ -722,6 +914,7 @@ export class PlayScene extends Phaser.Scene {
 
     this.handReminderImage?.destroy();
     this.handReminderImage = undefined;
+    this.destroyBallTrail();
     this.debugButton?.destroy();
     this.debugButton = undefined;
     this.debugButtonLabel?.destroy();
@@ -732,10 +925,11 @@ export class PlayScene extends Phaser.Scene {
     this.runtimeTimer?.remove(false);
     this.runtimeTimer = undefined;
 
-    this.scrubPlayer?.stop();
+    this.stopBackingPlayback();
     this.scrubPlayer = undefined;
 
     this.debugSynth?.stopAll();
+    this.debugSynth?.dispose();
     this.debugSynth = undefined;
 
     this.detector?.stop();
@@ -750,6 +944,92 @@ export class PlayScene extends Phaser.Scene {
       void this.audioCtx.close();
     }
     this.audioCtx = undefined;
+  }
+
+  private async startBackingTrackAudio(audioUrl: string | undefined, startSongSeconds: number): Promise<boolean> {
+    if (!audioUrl || !isBackingTrackAudioUrl(audioUrl)) {
+      return false;
+    }
+
+    const audio = new Audio(audioUrl);
+    audio.preload = 'auto';
+    audio.loop = false;
+    this.backingTrackAudio = audio;
+    this.playbackMode = 'audio';
+    const played = await this.playBackingTrackAudioFrom(startSongSeconds);
+    if (played) return true;
+
+    this.releaseBackingTrackAudio();
+    this.playbackMode = 'midi';
+    return false;
+  }
+
+  private pauseBackingPlayback(): void {
+    if (this.playbackMode === 'audio') {
+      this.backingTrackAudio?.pause();
+      return;
+    }
+    this.scrubPlayer?.pause(this.runtime.current_tick);
+  }
+
+  private resumeBackingPlayback(): void {
+    const resumeSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? this.pausedSongSeconds;
+    this.startPlaybackClock(resumeSeconds);
+
+    if (this.playbackMode === 'audio') {
+      void this.resumeBackingTrackAudioOrFallback(resumeSeconds);
+      return;
+    }
+    this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
+  }
+
+  private stopBackingPlayback(): void {
+    this.backingTrackAudio?.pause();
+    this.releaseBackingTrackAudio();
+    this.scrubPlayer?.stop();
+  }
+
+  private async resumeBackingTrackAudioOrFallback(songSeconds: number): Promise<void> {
+    const resumed = await this.playBackingTrackAudioFrom(songSeconds);
+    if (resumed) return;
+
+    this.playbackMode = 'midi';
+    this.releaseBackingTrackAudio();
+    this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
+    this.feedbackText = 'Backing track unavailable. Switched to MIDI.';
+    this.feedbackUntilMs = performance.now() + 1200;
+  }
+
+  private async playBackingTrackAudioFrom(songSeconds: number): Promise<boolean> {
+    if (!this.backingTrackAudio) return false;
+    const safeSeconds = Math.max(0, songSeconds);
+    const audio = this.backingTrackAudio;
+
+    try {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        audio.currentTime = Phaser.Math.Clamp(safeSeconds, 0, Math.max(0, audio.duration - 0.02));
+      } else {
+        audio.currentTime = safeSeconds;
+      }
+    } catch {
+      // Ignore seek failures, we still try to play from current position.
+    }
+
+    try {
+      await audio.play();
+      return true;
+    } catch (error) {
+      console.warn('Backing track play failed', { audioUrl: this.sceneData?.audioUrl, error });
+      return false;
+    }
+  }
+
+  private releaseBackingTrackAudio(): void {
+    if (!this.backingTrackAudio) return;
+    this.backingTrackAudio.pause();
+    this.backingTrackAudio.removeAttribute('src');
+    this.backingTrackAudio.load();
+    this.backingTrackAudio = undefined;
   }
 
   private startPlaybackClock(songSeconds: number): void {
@@ -767,6 +1047,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private getSongSecondsNow(): number {
+    if (this.playbackMode === 'audio' && this.backingTrackAudio) {
+      return this.backingTrackAudio.currentTime;
+    }
     if (!this.audioCtx || this.playbackStartAudioTime === null) {
       return this.pausedSongSeconds;
     }
@@ -779,6 +1062,33 @@ export class PlayScene extends Phaser.Scene {
       label.destroy();
     }
     this.fretLabels = [];
+  }
+
+  private setBallAndTrailVisible(visible: boolean): void {
+    this.ball?.setVisible(visible);
+    if (!visible) {
+      this.ballTrailHistory = [];
+      this.lastBallTrailPoint = undefined;
+    }
+    for (const ghost of this.ballTrail) {
+      ghost.setVisible(visible);
+      if (!visible) ghost.setAlpha(0);
+    }
+  }
+
+  private measureHitDeltaMs(target: TargetNote, previousState: PlayState): number {
+    if (previousState === PlayState.Playing && this.tempoMap) {
+      const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
+      return Math.abs(this.getSongSecondsNow() - targetSeconds) * 1000;
+    }
+    return this.waitingStartMs === null ? 0 : performance.now() - this.waitingStartMs;
+  }
+
+  private isInsideLiveHitWindow(target: TargetNote): boolean {
+    if (!this.tempoMap) return false;
+    const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
+    const now = this.getSongSecondsNow();
+    return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
   }
 }
 
@@ -803,4 +1113,8 @@ function sanitizeSelection(
   );
   deduped.sort((a, b) => a - b);
   return deduped;
+}
+
+function isBackingTrackAudioUrl(url: string): boolean {
+  return /\.(mp3|wav|ogg|m4a)(?:[?#].*)?$/i.test(url);
 }

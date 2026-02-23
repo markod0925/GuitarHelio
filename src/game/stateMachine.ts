@@ -12,6 +12,8 @@ export type RuntimeUpdate = {
 export type RuntimeUpdateOptions = {
   approachThresholdTicks?: number;
   gatingTimeoutSeconds?: number;
+  targetTimeSeconds?: number;
+  lateHitWindowSeconds?: number;
 };
 
 export function createInitialRuntimeState(): RuntimeState {
@@ -34,6 +36,7 @@ export function updateRuntimeState(
   }
 
   const approachThresholdTicks = options.approachThresholdTicks ?? APPROACH_THRESHOLD_TICKS;
+  const lateHitWindowSeconds = options.lateHitWindowSeconds ?? 0;
 
   const activeTarget = targets[state.active_target_index];
   if (!activeTarget) {
@@ -48,14 +51,33 @@ export function updateRuntimeState(
     };
   }
 
-  if (state.state === PlayState.Playing && state.current_tick >= activeTarget.tick - approachThresholdTicks) {
+  if (state.state === PlayState.Playing && isHitValid) {
+    return {
+      state: {
+        state: PlayState.Playing,
+        active_target_index: state.active_target_index + 1,
+        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
+      },
+      transition: 'validated_hit',
+      target: activeTarget
+    };
+  }
+
+  const shouldEnterWaitingByTime =
+    state.state === PlayState.Playing &&
+    options.targetTimeSeconds !== undefined &&
+    nowSeconds >= options.targetTimeSeconds + lateHitWindowSeconds;
+  const shouldEnterWaitingByTick =
+    state.state === PlayState.Playing && state.current_tick >= activeTarget.tick - approachThresholdTicks;
+
+  if (shouldEnterWaitingByTime || (options.targetTimeSeconds === undefined && shouldEnterWaitingByTick)) {
     return {
       state: {
         ...state,
         state: PlayState.WaitingForHit,
         waiting_target_id: activeTarget.id,
         waiting_started_at_s: nowSeconds,
-        current_tick: activeTarget.tick
+        current_tick: state.current_tick
       },
       transition: 'entered_waiting',
       target: activeTarget
@@ -67,7 +89,7 @@ export function updateRuntimeState(
       state: {
         state: PlayState.Playing,
         active_target_index: state.active_target_index + 1,
-        current_tick: activeTarget.tick + 1
+        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
       transition: 'validated_hit',
       target: activeTarget
@@ -86,7 +108,7 @@ export function updateRuntimeState(
       state: {
         state: PlayState.Playing,
         active_target_index: state.active_target_index + 1,
-        current_tick: activeTarget.tick + 1
+        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
       transition: 'timeout_miss',
       target: activeTarget

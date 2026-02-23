@@ -3,8 +3,19 @@ import type { DifficultyProfile } from '../types/models';
 export const APPROACH_THRESHOLD_TICKS = 120;
 export const DEFAULT_HOLD_MS = 80;
 export const DEFAULT_MIN_CONFIDENCE = 0.7;
+export const TARGET_HIT_GRACE_SECONDS = 0.5;
 export const SCHEDULER_LOOKAHEAD_SECONDS = 0.15;
 export const SCHEDULER_UPDATE_MS = 25;
+
+// Increase/decrease this to tune how tall the ball jump looks on beat.
+export const BALL_BOUNCE_AMPLITUDE_FACTOR = 0.8;
+export const BALL_BOUNCE_AMPLITUDE_MIN_PX = 32;
+export const BALL_BOUNCE_AMPLITUDE_MAX_PX = 150;
+
+// Ghost trail tuning for the yellow ball.
+export const BALL_GHOST_TRAIL_COUNT = 10;
+export const BALL_GHOST_TRAIL_SAMPLE_STEP = 2;
+export const BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS = 6;
 
 export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyProfile> = {
   Easy: {

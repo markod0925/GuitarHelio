@@ -78,6 +78,7 @@ Like Yousician:
 - TypeScript
 - Vite
 - WebAudio API
+- JZZ + jzz-synth-tiny (MIDI synth playback engine)
 - WASM pitch detection
 
 ## 2.3 Pitch detection library (MANDATORY)
@@ -121,7 +122,9 @@ PlayScene.ts
 hud.ts
 /public
 /songs
-example.mid
+manifest.json
+example/
+song.mid
 
 ````
 
@@ -325,6 +328,31 @@ Recommended:
 * scheduling horizon ≈ 100–200 ms
 * update every ≈ 25 ms
 
+## 7.3 Anti-click synth mode
+
+Gameplay playback MUST run with anti-click behavior enabled.
+
+Requirements:
+
+* prevent note starts in the past by clamping start times to a small future safety window
+* apply non-zero attack and release envelopes on every note
+* avoid hard cuts on pause/resume/scrub by releasing all active voices smoothly
+* enforce `All Notes Off` / controller reset on stop or transport discontinuities
+* apply clean-playback filtering before scheduling:
+  * mute MIDI percussion channel (channel 10 / index 9)
+  * discard ultra-short notes
+  * discard out-of-range extreme notes for the playback synth
+  * cap notes started on the same tick to reduce burst noise and overload
+
+## 7.4 Playback synth engine
+
+For MIDI backing-track playback, the project MUST use the JZZ synth stack:
+
+* `jzz`
+* `jzz-synth-tiny`
+
+The runtime audio voice for scheduled SourceNotes must be provided by a JZZ Tiny synth adapter compatible with the existing scrub player (`noteOn`, `noteOff`, `stopAll`).
+
 ---
 
 # 8. Gameplay State Machine
@@ -362,12 +390,12 @@ type RuntimeState = {
 When:
 
 ```
-current_tick >= target.tick - approach_threshold
+target not hit AND now_seconds >= target_time_seconds + late_hit_window_seconds
 ```
 
 Actions:
 
-* freeze current_tick
+* freeze current_tick at current transport position
 * record waiting_started_at_s
 * highlight note
 
@@ -376,6 +404,25 @@ Actions:
 ### WaitingForHit → Playing
 
 When valid pitch hit detected.
+
+Also allowed:
+
+### Playing → Playing (Target Validated)
+
+When valid pitch hit is detected inside the live timing window:
+
+```
+target_time_seconds - pre_hit_window_seconds <= now_seconds <= target_time_seconds + late_hit_window_seconds
+```
+
+Default for both windows:
+
+```
+pre_hit_window_seconds = 0.5
+late_hit_window_seconds = 0.5
+```
+
+In this case, target index advances without pausing transport.
 
 Optional timeout:
 
@@ -424,16 +471,16 @@ min_confidence = 0.7
 
 ## 10.1 Timing measurement
 
-When entering WaitingForHit:
+Primary case (hit while still Playing inside live window):
 
 ```
-t0 = performance.now()
+delta_ms = abs(hit_time_seconds - target_time_seconds) * 1000
 ```
 
-On hit:
+Fallback case (hit after transport is paused in WaitingForHit):
 
 ```
-delta_ms = now - t0
+delta_ms = performance.now() - waiting_started_at
 ```
 
 ---
@@ -507,8 +554,12 @@ Suggested finger colors:
 ## 11.4 Ball behavior
 
 * bounces on beat
+* must be vertically anchored to the string of the first incoming TargetNote (active target), at the hit line
+* bounce amplitude must be configurable via app constants/settings and default to a visibly pronounced jump
+* must render a visible ghost trail behind the ball; the trail must remain clearly readable even on sudden jumps between different strings
 * freezes during WaitingForHit
 * resumes afterward
+* must be hidden when runtime enters `Finished` (no post-song ball rendering)
 
 ---
 
@@ -537,7 +588,7 @@ It may show only generic waiting text and optional remaining timeout.
 
 ## 11.7 Start screen settings menu
 
-The difficulty selector in start screen MUST be a dropdown menu (`Easy`, `Medium`, `Hard`).
+The difficulty selector in start screen MUST be a segmented control (`Easy`, `Medium`, `Hard`) styled as a pill group.
 The start screen MUST provide a `Settings` button under the difficulty selector.
 Pressing this button MUST open a modal settings panel with a dimmed background overlay.
 
@@ -600,6 +651,81 @@ Inside this tuner menu, show a tuner panel that:
 * shows a tuning slider/needle that moves based on cents distance from the target string pitch
 
 The tuner must update in real time while active.
+
+---
+
+## 11.12 Global visual theme
+
+The app visual style (start screen, gameplay scene, modal overlays) MUST follow a coherent neon-blue "glass" UI direction:
+
+* deep blue gradient background with subtle glow lines/circle accents
+* glass-like panels/cards with translucent dark-blue fill and soft cyan/blue borders
+* emphasized primary CTA (`Start Session`) in warm orange gradient look with glow
+* typography with bold, high-contrast labels readable on dark background
+* gameplay overlays (pause/results) styled consistently with the same panel language
+
+---
+
+## 11.13 Song catalog structure and fallback rules
+
+Each song entry in `public/songs/manifest.json` MUST include:
+
+* cover image reference (`cover`)
+* MIDI reference file (`midi`)
+* WAV/MP3/OGG reference file (`audio`)
+
+Songs MUST be organized in dedicated folders under `public/songs/<song-folder>/`.
+
+For Capacitor native runtime, the same catalog structure MUST also be supported in app-local storage under `Directory.Data/songs/<song-folder>/`, with a dedicated local manifest at `Directory.Data/songs/manifest.json`.
+
+Fallback behavior:
+
+* if `midi` is missing or not found, that song MUST NOT be shown in song selection
+* if `cover` is missing or not found, use default asset `public/ui/song-cover-default.svg`
+* if `audio` is missing or not found, use the song MIDI reference as fallback audio source
+* during gameplay playback, if a valid WAV/MP3/OGG file is available it MUST be used as backing track; otherwise playback MUST use MIDI synth rendering
+
+---
+
+## 11.14 Audio to MIDI conversion preset (balanced)
+
+The local audio-to-MIDI converter integration MUST keep the `balanced` preset aligned to these defaults:
+
+* `modelConfidenceThreshold`: `0.355`
+* `noteSegmentationThreshold`: `0.31`
+* `minNoteLengthMs`: `24`
+* `melodiaTrick`: `false`
+* `minPitchHz`: `1`
+* `maxPitchHz`: `3000`
+* `midiTempo`: `120`
+
+---
+
+## 11.15 Start-screen audio import workflow
+
+The start screen MUST include an `Import MP3/OGG` action that allows uploading a local audio file (`.mp3` or `.ogg`).
+
+When an audio file is selected:
+
+* create a dedicated song folder using the uploaded filename without extension
+* save the original uploaded audio as song backing track in that folder
+* convert the uploaded audio into MIDI (`song.mid`) using the local converter
+* show a conversion progress bar in start screen while the job is running
+* inspect embedded metadata artwork and, when available, extract and save it as the song cover in the same folder
+* append/update the song manifest with the new song entry (`id`, `name`, `folder`, `midi`, `audio`, optional `cover`)
+* refresh the start-screen song list automatically so the new song appears immediately after import
+
+Manifest/storage target by platform:
+
+* web dev/preview mode: `public/songs/manifest.json`
+* Capacitor native mode (Android standalone): `Directory.Data/songs/manifest.json`
+
+Debug/testing support:
+
+* in debug builds, the start screen MUST expose an `Import Source` selector (`Auto`, `Server`, `Native`) to force the import path for validation
+* default mode is `Auto`:
+  * `Server` on web dev/preview
+  * `Native` on Capacitor native runtime
 
 ---
 

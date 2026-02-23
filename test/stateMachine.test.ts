@@ -25,7 +25,45 @@ describe('updateRuntimeState', () => {
     expect(update.transition).toBe('entered_waiting');
     expect(update.state.state).toBe(PlayState.WaitingForHit);
     expect(update.state.waiting_target_id).toBe(target.id);
-    expect(update.state.current_tick).toBe(target.tick);
+    expect(update.state.current_tick).toBe(880);
+  });
+
+  test('enters waiting only after late grace window when target timing is provided', () => {
+    const beforeLateWindow: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1010,
+      active_target_index: 0
+    };
+
+    const updateBefore = updateRuntimeState(beforeLateWindow, [target], 10.49, false, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    });
+    expect(updateBefore.transition).toBe('none');
+
+    const afterLateWindow = updateRuntimeState(beforeLateWindow, [target], 10.5, false, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    });
+    expect(afterLateWindow.transition).toBe('entered_waiting');
+    expect(afterLateWindow.state.state).toBe(PlayState.WaitingForHit);
+  });
+
+  test('validates hit directly while still playing', () => {
+    const state: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1002,
+      active_target_index: 0
+    };
+
+    const update = updateRuntimeState(state, [target], 10.2, true, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    });
+
+    expect(update.transition).toBe('validated_hit');
+    expect(update.state.state).toBe(PlayState.Playing);
+    expect(update.state.active_target_index).toBe(1);
   });
 
   test('advances to next target after a valid hit', () => {

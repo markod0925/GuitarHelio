@@ -3,12 +3,18 @@
     {
       "id": "example",
       "name": "Example Song",
-      "file": "/songs/example.mid"
+      "folder": "example",
+      "cover": "cover.svg",
+      "midi": "song.mid",
+      "audio": "song.mp3"
     },
     {
-      "id": "Star Wars",
+      "id": "star-wars",
       "name": "Star Wars",
-      "file": "/songs/Star Wars.mid"
+      "folder": "star-wars",
+      "cover": "cover.png",
+      "midi": "song.mid",
+      "audio": "song.mp3"
     }
   ]
 }

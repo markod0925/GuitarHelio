@@ -30,10 +30,10 @@ export class MidiScrubPlayer {
     this.activeNoteKeys.clear();
   }
 
-  resume(atTick: number): void {
+  resume(atTick: number, nowSeconds = 0): void {
     const safeTick = Math.max(0, atTick);
     this.paused = false;
-    this.rebuildVoicesAtTick(safeTick);
+    this.rebuildVoicesAtTick(safeTick, nowSeconds);
     this.previousTick = safeTick;
     this.initialized = true;
   }

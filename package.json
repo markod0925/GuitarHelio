@@ -18,12 +18,20 @@
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync android",
     "cap:open:android": "npx cap open android",
-    "android:apk:debug": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug"
+    "android:apk:debug": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "convert:audio:midi": "node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.1.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "@tonejs/midi": "^2.0.28",
     "aubiojs": "^0.1.1",
+    "audio-decode": "^2.2.3",
+    "jzz": "^1.9.6",
+    "jzz-synth-tiny": "^1.4.4",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
