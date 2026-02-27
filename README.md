@@ -7,12 +7,36 @@
    ```bash
    npm install
    ```
-3. Avvia il progetto in LAN:
+3. Compila i converter C++/ONNX (NeuralNote + Tempo-CNN):
+   ```bash
+   npm run build:nn:cli
+   npm run build:tempo:cli
+   ```
+4. Avvia il progetto in LAN:
    ```bash
    npm run dev:mobile
    ```
-4. Apri dal telefono (stessa rete Wi-Fi) l'URL mostrato come `Network`, ad esempio:
+5. Apri dal telefono (stessa rete Wi-Fi) l'URL mostrato come `Network`, ad esempio:
    `http://192.168.1.10:5173`
+
+## Convertitore Audio -> MIDI (NeuralNote + Tempo-CNN C++/ONNX)
+
+Il progetto usa una pipeline C++/ONNX vendorizzata in:
+
+- `third_party/neuralnote_core` (trascrizione note)
+- `third_party/tempocnn_core` (stima tempo via ONNX)
+- `third_party/tempo_cnn/tempocnn/models/fcn.onnx` (modello Tempo-CNN)
+- `third_party/onnxruntime/<platform>/lib` (runtime ONNX condiviso)
+
+Il wrapper Node usato da Vite API è in:
+
+- `tools/audio-midi-converter/src/neuralnote.mjs`
+
+Compatibilità mode:
+- `legacy` e `neuralnote` sono alias dello stesso backend C++/ONNX
+- `ab` è disabilitato (errore esplicito lato server/native)
+
+Il preset attivo è `balanced`.
 
 ## Android standalone (senza PC acceso come server)
 
@@ -26,6 +50,9 @@ Sì, è supportato: il progetto è predisposto per il packaging con **Capacitor*
   - `appName: GuitarHelio`
   - `webDir: dist`
 - Script npm dedicati per init/sync/apertura Android Studio/build APK debug.
+- Plugin Capacitor `NeuralNoteConverter` (Java + JNI C++) per import audio native con NeuralNote + Tempo-CNN.
+- Model files NeuralNote inclusi negli asset Android (`android/app/src/main/assets/neuralnote-model/`).
+- Modello Tempo-CNN incluso negli asset Android (`android/app/src/main/assets/tempo-model/fcn.onnx`).
 
 ### Setup completo (prima volta)
 
@@ -49,6 +76,8 @@ Sì, è supportato: il progetto è predisposto per il packaging con **Capacitor*
    ```bash
    npm run cap:open:android
    ```
+
+Nota: il build Android richiede toolchain NDK/CMake installata in Android Studio per compilare il bridge JNI del convertitore.
 
 ### Build APK debug da terminale
 
@@ -76,6 +105,53 @@ Inoltre il permesso va richiesto a runtime (Capacitor/Android) prima di iniziare
 
 - Checklist di conformità implementativa al GDD: `IMPLEMENTATION_QA_CHECKLIST.md`
 - Suite test manuali runtime (Desktop + Android): `MANUAL_QA_RUNTIME_SUITE.md`
+
+### Smoke test rapido conversione Audio -> MIDI (Server + Android)
+
+Prerequisiti minimi:
+- `Node.js 20+`
+- toolchain C++ locale (`cmake`, `g++`, `make`) per i CLI NeuralNote/Tempo-CNN
+- Android SDK/NDK installati (per build APK)
+- JDK 21 attivo per Gradle/Capacitor Android
+
+Checklist server (Node wrapper + CLI C++/ONNX):
+1. Build dei converter C++:
+   ```bash
+   npm run build:nn:cli
+   npm run build:tempo:cli
+   ```
+2. Verifica binari:
+   ```bash
+   ls -la third_party/neuralnote_core/bin/nn_transcriber_cli
+   ls -la third_party/tempocnn_core/bin/tempo_cnn_cli
+   ```
+3. Conversione rapida di un file audio:
+   ```bash
+   node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs --input /percorso/audio.wav --output /tmp/smoke.mid
+   ```
+4. Esito atteso:
+   - output con progress fino a `Conversion complete`
+   - file `/tmp/smoke.mid` creato e non vuoto
+   - metadata tempo presenti nel MIDI (tempo base + tempo-map quando disponibile)
+
+Checklist Android nativo (Capacitor plugin + JNI):
+1. Build web + sync:
+   ```bash
+   npm run build
+   npm run cap:sync
+   ```
+2. Build APK debug:
+   ```bash
+   npm run android:apk:debug
+   ```
+3. Esito atteso:
+   - `BUILD SUCCESSFUL`
+   - APK presente in `android/app/build/outputs/apk/debug/app-debug.apk`
+4. Smoke funzionale su device/emulatore:
+   - apri app, vai su `Import MP3/OGG`
+   - importa un audio breve (5-15s)
+   - verifica avanzamento fino a `Conversion complete`
+   - verifica presenza nuova song con `song.mid` utilizzabile in gameplay
 
 ## Catalogo canzoni (`public/songs`)
 

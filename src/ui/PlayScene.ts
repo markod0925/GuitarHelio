@@ -12,22 +12,25 @@ import {
   FINGER_COLORS,
   TARGET_HIT_GRACE_SECONDS
 } from '../app/config';
+import { saveSongHighScoreIfHigher } from '../app/sessionPersistence';
 import { createMicNode } from '../audio/micInput';
 import { JzzTinySynth } from '../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../audio/midiScrubPlayer';
-import { PitchDetectorService, isValidHeldHit } from '../audio/pitchDetector';
+import { PitchDetectorService } from '../audio/pitchDetector';
 import { buildPlaybackNotes } from '../audio/playbackNotes';
 import { rateHit, summarizeScores } from '../game/scoring';
 import { createInitialRuntimeState, type RuntimeTransition, updateRuntimeState } from '../game/stateMachine';
 import { generateTargetNotes } from '../guitar/targetGenerator';
 import { loadMidiFromUrl } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
+import { isNativeSongLibraryAvailable, updateNativeSongHighScore } from '../platform/nativeSongLibrary';
 import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
 import { formatSummary } from './hud';
 import { RoundedBox } from './RoundedBox';
 
 type SceneData = {
+  songId?: string;
   midiUrl: string;
   audioUrl: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
@@ -49,7 +52,57 @@ type Layout = {
 
 type PlaybackMode = 'midi' | 'audio';
 
+type HitDebugSnapshot = {
+  songSecondsNow?: number;
+  targetSeconds?: number;
+  targetDeltaMs?: number;
+  isWithinGraceWindow: boolean;
+  canValidateHit: boolean;
+  validHit: boolean;
+  activeTarget?: TargetNote;
+  latestFrame?: PitchFrame;
+  holdMs: number;
+  holdRequiredMs: number;
+  minConfidence: number;
+  validFrameCount: number;
+  sampleCount: number;
+};
+
+type HeldHitAnalysis = {
+  valid: boolean;
+  streakMs: number;
+  validFrameCount: number;
+  sampleCount: number;
+  latestFrame?: PitchFrame;
+};
+
+type TopStar = {
+  baseX: number;
+  y: number;
+  radius: number;
+  baseAlpha: number;
+  twinklePhase: number;
+  twinkleSpeed: number;
+};
+
+type SongMinimapLayout = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  innerLeft: number;
+  innerTop: number;
+  innerWidth: number;
+  innerHeight: number;
+  rowHeight: number;
+  totalTicks: number;
+};
+
 export class PlayScene extends Phaser.Scene {
+  private static readonly PAUSE_BUTTON_SIZE = 34;
+  private static readonly PAUSE_BUTTON_GAP = 10;
+  private static readonly POST_SONG_END_SCREEN_DELAY_MS = 2000;
+
   private sceneData?: SceneData;
   private targets: TargetNote[] = [];
   private runtime = createInitialRuntimeState();
@@ -69,11 +122,14 @@ export class PlayScene extends Phaser.Scene {
   private backingTrackAudio?: HTMLAudioElement;
 
   private laneLayer?: Phaser.GameObjects.Graphics;
+  private starfieldLayer?: Phaser.GameObjects.Graphics;
   private targetLayer?: Phaser.GameObjects.Graphics;
   private ball?: Phaser.GameObjects.Arc;
   private ballTrail: Phaser.GameObjects.Arc[] = [];
   private ballTrailHistory: Array<{ x: number; y: number }> = [];
   private lastBallTrailPoint?: { x: number; y: number };
+  private topStars: TopStar[] = [];
+  private topStarBand?: { width: number; yMin: number; yMax: number };
   private handReminderImage?: Phaser.GameObjects.Image;
   private fretLabels: Phaser.GameObjects.Text[] = [];
   private statusText?: Phaser.GameObjects.Text;
@@ -82,7 +138,12 @@ export class PlayScene extends Phaser.Scene {
   private debugButtonLabel?: Phaser.GameObjects.Text;
   private resultsOverlay?: Phaser.GameObjects.Container;
   private pauseOverlay?: Phaser.GameObjects.Container;
+  private pauseButton?: RoundedBox;
+  private pauseButtonLeftBar?: Phaser.GameObjects.Rectangle;
+  private pauseButtonRightBar?: Phaser.GameObjects.Rectangle;
+  private pauseButtonPlayIcon?: Phaser.GameObjects.Triangle;
   private runtimeTimer?: Phaser.Time.TimerEvent;
+  private finishDelayTimer?: Phaser.Time.TimerEvent;
 
   private audioCtx?: AudioContext;
   private debugSynth?: JzzTinySynth;
@@ -92,6 +153,17 @@ export class PlayScene extends Phaser.Scene {
   private pauseMenuBackListener?: (event: Event) => void;
   private pauseMenuPopStateListener?: (event: PopStateEvent) => void;
   private playbackWasRunningBeforePauseMenu = false;
+  private songMinimapBackground?: RoundedBox;
+  private songMinimapStaticLayer?: Phaser.GameObjects.Graphics;
+  private songMinimapDynamicLayer?: Phaser.GameObjects.Graphics;
+  private songMinimapLayout?: SongMinimapLayout;
+  private debugOverlayEnabled = false;
+  private debugOverlayContainer?: Phaser.GameObjects.Container;
+  private debugOverlayPanel?: RoundedBox;
+  private debugOverlayText?: Phaser.GameObjects.Text;
+  private hitDebugSnapshot?: HitDebugSnapshot;
+  private lastRuntimeTransition: RuntimeTransition = 'none';
+  private lastRuntimeTransitionAtMs = 0;
 
   constructor() {
     super('PlayScene');
@@ -132,8 +204,13 @@ export class PlayScene extends Phaser.Scene {
     this.feedbackUntilMs = 0;
     this.fallbackTimeoutSeconds = undefined;
     this.playbackMode = 'midi';
+    this.hitDebugSnapshot = undefined;
+    this.lastRuntimeTransition = 'none';
+    this.lastRuntimeTransitionAtMs = 0;
+    this.debugOverlayEnabled = isGameplayDebugOverlayEnabled();
 
     this.laneLayer = this.add.graphics();
+    this.starfieldLayer = this.add.graphics();
     this.targetLayer = this.add.graphics();
     this.ball = this.add.circle(0, 0, 10, 0xfef08a, 1).setDepth(260);
     this.createBallTrail();
@@ -177,15 +254,50 @@ export class PlayScene extends Phaser.Scene {
     this.debugButton.on('pointerdown', () => {
       void this.playDebugTargetNote();
     });
+    this.pauseButton = new RoundedBox(
+      this,
+      0,
+      0,
+      PlayScene.PAUSE_BUTTON_SIZE,
+      PlayScene.PAUSE_BUTTON_SIZE,
+      0x0b1228,
+      0.94
+    )
+      .setStrokeStyle(1, 0x94a3b8, 0.9)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(289);
+    this.pauseButtonLeftBar = this.add
+      .rectangle(0, 0, 4, 16, 0xf8fafc, 1)
+      .setDepth(290);
+    this.pauseButtonRightBar = this.add
+      .rectangle(0, 0, 4, 16, 0xf8fafc, 1)
+      .setDepth(290);
+    this.pauseButtonPlayIcon = this.add
+      .triangle(0, 0, -4, -7, -4, 7, 8, 0, 0xf8fafc, 1)
+      .setDepth(290)
+      .setVisible(false);
+    this.pauseButton.on('pointerdown', () => {
+      this.onBackRequested();
+    });
+    this.setPauseButtonIconMode(false);
+    if (this.debugOverlayEnabled) {
+      this.createDebugOverlay();
+      this.updateDebugOverlay();
+      this.input.keyboard?.on('keydown-F3', this.toggleDebugOverlay, this);
+    }
 
     this.drawStaticLanes();
     this.redrawTargetsAndBall();
+    this.updateSongMinimapProgress();
     this.updateHud();
 
     this.onResize = () => {
       this.drawStaticLanes();
       this.redrawTargetsAndBall();
+      this.updateSongMinimapProgress();
       this.updateHud();
+      this.relayoutDebugOverlay();
+      this.updateDebugOverlay();
       this.relayoutPauseOverlay();
     };
     this.scale.on('resize', this.onResize);
@@ -274,31 +386,65 @@ export class PlayScene extends Phaser.Scene {
       songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
     const canValidateHit =
       active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
-    const validHit =
-      active !== undefined &&
-      canValidateHit &&
-      isValidHeldHit(
-        this.latestFrames,
-        active.expected_midi,
-        this.profile.pitch_tolerance_semitones,
-        DEFAULT_HOLD_MS,
-        DEFAULT_MIN_CONFIDENCE
-      );
+    const hitAnalysis =
+      active !== undefined && canValidateHit
+        ? analyzeHeldHit(
+            this.latestFrames,
+            active.expected_midi,
+            this.profile.pitch_tolerance_semitones,
+            DEFAULT_HOLD_MS,
+            DEFAULT_MIN_CONFIDENCE
+          )
+        : {
+            valid: false,
+            streakMs: 0,
+            validFrameCount: 0,
+            sampleCount: this.latestFrames.length,
+            latestFrame: this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined
+          };
+    const validHit = active !== undefined && canValidateHit && hitAnalysis.valid;
+    const targetDeltaMs =
+      songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined;
+
+    this.hitDebugSnapshot = {
+      songSecondsNow,
+      targetSeconds,
+      targetDeltaMs,
+      isWithinGraceWindow,
+      canValidateHit,
+      validHit,
+      activeTarget: active,
+      latestFrame: hitAnalysis.latestFrame,
+      holdMs: hitAnalysis.streakMs,
+      holdRequiredMs: DEFAULT_HOLD_MS,
+      minConfidence: DEFAULT_MIN_CONFIDENCE,
+      validFrameCount: hitAnalysis.validFrameCount,
+      sampleCount: hitAnalysis.sampleCount
+    };
 
     const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
       gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
       targetTimeSeconds: targetSeconds,
-      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS
+      songTimeSeconds: songSecondsNow,
+      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
+      finishWhenNoTargets: false
     });
 
     this.runtime = update.state;
     this.handleTransition(update.transition, update.target, previousState);
+    if (update.transition !== 'none') {
+      this.lastRuntimeTransition = update.transition;
+      this.lastRuntimeTransitionAtMs = performance.now();
+    }
 
     this.redrawTargetsAndBall();
+    this.drawTopStarfield();
+    this.updateSongMinimapProgress();
     this.updateHud();
+    this.updateDebugOverlay();
 
-    if (update.transition === 'finished') {
-      this.finishSong();
+    if (!this.targets[this.runtime.active_target_index]) {
+      this.queueFinishSong();
     }
   }
 
@@ -343,10 +489,23 @@ export class PlayScene extends Phaser.Scene {
 
   private finishSong(): void {
     if (this.resultsOverlay) return;
+    this.runtime = {
+      ...this.runtime,
+      state: PlayState.Finished,
+      waiting_started_at_s: undefined,
+      waiting_target_id: undefined
+    };
+    this.finishDelayTimer?.remove(false);
+    this.finishDelayTimer = undefined;
     this.closePauseMenu();
     this.setBallAndTrailVisible(false);
     this.debugButton?.disableInteractive().setVisible(false);
     this.debugButtonLabel?.setVisible(false);
+    this.pauseButton?.disableInteractive().setVisible(false);
+    this.pauseButtonLeftBar?.setVisible(false);
+    this.pauseButtonRightBar?.setVisible(false);
+    this.pauseButtonPlayIcon?.setVisible(false);
+    this.debugOverlayContainer?.setVisible(false);
 
     this.runtimeTimer?.remove(false);
     this.runtimeTimer = undefined;
@@ -355,9 +514,14 @@ export class PlayScene extends Phaser.Scene {
     this.detector?.stop();
 
     const summary = summarizeScores(this.scoreEvents);
+    const songScoreKey = this.resolveSongScoreKey();
+    const bestScore = songScoreKey ? saveSongHighScoreIfHigher(songScoreKey, summary.totalScore) : summary.totalScore;
+    if (songScoreKey) {
+      this.persistNativeSongHighScore(songScoreKey, bestScore);
+    }
     const { width, height } = this.scale;
     const panelWidth = Math.min(620, width * 0.82);
-    const panelHeight = Math.min(380, height * 0.72);
+    const panelHeight = Math.min(420, height * 0.76);
 
     const panelGlow = new RoundedBox(this, width / 2, height / 2, panelWidth + 10, panelHeight + 10, 0x60a5fa, 0.16);
     const panel = new RoundedBox(this, width / 2, height / 2, panelWidth, panelHeight, 0x101c3c, 0.95)
@@ -368,25 +532,131 @@ export class PlayScene extends Phaser.Scene {
       fontStyle: 'bold',
       fontSize: `${Math.max(24, Math.floor(width * 0.035))}px`
     }).setOrigin(0.5);
-    const summaryText = this.add.text(width / 2, height * 0.34, formatSummary(summary), {
+    const summaryText = this.add.text(width / 2, height * 0.34, `${formatSummary(summary)}\nBest Score: ${bestScore}`, {
       color: '#e2e8f0',
       fontFamily: 'Trebuchet MS, Verdana, sans-serif',
       align: 'left',
       fontSize: `${Math.max(16, Math.floor(width * 0.02))}px`
     }).setOrigin(0.5, 0);
-    const hint = this.add.text(width / 2, height * 0.73, 'Tap or press Enter to return', {
-      color: '#bfdbfe',
-      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
-      fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
-    }).setOrigin(0.5);
+    const earnedStars = this.computeEndScreenStars(summary);
+    const starObjects = this.createEndScreenStars(width / 2, height * 0.6, earnedStars, width);
+    const restartButtonY = height * 0.69;
+    const backButtonY = height * 0.81;
+    const actionButtonWidth = panelWidth * 0.74;
+    const actionButtonHeight = 52;
+    const restartButton = new RoundedBox(this, width / 2, restartButtonY, actionButtonWidth, actionButtonHeight, 0xf97316, 1)
+      .setStrokeStyle(1, 0xfed7aa, 0.9)
+      .setInteractive({ useHandCursor: true });
+    const restartLabel = this.add
+      .text(width / 2, restartButtonY, 'Restart', {
+        color: '#fff7ed',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const backButton = new RoundedBox(this, width / 2, backButtonY, actionButtonWidth, actionButtonHeight, 0x1e293b, 1)
+      .setStrokeStyle(1, 0x64748b, 0.9)
+      .setInteractive({ useHandCursor: true });
+    const backLabel = this.add
+      .text(width / 2, backButtonY, 'Back to Start', {
+        color: '#e2e8f0',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
-    this.resultsOverlay = this.add.container(0, 0, [panelGlow, panel, title, summaryText, hint]);
+    const restart = (): void => this.resetSession();
+    const goBack = (): void => this.goBackToStart();
+    restartButton.on('pointerdown', restart);
+    restartLabel.on('pointerdown', restart);
+    backButton.on('pointerdown', goBack);
+    backLabel.on('pointerdown', goBack);
+    this.input.keyboard?.once('keydown-ENTER', restart);
+    this.input.keyboard?.once('keydown-ESC', goBack);
 
-    const goBack = (): void => {
-      this.scene.start('SongSelectScene');
-    };
-    this.input.once('pointerdown', goBack);
-    this.input.keyboard?.once('keydown-ENTER', goBack);
+    this.resultsOverlay = this.add.container(0, 0, [
+      panelGlow,
+      panel,
+      title,
+      summaryText,
+      ...starObjects,
+      restartButton,
+      restartLabel,
+      backButton,
+      backLabel
+    ]);
+  }
+
+  private computeEndScreenStars(summary: ReturnType<typeof summarizeScores>): number {
+    const totalTargets = this.targets.length;
+    if (totalTargets <= 0) return 0;
+    const playedNotes =
+      summary.hitDistribution.Perfect + summary.hitDistribution.Great + summary.hitDistribution.OK;
+    const playedRatio = playedNotes / totalTargets;
+    if (playedRatio >= 0.9) return 3;
+    if (playedRatio >= 0.6) return 2;
+    if (playedRatio >= 0.3) return 1;
+    return 0;
+  }
+
+  private createEndScreenStars(
+    centerX: number,
+    centerY: number,
+    earnedStars: number,
+    width: number
+  ): Phaser.GameObjects.GameObject[] {
+    const objects: Phaser.GameObjects.GameObject[] = [];
+    const spacing = Math.max(44, Math.floor(width * 0.06));
+    const starFontSize = `${Math.max(34, Math.floor(width * 0.05))}px`;
+    const baseColor = '#64748b';
+    const activeColor = '#facc15';
+
+    for (let index = 0; index < 3; index += 1) {
+      const x = centerX + (index - 1) * spacing;
+      const baseStar = this.add
+        .text(x, centerY, '☆', {
+          color: baseColor,
+          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontStyle: 'bold',
+          fontSize: starFontSize
+        })
+        .setOrigin(0.5);
+      objects.push(baseStar);
+
+      if (index >= earnedStars) continue;
+
+      const fillStar = this.add
+        .text(x, centerY, '★', {
+          color: activeColor,
+          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontStyle: 'bold',
+          fontSize: starFontSize
+        })
+        .setOrigin(0.5)
+        .setAlpha(0)
+        .setScale(0.7);
+      this.tweens.add({
+        targets: fillStar,
+        alpha: 1,
+        scaleX: 1.14,
+        scaleY: 1.14,
+        duration: 220,
+        delay: 180 + index * 180,
+        ease: 'Back.Out',
+        yoyo: true,
+        hold: 70,
+        onYoyo: () => {
+          fillStar.setScale(1);
+        }
+      });
+      objects.push(fillStar);
+    }
+
+    return objects;
   }
 
   private attachBackHandlers(): void {
@@ -482,6 +752,7 @@ export class PlayScene extends Phaser.Scene {
 
     this.pauseOverlay = this.add.container(0, 0, [backdrop, panelGlow, panel, title, resetButton, resetLabel, backButton, backLabel]);
     this.pauseOverlay.setDepth(1000);
+    this.setPauseButtonIconMode(true);
   }
 
   private closePauseMenu(): void {
@@ -498,6 +769,7 @@ export class PlayScene extends Phaser.Scene {
     }
     this.latestFrames = [];
     this.playbackWasRunningBeforePauseMenu = false;
+    this.setPauseButtonIconMode(false);
   }
 
   private relayoutPauseOverlay(): void {
@@ -517,6 +789,103 @@ export class PlayScene extends Phaser.Scene {
     this.scene.start('SongSelectScene');
   }
 
+  private resolveSongScoreKey(): string {
+    const explicitSongId = this.sceneData?.songId?.trim();
+    if (explicitSongId) return explicitSongId;
+    return this.sceneData?.midiUrl?.trim() ?? '';
+  }
+
+  private persistNativeSongHighScore(songScoreKey: string, bestScore: number): void {
+    if (!isNativeSongLibraryAvailable()) return;
+    void updateNativeSongHighScore(songScoreKey, bestScore).catch((error) => {
+      console.warn('Failed to persist native high score', { songScoreKey, bestScore, error });
+    });
+  }
+
+  private createDebugOverlay(): void {
+    if (!this.debugOverlayEnabled || this.debugOverlayContainer) return;
+
+    this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.78)
+      .setStrokeStyle(2, 0x38bdf8, 0.48)
+      .setDepth(910);
+    this.debugOverlayText = this.add
+      .text(0, 0, '', {
+        color: '#dbeafe',
+        fontFamily: 'Courier New, monospace',
+        fontSize: '12px',
+        lineSpacing: 3
+      })
+      .setOrigin(0, 0)
+      .setDepth(911);
+
+    this.debugOverlayContainer = this.add
+      .container(0, 0, [this.debugOverlayPanel, this.debugOverlayText])
+      .setDepth(910)
+      .setVisible(true);
+    this.relayoutDebugOverlay();
+  }
+
+  private relayoutDebugOverlay(): void {
+    if (!this.debugOverlayPanel || !this.debugOverlayText) return;
+
+    const { width, height } = this.scale;
+    const panelWidth = Math.min(760, width * 0.84);
+    const panelHeight = Math.min(240, height * 0.38);
+    const centerX = width / 2;
+    const centerY = height * 0.52;
+
+    this.debugOverlayPanel.setBoxSize(panelWidth, panelHeight);
+    this.debugOverlayPanel.setPosition(centerX, centerY);
+    this.debugOverlayText
+      .setPosition(centerX - panelWidth / 2 + 12, centerY - panelHeight / 2 + 12)
+      .setFontSize(`${Math.max(11, Math.floor(width * 0.0115))}px`);
+  }
+
+  private toggleDebugOverlay(): void {
+    if (!this.debugOverlayContainer) return;
+    const nextVisible = !this.debugOverlayContainer.visible;
+    this.debugOverlayContainer.setVisible(nextVisible);
+    this.feedbackText = `Debug overlay ${nextVisible ? 'ON' : 'OFF'} (F3)`;
+    this.feedbackUntilMs = performance.now() + 900;
+    this.updateHud();
+  }
+
+  private updateDebugOverlay(): void {
+    if (!this.debugOverlayEnabled || !this.debugOverlayText || !this.debugOverlayContainer || !this.debugOverlayContainer.visible) {
+      return;
+    }
+
+    const snapshot = this.hitDebugSnapshot;
+    const active = snapshot?.activeTarget ?? this.targets[this.runtime.active_target_index];
+    const latestFrame = snapshot?.latestFrame ?? (this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined);
+    const songSecondsNow =
+      snapshot?.songSecondsNow ?? (this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds);
+    const targetSeconds = snapshot?.targetSeconds ?? (active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined);
+    const deltaMs =
+      snapshot?.targetDeltaMs ?? (songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined);
+    const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
+    const waitingElapsedSeconds =
+      this.runtime.waiting_started_at_s !== undefined && this.audioCtx
+        ? Math.max(0, this.audioCtx.currentTime - this.runtime.waiting_started_at_s)
+        : undefined;
+    const transitionAgeMs = this.lastRuntimeTransitionAtMs > 0 ? performance.now() - this.lastRuntimeTransitionAtMs : undefined;
+
+    const lines = [
+      'DEBUG OVERLAY (F3)',
+      `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
+      active
+        ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
+        : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
+      `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
+      `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
+      `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
+      `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
+      `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
+    ];
+
+    this.debugOverlayText.setText(lines.join('\n'));
+  }
+
   private drawStaticLanes(): void {
     if (!this.laneLayer || !this.statusText || !this.liveScoreText) return;
 
@@ -532,29 +901,15 @@ export class PlayScene extends Phaser.Scene {
     this.laneLayer.fillStyle(0x0c1938, 0.82);
     this.laneLayer.fillRect(0, layout.top - 8, width, height - (layout.top - 8));
 
-    this.laneLayer.fillStyle(0xbfdbfe, 0.18);
-    for (let i = 0; i < 65; i += 1) {
-      const x = ((i * 137) % width) + (i % 3) * 0.35;
-      const y = (i * 97) % Math.max(40, Math.floor(layout.top - 14));
-      const r = i % 11 === 0 ? 2 : 1;
-      this.laneLayer.fillCircle(x, y, r);
-    }
-
-    this.laneLayer.lineStyle(1.8, 0x93c5fd, 0.22);
-    for (let i = 0; i < 4; i += 1) {
-      const y = layout.top - 20 + i * (layout.laneSpacing * 1.2);
-      this.laneLayer.beginPath();
-      this.laneLayer.moveTo(0, y);
-      this.laneLayer.lineTo(width, y);
-      this.laneLayer.strokePath();
-    }
-
     const fretTopY = layout.top + 6;
     const fretBottomY = layout.bottom + 28;
-    const fretTopLeft = layout.left + 44;
-    const fretTopRight = layout.right - 44;
-    const fretBottomLeft = layout.left - 18;
-    const fretBottomRight = layout.right + 18;
+    const fretboardWidth = layout.right - layout.left;
+    const topInset = Math.max(120, fretboardWidth * 0.18);
+    const bottomExpand = Math.max(36, fretboardWidth * 0.08);
+    const fretTopLeft = layout.left + topInset;
+    const fretTopRight = layout.right - topInset;
+    const fretBottomLeft = layout.left - bottomExpand;
+    const fretBottomRight = layout.right + bottomExpand;
 
     this.laneLayer.fillStyle(0x1f2937, 0.92);
     this.laneLayer.beginPath();
@@ -576,12 +931,21 @@ export class PlayScene extends Phaser.Scene {
       this.laneLayer.strokePath();
     }
 
-    this.laneLayer.lineStyle(2, 0xcbd5e1, 0.86);
+    const stringStyles = [
+      { width: 2.2, color: 0xdbeafe, alpha: 0.9 },
+      { width: 2.3, color: 0xdbeafe, alpha: 0.9 },
+      { width: 2.4, color: 0xdbeafe, alpha: 0.9 },
+      { width: 2.6, color: 0xfacc15, alpha: 0.95 },
+      { width: 3.3, color: 0xfacc15, alpha: 0.95 },
+      { width: 4.1, color: 0xfacc15, alpha: 0.95 }
+    ] as const;
     for (let i = 0; i < 6; i += 1) {
+      const style = stringStyles[i];
       const y = layout.top + i * layout.laneSpacing + 10;
+      this.laneLayer.lineStyle(style.width, style.color, style.alpha);
       this.laneLayer.beginPath();
-      this.laneLayer.moveTo(layout.left - 8, y);
-      this.laneLayer.lineTo(layout.right + 8, y);
+      this.laneLayer.moveTo(0, y);
+      this.laneLayer.lineTo(width, y);
       this.laneLayer.strokePath();
     }
 
@@ -591,13 +955,210 @@ export class PlayScene extends Phaser.Scene {
     this.laneLayer.lineTo(layout.hitLineX, layout.bottom + 26);
     this.laneLayer.strokePath();
 
+    this.drawTopStarfield();
     this.layoutHandReminder();
+    this.layoutPauseButton();
+    this.layoutSongMinimap();
+    this.redrawSongMinimapStatic();
+    this.updateSongMinimapProgress();
 
     this.statusText.setPosition(layout.left, 16);
     this.liveScoreText.setPosition(layout.right, 16);
     if (this.debugButton && this.debugButtonLabel) {
       this.debugButton.setPosition(layout.right - 62, 52);
       this.debugButtonLabel.setPosition(this.debugButton.x, this.debugButton.y);
+    }
+  }
+
+  private layoutSongMinimap(): void {
+    const { width, height } = this.scale;
+    const sideMargin = 14;
+    const reservedLeft = this.pauseButton
+      ? sideMargin + PlayScene.PAUSE_BUTTON_SIZE + PlayScene.PAUSE_BUTTON_GAP
+      : sideMargin;
+    const handReminderGap = 18;
+    const handReminderLeft = this.handReminderImage
+      ? this.handReminderImage.x - this.handReminderImage.displayWidth
+      : Number.POSITIVE_INFINITY;
+    const minimapRightLimit = Math.min(width - sideMargin, handReminderLeft - handReminderGap);
+    const minimapWidth = Math.max(1, minimapRightLimit - reservedLeft);
+    const minimapHeight = Math.max(44, Math.floor(height * 0.084));
+    const minimapX = reservedLeft;
+    const minimapY = height - minimapHeight - 14;
+    const centerX = minimapX + minimapWidth / 2;
+    const centerY = minimapY + minimapHeight / 2;
+    const innerPaddingX = 8;
+    const innerPaddingY = 4;
+    const innerWidth = Math.max(1, minimapWidth - innerPaddingX * 2);
+    const innerHeight = Math.max(1, minimapHeight - innerPaddingY * 2);
+    const lastTarget = this.targets.length > 0 ? this.targets[this.targets.length - 1] : undefined;
+    const mapEndTick = lastTarget ? lastTarget.tick + Math.max(lastTarget.duration_ticks, 1) : this.ticksPerQuarter * 4;
+    const totalTicks = Math.max(this.ticksPerQuarter * 4, mapEndTick);
+
+    if (!this.songMinimapBackground) {
+      this.songMinimapBackground = new RoundedBox(this, centerX, centerY, minimapWidth, minimapHeight, 0x0b1228, 0.9)
+        .setStrokeStyle(1, 0x334155, 0.85)
+        .setDepth(286);
+      this.songMinimapStaticLayer = this.add.graphics().setDepth(287);
+      this.songMinimapDynamicLayer = this.add.graphics().setDepth(288);
+    } else {
+      this.songMinimapBackground.setPosition(centerX, centerY).setBoxSize(minimapWidth, minimapHeight);
+      this.songMinimapBackground.setDepth(286);
+      this.songMinimapStaticLayer?.setDepth(287);
+      this.songMinimapDynamicLayer?.setDepth(288);
+    }
+
+    this.songMinimapLayout = {
+      x: minimapX,
+      y: minimapY,
+      width: minimapWidth,
+      height: minimapHeight,
+      innerLeft: minimapX + innerPaddingX,
+      innerTop: minimapY + innerPaddingY,
+      innerWidth,
+      innerHeight,
+      rowHeight: innerHeight / 6,
+      totalTicks
+    };
+  }
+
+  private layoutPauseButton(): void {
+    if (!this.pauseButton || !this.pauseButtonLeftBar || !this.pauseButtonRightBar || !this.pauseButtonPlayIcon) return;
+
+    const sideMargin = 14;
+    const centerX = sideMargin + PlayScene.PAUSE_BUTTON_SIZE / 2;
+    const centerY = this.scale.height - sideMargin - PlayScene.PAUSE_BUTTON_SIZE / 2;
+    const barOffsetX = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.15));
+    const barHeight = Math.max(14, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.48));
+    const barWidth = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.14));
+
+    this.pauseButton
+      .setPosition(centerX, centerY)
+      .setDepth(289);
+    this.pauseButtonLeftBar
+      .setPosition(centerX - barOffsetX, centerY)
+      .setSize(barWidth, barHeight)
+      .setDisplaySize(barWidth, barHeight)
+      .setDepth(290);
+    this.pauseButtonRightBar
+      .setPosition(centerX + barOffsetX, centerY)
+      .setSize(barWidth, barHeight)
+      .setDisplaySize(barWidth, barHeight)
+      .setDepth(290);
+    this.pauseButtonPlayIcon
+      .setPosition(centerX + Math.max(1, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.04)), centerY)
+      .setScale(Math.max(1, PlayScene.PAUSE_BUTTON_SIZE / 24))
+      .setDepth(290);
+  }
+
+  private setPauseButtonIconMode(showPlay: boolean): void {
+    this.pauseButtonLeftBar?.setVisible(!showPlay);
+    this.pauseButtonRightBar?.setVisible(!showPlay);
+    this.pauseButtonPlayIcon?.setVisible(showPlay);
+  }
+
+  private redrawSongMinimapStatic(): void {
+    if (!this.songMinimapStaticLayer || !this.songMinimapLayout) return;
+    const layout = this.songMinimapLayout;
+    this.songMinimapStaticLayer.clear();
+
+    this.songMinimapStaticLayer.lineStyle(1, 0x1e293b, 0.7);
+    for (let i = 0; i <= 6; i += 1) {
+      const y = layout.innerTop + i * layout.rowHeight;
+      this.songMinimapStaticLayer.beginPath();
+      this.songMinimapStaticLayer.moveTo(layout.innerLeft, y);
+      this.songMinimapStaticLayer.lineTo(layout.innerLeft + layout.innerWidth, y);
+      this.songMinimapStaticLayer.strokePath();
+    }
+
+    const measureTicks = this.ticksPerQuarter * 4;
+    if (measureTicks > 0) {
+      for (let tick = 0; tick <= layout.totalTicks; tick += measureTicks) {
+        const markerX = layout.innerLeft + (tick / layout.totalTicks) * layout.innerWidth;
+        const isMajor = tick % (measureTicks * 4) === 0;
+        this.songMinimapStaticLayer.lineStyle(1, isMajor ? 0xfacc15 : 0x64748b, isMajor ? 0.7 : 0.35);
+        this.songMinimapStaticLayer.beginPath();
+        this.songMinimapStaticLayer.moveTo(markerX, layout.innerTop);
+        this.songMinimapStaticLayer.lineTo(markerX, layout.innerTop + layout.innerHeight);
+        this.songMinimapStaticLayer.strokePath();
+      }
+    }
+
+    const noteHeight = Math.max(1.4, layout.rowHeight * 0.62);
+    for (const target of this.targets) {
+      const startX = layout.innerLeft + (target.tick / layout.totalTicks) * layout.innerWidth;
+      const endX = layout.innerLeft + ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
+      const noteWidth = Math.max(1.6, endX - startX);
+      const rowIndex = Phaser.Math.Clamp(target.string - 1, 0, 5);
+      const y = layout.innerTop + rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
+      this.songMinimapStaticLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, 0.9);
+      this.songMinimapStaticLayer.fillRoundedRect(startX, y, noteWidth, noteHeight, Math.min(2.5, noteHeight / 2));
+    }
+  }
+
+  private updateSongMinimapProgress(): void {
+    if (!this.songMinimapDynamicLayer || !this.songMinimapLayout) return;
+    const layout = this.songMinimapLayout;
+    this.songMinimapDynamicLayer.clear();
+
+    const clampedTick = Phaser.Math.Clamp(this.runtime.current_tick, 0, layout.totalTicks);
+    const progressX = layout.innerLeft + (clampedTick / layout.totalTicks) * layout.innerWidth;
+    const playedWidth = Math.max(0, progressX - layout.innerLeft);
+    this.songMinimapDynamicLayer.fillStyle(0x22c55e, 0.18);
+    this.songMinimapDynamicLayer.fillRect(layout.innerLeft, layout.innerTop, playedWidth, layout.innerHeight);
+
+    this.songMinimapDynamicLayer.lineStyle(2, 0xf8fafc, 0.95);
+    this.songMinimapDynamicLayer.beginPath();
+    this.songMinimapDynamicLayer.moveTo(progressX, layout.innerTop - 1);
+    this.songMinimapDynamicLayer.lineTo(progressX, layout.innerTop + layout.innerHeight + 1);
+    this.songMinimapDynamicLayer.strokePath();
+  }
+
+  private drawTopStarfield(): void {
+    if (!this.starfieldLayer) return;
+
+    const layout = this.layout();
+    const { width } = this.scale;
+    const yMin = 6;
+    const yMax = Math.max(yMin + 12, layout.top - 14);
+    const bandHeight = yMax - yMin;
+    const starCount = Math.max(36, Math.round((width * bandHeight) / 12000));
+
+    const shouldRebuildStars =
+      !this.topStarBand ||
+      this.topStarBand.width !== width ||
+      Math.abs(this.topStarBand.yMin - yMin) > 1 ||
+      Math.abs(this.topStarBand.yMax - yMax) > 1 ||
+      this.topStars.length !== starCount;
+
+    if (shouldRebuildStars) {
+      this.topStarBand = { width, yMin, yMax };
+      this.topStars = [];
+      for (let i = 0; i < starCount; i += 1) {
+        this.topStars.push({
+          baseX: Math.random() * width,
+          y: Phaser.Math.FloatBetween(yMin, yMax),
+          radius: Phaser.Math.FloatBetween(0.7, 1.9),
+          baseAlpha: Phaser.Math.FloatBetween(0.25, 0.85),
+          twinklePhase: Math.random() * Math.PI * 2,
+          twinkleSpeed: Phaser.Math.FloatBetween(0.4, 1.35)
+        });
+      }
+    }
+
+    this.starfieldLayer.clear();
+    const scrollPx = this.runtime.current_tick * layout.pxPerTick;
+    const nowSeconds = performance.now() / 1000;
+    for (const star of this.topStars) {
+      const x = Phaser.Math.Wrap(star.baseX - scrollPx, -8, width + 8);
+      const twinkle = 0.72 + 0.28 * Math.sin(nowSeconds * star.twinkleSpeed + star.twinklePhase);
+      const alpha = Phaser.Math.Clamp(star.baseAlpha * twinkle, 0.1, 0.9);
+      this.starfieldLayer.fillStyle(0xe2e8f0, alpha);
+      this.starfieldLayer.fillCircle(x, star.y, star.radius);
+      if (star.radius >= 1.5) {
+        this.starfieldLayer.fillStyle(0x93c5fd, alpha * 0.32);
+        this.starfieldLayer.fillCircle(x, star.y, star.radius * 2.2);
+      }
     }
   }
 
@@ -652,26 +1213,49 @@ export class PlayScene extends Phaser.Scene {
         (this.runtime.state === PlayState.Playing && this.isInsideLiveHitWindow(target)))
     ) {
       this.consumeDebugHit();
+    } else {
+      this.feedbackText = `Debug note: ${target.expected_midi} (outside hit window)`;
+      this.feedbackUntilMs = performance.now() + 900;
+      this.updateHud();
+      this.updateDebugOverlay();
     }
   }
 
   private consumeDebugHit(): void {
-    if (!this.audioCtx) return;
+    if (!this.audioCtx || !this.tempoMap) return;
     const previousState = this.runtime.state;
     const active = this.targets[this.runtime.active_target_index];
-    const targetTimeSeconds = active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined;
+    const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
+    const songTimeSeconds = this.getSongSecondsNow();
     const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, true, {
       gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
       targetTimeSeconds,
-      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS
+      songTimeSeconds,
+      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
+      finishWhenNoTargets: false
     });
     this.runtime = update.state;
     this.handleTransition(update.transition, update.target, previousState);
-    this.redrawTargetsAndBall();
-    this.updateHud();
-    if (update.transition === 'finished') {
-      this.finishSong();
+    if (update.transition !== 'none') {
+      this.lastRuntimeTransition = update.transition;
+      this.lastRuntimeTransitionAtMs = performance.now();
     }
+    this.redrawTargetsAndBall();
+    this.updateSongMinimapProgress();
+    this.updateHud();
+    this.updateDebugOverlay();
+    if (!this.targets[this.runtime.active_target_index]) {
+      this.queueFinishSong();
+    }
+  }
+
+  private queueFinishSong(): void {
+    if (this.resultsOverlay || this.finishDelayTimer) return;
+    this.finishDelayTimer = this.time.delayedCall(PlayScene.POST_SONG_END_SCREEN_DELAY_MS, () => {
+      this.finishDelayTimer = undefined;
+      if (!this.scene.isActive()) return;
+      this.finishSong();
+    });
   }
 
   private redrawTargetsAndBall(): void {
@@ -695,7 +1279,9 @@ export class PlayScene extends Phaser.Scene {
 
     for (const target of this.targets) {
       const x = layout.hitLineX + (target.tick - currentTick) * layout.pxPerTick;
-      const width = Math.max(18, target.duration_ticks * layout.pxPerTick);
+      const noteDiameter = layout.noteHeight;
+      const noteRadius = noteDiameter / 2;
+      const width = Math.max(noteDiameter, target.duration_ticks * layout.pxPerTick);
       if (x + width < viewLeft || x > viewRight) continue;
 
       const y = layout.top + (target.string - 1) * layout.laneSpacing;
@@ -704,10 +1290,10 @@ export class PlayScene extends Phaser.Scene {
       const alpha = isWaitingTarget ? 1 : isPast ? 0.28 : 0.95;
 
       this.targetLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, alpha);
-      this.targetLayer.fillRoundedRect(x, y - layout.noteHeight / 2, width, layout.noteHeight, layout.noteHeight / 3);
+      this.targetLayer.fillRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
 
       const fretLabel = this.add
-        .text(x + width / 2, y, `${target.fret}`, {
+        .text(x + noteRadius, y, `${target.fret}`, {
           color: '#0b1020',
           fontSize: labelFontSize,
           fontStyle: 'bold'
@@ -718,7 +1304,7 @@ export class PlayScene extends Phaser.Scene {
 
       if (isWaitingTarget) {
         this.targetLayer.lineStyle(2, 0xffffff, 1);
-        this.targetLayer.strokeRoundedRect(x, y - layout.noteHeight / 2, width, layout.noteHeight, layout.noteHeight / 3);
+        this.targetLayer.strokeRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
       }
     }
 
@@ -765,14 +1351,18 @@ export class PlayScene extends Phaser.Scene {
 
     this.statusText.setText(status);
     this.liveScoreText.setText(`${totalScore}  |  ${completed}/${this.targets.length}`);
+    this.updateDebugOverlay();
   }
 
   private layout(): Layout {
     const { width, height } = this.scale;
     const left = width * 0.08;
     const right = width * 0.96;
-    const top = height * 0.2;
-    const bottom = height * 0.84;
+    const baseTop = height * 0.2;
+    const baseBottom = height * 0.84;
+    const tabHeight = (baseBottom - baseTop) * 0.9;
+    const top = baseTop - height * 0.018;
+    const bottom = top + tabHeight;
     const laneSpacing = (bottom - top) / 5;
 
     return {
@@ -898,6 +1488,7 @@ export class PlayScene extends Phaser.Scene {
 
   private cleanup(): void {
     this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);
+    this.input.keyboard?.off('keydown-F3', this.toggleDebugOverlay, this);
 
     if (this.pauseMenuBackListener) {
       document.removeEventListener('backbutton', this.pauseMenuBackListener);
@@ -911,19 +1502,45 @@ export class PlayScene extends Phaser.Scene {
     this.pauseOverlay?.destroy(true);
     this.pauseOverlay = undefined;
     this.playbackWasRunningBeforePauseMenu = false;
+    this.pauseButton?.destroy();
+    this.pauseButton = undefined;
+    this.pauseButtonLeftBar?.destroy();
+    this.pauseButtonLeftBar = undefined;
+    this.pauseButtonRightBar?.destroy();
+    this.pauseButtonRightBar = undefined;
+    this.pauseButtonPlayIcon?.destroy();
+    this.pauseButtonPlayIcon = undefined;
 
     this.handReminderImage?.destroy();
     this.handReminderImage = undefined;
+    this.songMinimapBackground?.destroy();
+    this.songMinimapBackground = undefined;
+    this.songMinimapStaticLayer?.destroy();
+    this.songMinimapStaticLayer = undefined;
+    this.songMinimapDynamicLayer?.destroy();
+    this.songMinimapDynamicLayer = undefined;
+    this.songMinimapLayout = undefined;
+    this.starfieldLayer?.destroy();
+    this.starfieldLayer = undefined;
+    this.topStars = [];
+    this.topStarBand = undefined;
     this.destroyBallTrail();
     this.debugButton?.destroy();
     this.debugButton = undefined;
     this.debugButtonLabel?.destroy();
     this.debugButtonLabel = undefined;
+    this.debugOverlayContainer?.destroy(true);
+    this.debugOverlayContainer = undefined;
+    this.debugOverlayPanel = undefined;
+    this.debugOverlayText = undefined;
+    this.hitDebugSnapshot = undefined;
 
     this.clearFretLabels();
 
     this.runtimeTimer?.remove(false);
     this.runtimeTimer = undefined;
+    this.finishDelayTimer?.remove(false);
+    this.finishDelayTimer = undefined;
 
     this.stopBackingPlayback();
     this.scrubPlayer = undefined;
@@ -1117,4 +1734,86 @@ function sanitizeSelection(
 
 function isBackingTrackAudioUrl(url: string): boolean {
   return /\.(mp3|wav|ogg|m4a)(?:[?#].*)?$/i.test(url);
+}
+
+function analyzeHeldHit(
+  frames: PitchFrame[],
+  expectedMidi: number,
+  tolerance: number,
+  holdMs: number,
+  minConfidence: number
+): HeldHitAnalysis {
+  if (frames.length === 0) {
+    return { valid: false, streakMs: 0, validFrameCount: 0, sampleCount: 0, latestFrame: undefined };
+  }
+
+  let streakStartSeconds: number | null = null;
+  let streakMs = 0;
+  let validFrameCount = 0;
+
+  for (const frame of frames) {
+    const validFrame = isPitchFrameValid(frame, expectedMidi, tolerance, minConfidence);
+    if (!validFrame) {
+      streakStartSeconds = null;
+      streakMs = 0;
+      continue;
+    }
+
+    validFrameCount += 1;
+    if (streakStartSeconds === null) {
+      streakStartSeconds = frame.t_seconds;
+      streakMs = 0;
+      continue;
+    }
+
+    streakMs = Math.max(0, (frame.t_seconds - streakStartSeconds) * 1000);
+    if (streakMs >= holdMs) {
+      return {
+        valid: true,
+        streakMs,
+        validFrameCount,
+        sampleCount: frames.length,
+        latestFrame: frames[frames.length - 1]
+      };
+    }
+  }
+
+  return {
+    valid: false,
+    streakMs,
+    validFrameCount,
+    sampleCount: frames.length,
+    latestFrame: frames[frames.length - 1]
+  };
+}
+
+function isPitchFrameValid(frame: PitchFrame, expectedMidi: number, tolerance: number, minConfidence: number): boolean {
+  return (
+    frame.midi_estimate !== null &&
+    frame.confidence >= minConfidence &&
+    Math.abs(frame.midi_estimate - expectedMidi) <= tolerance
+  );
+}
+
+function formatDebugBool(value: boolean): string {
+  return value ? 'Y' : 'N';
+}
+
+function formatDebugNumber(value: number | null | undefined, digits: number): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return value.toFixed(digits);
+}
+
+function formatSignedMs(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value)) return '-';
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? '+' : ''}${rounded}ms`;
+}
+
+function isGameplayDebugOverlayEnabled(): boolean {
+  if (import.meta.env.DEV) return true;
+  if (typeof window === 'undefined') return false;
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get('debugGameplayOverlay') === '1';
 }

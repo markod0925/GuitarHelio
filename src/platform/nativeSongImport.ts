@@ -1,5 +1,5 @@
-import { convertAudioBufferToMidiBrowser } from '../audio/audioToMidiBrowser';
 import { extractEmbeddedCoverFromAudio } from '../audio/embeddedCover';
+import { convertAudioBufferToMidiNativeCxx } from './nativeNeuralNoteConverter';
 import {
   buildNativeSongAssetPath,
   createUniqueNativeSongFolder,
@@ -22,11 +22,18 @@ export type NativeSongImportResult = {
   audioExtension: '.mp3' | '.ogg' | '.wav';
 };
 
+export type NativeConverterMode = 'legacy' | 'neuralnote' | 'ab';
+
+export type NativeSongImportOptions = {
+  converterMode?: NativeConverterMode;
+};
+
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav']);
 
 export async function importAudioSongNative(
   file: File,
-  onProgress?: (update: NativeSongImportProgress) => void
+  onProgress?: (update: NativeSongImportProgress) => void,
+  options: NativeSongImportOptions = {}
 ): Promise<NativeSongImportResult> {
   if (!isNativeSongLibraryAvailable()) {
     throw new Error('Native song import is available only on Capacitor runtime.');
@@ -56,10 +63,8 @@ export async function importAudioSongNative(
   reportProgress(onProgress, 'Saving source audio...', 0.1);
   await writeNativeSongBinaryFile(audioPath, audioBytes);
 
-  reportProgress(onProgress, 'Converting audio to MIDI...', 0.18);
-  const midiBytes = await convertAudioBufferToMidiBrowser(audioBuffer, audioExtension, (progress) => {
-    reportProgress(onProgress, progress.stage, 0.18 + progress.progress * 0.72);
-  });
+  const converterMode = normalizeNativeConverterMode(options.converterMode);
+  const midiBytes = await convertAudioToMidiWithMode(audioBuffer, audioExtension, converterMode, onProgress);
 
   const midiFileName = 'song.mid';
   const midiPath = buildNativeSongAssetPath(folder, midiFileName);
@@ -85,6 +90,7 @@ export async function importAudioSongNative(
     folder,
     midi: midiFileName,
     audio: audioFileName,
+    highScore: 0,
     ...(coverFileName ? { cover: coverFileName } : {})
   };
 
@@ -96,6 +102,34 @@ export async function importAudioSongNative(
     coverExtracted: Boolean(coverFileName),
     audioExtension
   };
+}
+
+export function normalizeNativeConverterMode(value: NativeConverterMode | undefined): NativeConverterMode {
+  if (value === 'neuralnote' || value === 'ab') return value;
+  return 'legacy';
+}
+
+export function isNativeConverterModeExecutable(value: NativeConverterMode): boolean {
+  return value !== 'ab';
+}
+
+async function convertAudioToMidiWithMode(
+  audioBuffer: ArrayBuffer,
+  audioExtension: '.mp3' | '.ogg' | '.wav',
+  converterMode: NativeConverterMode,
+  onProgress?: (update: NativeSongImportProgress) => void
+): Promise<Uint8Array> {
+  const runCxxOnnx = async (progressStart: number, progressSpan: number): Promise<Uint8Array> => {
+    return convertAudioBufferToMidiNativeCxx(audioBuffer, audioExtension, (progress) => {
+      reportProgress(onProgress, progress.stage, progressStart + clamp01(progress.progress) * progressSpan);
+    });
+  };
+
+  if (!isNativeConverterModeExecutable(converterMode)) {
+    throw new Error('Converter mode "ab" is no longer available. Use "legacy" or "neuralnote" (C++/ONNX aliases).');
+  }
+
+  return runCxxOnnx(0.18, 0.72);
 }
 
 function reportProgress(

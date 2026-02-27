@@ -16,6 +16,17 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    [
+      'handReminder',
+      'defaultSongCover',
+      'logoGuitarHelio',
+      'uiSettingsIcon',
+      'uiTunerIcon',
+      'uiPlayIcon'
+    ].forEach((key) => {
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
     this.scene.start('SongSelectScene');
   }
 }

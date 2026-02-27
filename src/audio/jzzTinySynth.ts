@@ -6,6 +6,7 @@ import type { MidiVoiceOutput } from './midiScrubPlayer';
 type JzzOutPort = {
   noteOn: (channel: number, midi: number, velocity: number) => unknown;
   noteOff: (channel: number, midi: number, velocity?: number) => unknown;
+  plug?: (destination: AudioNode) => unknown;
   allSoundOff?: (channel: number) => unknown;
   resetAllControllers?: (channel: number) => unknown;
   close?: () => unknown;
@@ -15,24 +16,35 @@ type JzzWithTiny = {
   synth?: {
     Tiny?: () => JzzOutPort;
   };
+  lib?: {
+    getAudioContext?: () => {
+      state?: string;
+      resume?: () => Promise<unknown> | unknown;
+    } | null;
+  };
 };
 
 let tinyInstalled = false;
 
 export class JzzTinySynth implements MidiVoiceOutput {
+  private readonly jzz: JzzWithTiny;
   private readonly out: JzzOutPort;
   private readonly timers = new Set<number>();
   private readonly activeNotes = new Map<string, { channel: number; midi: number }>();
   private disposed = false;
 
-  constructor(private readonly clock: Pick<AudioContext, 'currentTime'>) {
+  constructor(private readonly clock: Pick<AudioContext, 'currentTime' | 'destination'>) {
+    this.jzz = resolveJzz(JZZModule);
     this.out = this.createOutput();
+    this.out.plug?.(this.clock.destination);
+    this.resumeTinyAudioContext();
   }
 
   noteOn(note: SourceNote, when: number): void {
     if (this.disposed) return;
     this.schedule(when, () => {
       if (this.disposed) return;
+      this.resumeTinyAudioContext();
       const channel = clampChannel(note.channel);
       this.out.noteOn(channel, note.midi_note, toMidiVelocity(note.velocity));
       this.activeNotes.set(noteKey(note), { channel, midi: note.midi_note });
@@ -88,13 +100,18 @@ export class JzzTinySynth implements MidiVoiceOutput {
   }
 
   private createOutput(): JzzOutPort {
-    const jzz = resolveJzz(JZZModule);
-    installTiny(jzz);
-    const out = jzz.synth?.Tiny?.();
+    installTiny(this.jzz);
+    const out = this.jzz.synth?.Tiny?.();
     if (!out) {
       throw new Error('JZZ Tiny synth is not available');
     }
     return out;
+  }
+
+  private resumeTinyAudioContext(): void {
+    const audioCtx = this.jzz.lib?.getAudioContext?.();
+    if (!audioCtx || audioCtx.state !== 'suspended') return;
+    void audioCtx.resume?.();
   }
 }
 

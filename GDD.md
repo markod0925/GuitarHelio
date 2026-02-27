@@ -433,6 +433,12 @@ If exceeded:
 
 ---
 
+### Playing → Finished
+
+When there is no active target left (`active_target_index` past the last target), gameplay MUST transition to `Finished`.
+
+---
+
 # 9. Pitch Detection (aubiojs)
 
 ## 9.1 Input
@@ -512,6 +518,16 @@ Compute:
 * average reaction time
 * longest streak
 
+At end-of-song, gameplay MUST show a completion menu with two explicit actions:
+
+* `Restart` → restart the same session/song
+* `Back to Start` → return to `SongSelectScene`
+* when the last target note is completed, gameplay MUST wait about 2 seconds before opening the completion menu/end screen
+* the completion menu MUST show 3 neutral stars that fill in yellow (with a brief scale animation) based on played-note ratio:
+  * >= 30% played notes: 1 star
+  * >= 60% played notes: 2 stars
+  * >= 90% played notes: 3 stars
+
 ---
 
 # 11. Visual System
@@ -520,6 +536,15 @@ Compute:
 
 * 6 horizontal lanes (strings)
 * string 1 at top, string 6 bottom
+* each string line MUST span the full screen width (left and right edges)
+* gameplay background MUST NOT include the extra 4 decorative horizontal guide lines above the fretboard
+* the gameplay fretboard/tracks MUST use a pronounced perspective tilt (narrower far/top side and wider near/bottom side) to emphasize depth
+* gameplay tab area MUST be rendered with about 10% less height than previous baseline and shifted upward to avoid overlap with the bottom-right hand reminder
+* string style in PlayScene MUST follow:
+  * strings 1-3 (top to bottom): slightly thicker than baseline and light/cool color
+  * string 4: yellow and slightly thicker
+  * string 5: yellow and slightly thicker than string 4
+  * string 6: yellow and slightly thicker than string 5
 
 ## 11.2 Note bars
 
@@ -528,6 +553,8 @@ Render ONLY TargetNotes.
 Properties:
 
 * width proportional to duration
+* each note must have a minimum circular head size: visual width MUST never be smaller than note height (circle-equivalent footprint)
+* when note duration is longer, the shape MUST extend horizontally as a capsule/pill from that circular minimum
 * color based on finger
 * show the fret number directly on each target bar (no circular background)
 * fret number must be visible as soon as the note appears on screen, not only during waiting state
@@ -572,6 +599,11 @@ During active gameplay (Playing or WaitingForHit), pressing:
 
 MUST open a pause menu with exactly two actions:
 
+The gameplay HUD MUST also include a bottom-left pause button that shows icon-only controls (no text):
+* while gameplay is active: classic pause icon (`||`)
+* while pause menu is open: classic play icon (right-pointing triangle)
+Pressing this button MUST open/close the same pause menu.
+
 * `Reset` → restart the current session with the same song and difficulty
 * `Back to Start` → leave gameplay and return to `SongSelectScene`
 
@@ -589,8 +621,12 @@ It may show only generic waiting text and optional remaining timeout.
 ## 11.7 Start screen settings menu
 
 The difficulty selector in start screen MUST be a segmented control (`Easy`, `Medium`, `Hard`) styled as a pill group.
+The default selected difficulty on start screen MUST be `Medium`.
 The start screen MUST provide a `Settings` button under the difficulty selector.
 Pressing this button MUST open a modal settings panel with a dimmed background overlay.
+All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
+The song list in start screen MUST be rendered inside an invisible scrollable viewport (mouse wheel + drag/touch scroll) so users can browse and select songs beyond the initially visible rows.
+Song titles in song cards MUST always stay inside their fixed label box; if a title is too long, UI MUST reduce title font size until it fits.
 
 Inside this panel, the user can choose:
 
@@ -601,6 +637,7 @@ Inside this panel, the user can choose:
 The number of active fingers is defined by how many fingers are selected.
 
 These settings MUST be applied when generating TargetNotes for the session.
+Selected difficulty + strings + fingers + frets MUST persist across app restarts/session reloads (web/server runtime and Capacitor Android runtime).
 
 ---
 
@@ -638,6 +675,15 @@ The widget must display finger colors mapped as:
 
 During gameplay, a debug button must be available to play the current required target note (`expected_midi`) through the app synth.
 If pressed while in `WaitingForHit`, it MUST also validate the hit and advance progression as if the correct pitch had been detected.
+If pressed outside the valid hit window, gameplay MUST NOT validate the hit and should report that the debug note was out of window.
+
+In debug sessions, gameplay MUST also provide a central debug overlay (toggle key: `F3`) showing at least:
+
+* runtime state and last state transition
+* active target details (id/string/fret/expected midi)
+* current tick vs target tick and current song time vs target time
+* detected pitch (`midi_estimate`) + confidence, held-hit progress vs required hold
+* hit-gating flags (`within window`, `can validate`, `valid hit`) and waiting timeout progress
 
 ---
 
@@ -664,6 +710,11 @@ The app visual style (start screen, gameplay scene, modal overlays) MUST follow 
 * typography with bold, high-contrast labels readable on dark background
 * gameplay overlays (pause/results) styled consistently with the same panel language
 
+Start-screen layout constraints:
+
+* the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
+* the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
+
 ---
 
 ## 11.13 Song catalog structure and fallback rules
@@ -673,6 +724,7 @@ Each song entry in `public/songs/manifest.json` MUST include:
 * cover image reference (`cover`)
 * MIDI reference file (`midi`)
 * WAV/MP3/OGG reference file (`audio`)
+* optional high-score seed (`highScore`, integer >= 0)
 
 Songs MUST be organized in dedicated folders under `public/songs/<song-folder>/`.
 
@@ -683,13 +735,30 @@ Fallback behavior:
 * if `midi` is missing or not found, that song MUST NOT be shown in song selection
 * if `cover` is missing or not found, use default asset `public/ui/song-cover-default.svg`
 * if `audio` is missing or not found, use the song MIDI reference as fallback audio source
+* if `audio` falls back to MIDI, the song-select button thumbnail MUST show fallback cover art
 * during gameplay playback, if a valid WAV/MP3/OGG file is available it MUST be used as backing track; otherwise playback MUST use MIDI synth rendering
 
 ---
 
-## 11.14 Audio to MIDI conversion preset (balanced)
+## 11.13.1 Session persistence (settings + high score)
 
-The local audio-to-MIDI converter integration MUST keep the `balanced` preset aligned to these defaults:
+Persistence requirements for both server/web build and Capacitor Android build:
+
+* start-screen settings (`difficulty`, `allowed strings`, `allowed fingers`, `allowed frets`) MUST be restored automatically on next app launch
+* each song MUST keep a persistent best score keyed by song id
+* at session end, stored best score must update only if the new total score is higher
+* when `manifest.json` provides `highScore`, runtime best score MUST use `max(manifest highScore, stored high score)`
+
+---
+
+## 11.14 Audio to MIDI conversion strategy (balanced)
+
+Default conversion path MUST use the C++/ONNX pipeline based on:
+
+* NeuralNote C++ core (`neuralnote_core`)
+* Tempo-CNN C++ ONNX core (`tempocnn_core`)
+
+Balanced conversion defaults MUST remain:
 
 * `modelConfidenceThreshold`: `0.355`
 * `noteSegmentationThreshold`: `0.31`
@@ -698,6 +767,16 @@ The local audio-to-MIDI converter integration MUST keep the `balanced` preset al
 * `minPitchHz`: `1`
 * `maxPitchHz`: `3000`
 * `midiTempo`: `120`
+
+Runtime strategy constraints:
+
+* production/default mode MUST use the C++/ONNX converter
+* debug converter labels `legacy` and `neuralnote` MUST remain accepted for backward compatibility, but both MUST map to the same C++/ONNX backend
+* debug converter mode `ab` MUST be rejected explicitly with a clear user-facing error
+* import conversion MUST estimate tempo via Tempo-CNN ONNX and apply both:
+  * `tempoBpm` global value
+  * optional local `tempoMap` points when available
+* for all conversion modes, exported MIDI end-of-track time MUST match input audio duration (MP3/OGG/WAV), including trailing silence up to audio end
 
 ---
 
@@ -720,12 +799,52 @@ Manifest/storage target by platform:
 * web dev/preview mode: `public/songs/manifest.json`
 * Capacitor native mode (Android standalone): `Directory.Data/songs/manifest.json`
 
+Implementation constraints for import paths:
+
+* web dev/preview import default MUST run through the C++/ONNX converter wrapper
+* Capacitor Android import default MUST run through the native C++/ONNX plugin bridge
+* server/native import MUST estimate tempo via Tempo-CNN ONNX and inject MIDI tempo metadata (`tempoBpm` + local `tempoMap` when present)
+* debug converter labels `legacy` and `neuralnote` MUST remain accepted as aliases for the same backend
+* debug converter mode `ab` MUST be rejected explicitly (server HTTP `400`, native import error)
+
 Debug/testing support:
 
 * in debug builds, the start screen MUST expose an `Import Source` selector (`Auto`, `Server`, `Native`) to force the import path for validation
+* the debug `Import Source` selector MUST be positioned in the top-left zone of the start screen, above the `Song` section
+* the debug `Import Source` selector MUST NOT overlap song cards/thumbnails
+* debug converter mode selector MUST keep backward-compatible labels (`legacy` / `neuralnote` / `ab`)
+* `legacy` and `neuralnote` labels MUST execute the same C++/ONNX pipeline
+* selecting `ab` MUST fail immediately with an explicit message
 * default mode is `Auto`:
   * `Server` on web dev/preview
   * `Native` on Capacitor native runtime
+
+---
+
+## 11.16 Play-scene top starfield
+
+The top band of the gameplay scene MUST render a moving star background.
+
+Star movement constraints:
+
+* stars scroll horizontally in lockstep with song progression
+* horizontal scroll MUST use the same tick-to-pixel pace used for gameplay motion (`current_tick * pxPerTick`)
+* when song progression is paused (e.g., waiting gate/pause menu), star horizontal movement MUST pause as well
+
+---
+
+## 11.17 Play-scene song minimap
+
+The gameplay scene MUST include a bottom minimap of the full song timeline.
+
+Minimap requirements:
+
+* render a compact preview of all target notes across the whole song length
+* each minimap note MUST use the same finger color mapping used in gameplay
+* include timeline progression feedback (playhead/current position)
+* progression MUST remain synchronized with gameplay timeline (`runtime.current_tick`)
+* minimap bounds MUST keep a clear gap from the bottom-right hand reminder widget (no overlap)
+* minimap height MUST be doubled versus previous baseline sizing
 
 ---
 

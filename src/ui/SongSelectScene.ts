@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
 import { DIFFICULTY_PRESETS } from '../app/config';
+import {
+  loadSessionSettingsPreference,
+  resolveSongHighScore,
+  saveSessionSettingsPreference
+} from '../app/sessionPersistence';
 import { createMicNode } from '../audio/micInput';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { STANDARD_TUNING } from '../guitar/tuning';
@@ -10,6 +15,7 @@ import { RoundedBox } from './RoundedBox';
 
 type Difficulty = 'Easy' | 'Medium' | 'Hard';
 type ImportSourceMode = 'auto' | 'server' | 'native';
+type DebugConverterMode = 'legacy' | 'neuralnote' | 'ab';
 
 type SongEntry = {
   id: string;
@@ -18,6 +24,8 @@ type SongEntry = {
   cover: string;
   midi: string;
   audio: string;
+  highScore: number;
+  usesMidiFallback: boolean;
   coverTextureKey: string;
 };
 
@@ -29,7 +37,22 @@ type SongOption = {
   glow: RoundedBox;
   thumbnail: RoundedBox;
   thumbnailImage?: Phaser.GameObjects.Image;
+  thumbnailMaskGraphics?: Phaser.GameObjects.Graphics;
   thumbLabel?: Phaser.GameObjects.Text;
+  baseY: number;
+  labelBaseY: number;
+  subLabelBaseY: number;
+  cardHeight: number;
+  interactiveObjects: Phaser.GameObjects.GameObject[];
+};
+
+type SongGridView = {
+  options: SongOption[];
+  viewportLeft: number;
+  viewportTop: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  contentBottom: number;
 };
 
 type SongManifestEntry = {
@@ -40,6 +63,7 @@ type SongManifestEntry = {
   midi?: string;
   audio?: string;
   file?: string;
+  highScore?: number;
 };
 
 type DifficultyDropdown = {
@@ -120,11 +144,20 @@ const DEFAULT_SONG_COVER_URL = '/ui/song-cover-placeholder-neon.png';
 const IMPORT_STATUS_POLL_MS = 700;
 const IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
 const IMPORT_SOURCE_STORAGE_KEY = 'gh_import_source_mode';
+const DEBUG_CONVERTER_MODE_STORAGE_KEY = 'gh_debug_converter_mode';
 
 export class SongSelectScene extends Phaser.Scene {
   private readonly assetExistenceCache = new Map<string, boolean>();
+  private songOptions: SongOption[] = [];
+  private songScrollOffset = 0;
+  private songScrollMax = 0;
+  private songViewportRect?: Phaser.Geom.Rectangle;
+  private songMaskGraphics?: Phaser.GameObjects.Graphics;
+  private songScrollDragPointerId?: number;
+  private songScrollDragStartY = 0;
+  private songScrollDragStartOffset = 0;
   private selectedSongIndex = 0;
-  private selectedDifficulty: Difficulty = 'Easy';
+  private selectedDifficulty: Difficulty = 'Medium';
   private selectedStrings = new Set<number>();
   private selectedFingers = new Set<number>();
   private selectedFrets = new Set<number>();
@@ -140,6 +173,7 @@ export class SongSelectScene extends Phaser.Scene {
   private importInput?: HTMLInputElement;
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
+  private debugConverterMode: DebugConverterMode = 'legacy';
 
   constructor() {
     super('SongSelectScene');
@@ -148,9 +182,9 @@ export class SongSelectScene extends Phaser.Scene {
   async create(): Promise<void> {
     const { width, height } = this.scale;
     const titleSize = Math.max(34, Math.floor(width * 0.058));
-    const sectionSize = Math.max(16, Math.floor(width * 0.023));
     const labelSize = Math.max(14, Math.floor(width * 0.017));
     this.initializeDefaults();
+    this.restoreSessionSettingsPreference();
 
     this.drawNeonStartBackdrop(width, height);
 
@@ -170,14 +204,17 @@ export class SongSelectScene extends Phaser.Scene {
     if (this.textures.exists('logoGuitarHelio')) {
       const logoWidth = Math.min(420, width * 0.46);
       const logoHeight = Math.round(logoWidth * 0.3125);
+      const compressedLogoHeight = Math.round(logoHeight * 0.7);
+      const logoCenterY = Math.max(compressedLogoHeight / 2 + 10, height * 0.095 - 40);
       this.add
-        .image(width / 2, height * 0.095, 'logoGuitarHelio')
-        .setDisplaySize(logoWidth, logoHeight)
+        .image(width / 2, logoCenterY, 'logoGuitarHelio')
+        .setDisplaySize(logoWidth, compressedLogoHeight)
         .setOrigin(0.5)
         .setAlpha(0.98);
     } else {
+      const fallbackTitleY = Math.max(titleSize * 0.7, height * 0.09 - 30);
       this.add
-        .text(width / 2, height * 0.09, 'GuitarHelio', {
+        .text(width / 2, fallbackTitleY, 'GuitarHelio', {
           color: '#dbeafe',
           fontFamily: 'Trebuchet MS, Verdana, sans-serif',
           fontStyle: 'bold',
@@ -188,25 +225,10 @@ export class SongSelectScene extends Phaser.Scene {
         .setOrigin(0.5);
     }
 
-    this.add
-      .text(width * 0.27, height * 0.18, 'Song', {
-        color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${sectionSize}px`
-      })
-      .setOrigin(0.5);
-
-    const songOptions = this.createSongOptions(songs, width, height, labelSize);
-
-    this.add
-      .text(width * 0.79, height * 0.18, 'Difficulty', {
-        color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${sectionSize}px`
-      })
-      .setOrigin(0.5);
+    const songGridView = this.createSongOptions(songs, width, height, labelSize);
+    const songOptions = songGridView.options;
+    this.songOptions = songOptions;
+    this.configureSongScroll(songGridView);
 
     const difficultyDropdown = this.createDifficultyDropdown(width, height, labelSize);
 
@@ -221,6 +243,7 @@ export class SongSelectScene extends Phaser.Scene {
       ? this.add
           .image(settingsButton.x - sideButtonWidth * 0.33, settingsButtonY, 'uiSettingsIcon')
           .setDisplaySize(sideIconSize, sideIconSize)
+          .setInteractive({ useHandCursor: true })
       : undefined;
     const settingsLabel = this.add
       .text(settingsButton.x + (settingsIcon ? sideButtonWidth * 0.04 : 0), settingsButtonY, 'Settings', {
@@ -229,7 +252,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(17, labelSize + 2)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const tunerButtonY = settingsButtonY + 86;
     const tunerButton = new RoundedBox(this, width * 0.79, tunerButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
@@ -239,6 +263,7 @@ export class SongSelectScene extends Phaser.Scene {
       ? this.add
           .image(tunerButton.x - sideButtonWidth * 0.33, tunerButtonY, 'uiTunerIcon')
           .setDisplaySize(sideIconSize, sideIconSize)
+          .setInteractive({ useHandCursor: true })
       : undefined;
     const tunerLabel = this.add
       .text(tunerButton.x + (tunerIcon ? sideButtonWidth * 0.04 : 0), tunerButtonY, 'Tuner', {
@@ -247,7 +272,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(17, labelSize + 2)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
     const tunerSummary = this.add
       .text(tunerButton.x, tunerButtonY + 38, '', {
         color: '#a5b4fc',
@@ -273,7 +299,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(16, labelSize + 1)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
     const importSummary = this.add
       .text(importButton.x, importButtonY + 39, '', {
         color: '#a5b4fc',
@@ -283,9 +310,20 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
     const showImportSourceDebug = isImportSourceDebugEnabled();
     this.importSourceMode = showImportSourceDebug ? loadImportSourceModePreference() : 'auto';
+    this.debugConverterMode = showImportSourceDebug ? loadDebugConverterModePreference() : 'legacy';
+    const importSourceScale = 0.7;
+    const importSourceDebugWidth = Math.min(300, width * 0.38) * importSourceScale;
+    const importSourceDebugCenterX = 14 + importSourceDebugWidth / 2;
+    const importSourceDebugButtonHeight = 30 * importSourceScale;
+    const importSourceGapFromSongs = 14;
+    const importSourceDebugMinCenterY = importSourceDebugButtonHeight / 2 + 26;
+    const importSourceDebugToggleY = Math.max(
+      importSourceDebugMinCenterY,
+      songGridView.viewportTop - importSourceDebugButtonHeight / 2 - importSourceGapFromSongs
+    );
     const importSourceTitle = showImportSourceDebug
       ? this.add
-          .text(importButton.x, importButtonY + 64, 'Import Source (debug)', {
+          .text(importSourceDebugCenterX, importSourceDebugToggleY - 24, 'Import Source (debug)', {
             color: '#94a3b8',
             fontFamily: 'Trebuchet MS, Verdana, sans-serif',
             fontSize: `${Math.max(11, labelSize - 4)}px`
@@ -293,10 +331,23 @@ export class SongSelectScene extends Phaser.Scene {
           .setOrigin(0.5)
       : undefined;
     const importSourceToggleOptions = showImportSourceDebug
-      ? this.createImportSourceToggleOptions(importButton.x, importButtonY + 88, sideButtonWidth, 30, labelSize)
+      ? this.createImportSourceToggleOptions(
+          importSourceDebugCenterX,
+          importSourceDebugToggleY,
+          importSourceDebugWidth,
+          importSourceDebugButtonHeight,
+          labelSize
+        )
       : [];
-    let importSummaryMessage =
-      this.importSourceMode === 'auto' ? 'Adds song folder + MIDI + cover' : `Forced source: ${this.importSourceMode}`;
+    const describeImportSummary = (): string => {
+      const sourceSummary =
+        this.importSourceMode === 'auto' ? 'Adds song folder + MIDI + cover' : `Forced source: ${this.importSourceMode}`;
+      if (!showImportSourceDebug || this.debugConverterMode === 'legacy') {
+        return sourceSummary;
+      }
+      return `${sourceSummary} • conv: ${this.debugConverterMode}`;
+    };
+    let importSummaryMessage = describeImportSummary();
     let importSummaryColor = '#a5b4fc';
     const importOverlay = this.createSongImportOverlay(width, height, labelSize);
 
@@ -308,29 +359,34 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const startY = height * 0.93;
-    const startButtonWidth = Math.min(388, width * 0.68);
-    const startButtonHeight = 62;
+    const startScale = Math.SQRT2;
+    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
+    const startButtonHeight = Math.round(62 * 1.08);
+    const startY = height - startButtonHeight / 2 - 16;
+    const startGlowHeight = Math.max(92, startButtonHeight + 26);
     const startGlow = this.add
-      .ellipse(width / 2, startY + 2, Math.min(404, width * 0.72), 88, 0xfb7185, 0.26)
+      .ellipse(width / 2, startY + 4, Math.min(Math.round(404 * startScale), width * 0.86), startGlowHeight, 0xfb7185, 0.26)
       .setDepth(20);
+    const playIconSize = Math.min(60, labelSize + 24);
     const startButton = new RoundedBox(this, width / 2, startY, startButtonWidth, startButtonHeight, 0xf97316, 1)
       .setStrokeStyle(2, 0xfecaca, 0.8)
       .setInteractive({ useHandCursor: true });
     const playIcon = this.textures.exists('uiPlayIcon')
       ? this.add
           .image(width / 2 - startButtonWidth * 0.3, startY, 'uiPlayIcon')
-          .setDisplaySize(Math.min(32, labelSize + 10), Math.min(32, labelSize + 10))
+          .setDisplaySize(playIconSize, playIconSize)
+          .setInteractive({ useHandCursor: true })
       : undefined;
     const startLabel = this.add
       .text(width / 2 + (playIcon ? startButtonWidth * 0.06 : 0), startY, 'Start Session', {
         color: '#fff7ed',
         fontFamily: 'Trebuchet MS, Verdana, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(21, labelSize + 4)}px`
+        fontSize: `${Math.max(28, labelSize + 10)}px`
       })
       .setOrigin(0.5)
-      .setShadow(0, 2, '#7f1d1d', 6, true, true);
+      .setShadow(0, 2, '#7f1d1d', 6, true, true)
+      .setInteractive({ useHandCursor: true });
     startGlow.setDepth(startButton.depth - 1);
     playIcon?.setDepth(startButton.depth + 1);
     startLabel.setDepth(startButton.depth + 1);
@@ -375,8 +431,6 @@ export class SongSelectScene extends Phaser.Scene {
 
       difficultyDropdown.trigger.setFillStyle(0x1a2a53, 0.72);
       difficultyDropdown.trigger.setStrokeStyle(2, 0x3b82f6, 0.35);
-      difficultyDropdown.triggerLabel.setText(this.selectedDifficulty);
-      difficultyDropdown.triggerLabel.setColor('#bfdbfe');
       difficultyDropdown.chevron.setText('');
       difficultyDropdown.chevron.setColor('#94a3b8');
 
@@ -603,7 +657,9 @@ export class SongSelectScene extends Phaser.Scene {
         hint.setText('No playable songs found: add a song folder with a valid MIDI file.');
         return;
       }
+      this.persistSessionSettingsPreference();
       this.scene.start('PlayScene', {
+        songId: song.id,
         midiUrl: song.midi,
         audioUrl: song.audio,
         difficulty: this.selectedDifficulty,
@@ -613,9 +669,49 @@ export class SongSelectScene extends Phaser.Scene {
       });
     };
 
+    const onSongWheel = (
+      pointer: Phaser.Input.Pointer,
+      _gameObjects: Phaser.GameObjects.GameObject[],
+      _deltaX: number,
+      deltaY: number
+    ): void => {
+      if (!this.songViewportRect || this.songScrollMax <= 0) return;
+      if (!this.songViewportRect.contains(pointer.worldX, pointer.worldY)) return;
+      this.setSongScrollOffset(this.songScrollOffset + deltaY * 0.8);
+      refreshSelections();
+    };
+    const onSongPointerDown = (pointer: Phaser.Input.Pointer): void => {
+      if (!this.songViewportRect || this.songScrollMax <= 0) return;
+      if (!this.songViewportRect.contains(pointer.worldX, pointer.worldY)) return;
+      this.songScrollDragPointerId = pointer.id;
+      this.songScrollDragStartY = pointer.worldY;
+      this.songScrollDragStartOffset = this.songScrollOffset;
+    };
+    const onSongPointerMove = (pointer: Phaser.Input.Pointer): void => {
+      if (this.songScrollDragPointerId !== pointer.id || !pointer.isDown) return;
+      const dragDelta = this.songScrollDragStartY - pointer.worldY;
+      this.setSongScrollOffset(this.songScrollDragStartOffset + dragDelta);
+      refreshSelections();
+    };
+    const onSongPointerUp = (pointer: Phaser.Input.Pointer): void => {
+      if (this.songScrollDragPointerId !== pointer.id) return;
+      this.songScrollDragPointerId = undefined;
+    };
+
+    this.input.on('wheel', onSongWheel);
+    this.input.on('pointerdown', onSongPointerDown);
+    this.input.on('pointermove', onSongPointerMove);
+    this.input.on('pointerup', onSongPointerUp);
+    this.input.on('pointerupoutside', onSongPointerUp);
+
     settingsButton.on('pointerdown', openSettings);
+    settingsLabel.on('pointerdown', openSettings);
+    settingsIcon?.on('pointerdown', openSettings);
     tunerButton.on('pointerdown', openTuner);
+    tunerLabel.on('pointerdown', openTuner);
+    tunerIcon?.on('pointerdown', openTuner);
     importButton.on('pointerdown', openImportPicker);
+    importLabel.on('pointerdown', openImportPicker);
     importSourceToggleOptions.forEach((option) => {
       const applyImportSourceMode = (): void => {
         if (this.importInProgress) return;
@@ -623,7 +719,7 @@ export class SongSelectScene extends Phaser.Scene {
         if (showImportSourceDebug) {
           saveImportSourceModePreference(this.importSourceMode);
         }
-        importSummaryMessage = option.mode === 'auto' ? 'Adds song folder + MIDI + cover' : `Forced source: ${option.mode}`;
+        importSummaryMessage = describeImportSummary();
         importSummaryColor = '#a5b4fc';
         refreshSelections();
       };
@@ -631,90 +727,115 @@ export class SongSelectScene extends Phaser.Scene {
       option.label.on('pointerdown', applyImportSourceMode);
     });
     difficultyDropdown.trigger.on('pointerdown', toggleDifficulty);
+    difficultyDropdown.chevron.on('pointerdown', toggleDifficulty);
     difficultyDropdown.blocker.on('pointerdown', () => {
       closeDifficulty();
       refreshSelections();
     });
     difficultyDropdown.options.forEach((option) => {
-      option.background.on('pointerdown', () => {
+      const applyDifficulty = (): void => {
         this.selectedDifficulty = option.difficulty;
+        this.persistSessionSettingsPreference();
         closeDifficulty();
         refreshSelections();
-      });
+      };
+      option.background.on('pointerdown', applyDifficulty);
+      option.label.on('pointerdown', applyDifficulty);
     });
-    this.tunerPanel?.startButton.on('pointerdown', () => {
+    const toggleTunerState = (): void => {
       if (this.tunerActive) {
         void this.stopTuner(true).then(() => refreshSelections());
       } else {
         void this.startTuner().then(() => refreshSelections());
       }
-    });
+    };
+    this.tunerPanel?.startButton.on('pointerdown', toggleTunerState);
+    this.tunerPanel?.startLabel.on('pointerdown', toggleTunerState);
     this.tunerPanel?.closeButton.on('pointerdown', closeTuner);
+    this.tunerPanel?.closeLabel.on('pointerdown', closeTuner);
     this.tunerPanel?.backdrop.on('pointerdown', closeTuner);
     this.tunerPanel?.panel.on('pointerdown', () => undefined);
     this.tunerPanel?.stringToggles.forEach((option) => {
-      option.background.on('pointerdown', () => {
+      const selectTunerString = (): void => {
         this.tunerTargetString = option.value;
         refreshSelections();
-      });
+      };
+      option.background.on('pointerdown', selectTunerString);
+      option.label.on('pointerdown', selectTunerString);
     });
     settingsOverlay.doneButton.on('pointerdown', closeSettings);
+    settingsOverlay.doneLabel.on('pointerdown', closeSettings);
     settingsOverlay.backdrop.on('pointerdown', closeSettings);
     settingsOverlay.panel.on('pointerdown', () => undefined);
 
     settingsOverlay.stringToggles.forEach((option) => {
-      option.background.on('pointerdown', () => {
+      const toggleString = (): void => {
         if (this.selectedStrings.has(option.value)) {
           this.selectedStrings.delete(option.value);
         } else {
           this.selectedStrings.add(option.value);
         }
+        this.persistSessionSettingsPreference();
         refreshSelections();
-      });
+      };
+      option.background.on('pointerdown', toggleString);
+      option.label.on('pointerdown', toggleString);
     });
 
     settingsOverlay.fingerToggles.forEach((option) => {
-      option.background.on('pointerdown', () => {
+      const toggleFinger = (): void => {
         if (this.selectedFingers.has(option.value)) {
           this.selectedFingers.delete(option.value);
         } else {
           this.selectedFingers.add(option.value);
         }
+        this.persistSessionSettingsPreference();
         refreshSelections();
-      });
+      };
+      option.background.on('pointerdown', toggleFinger);
+      option.label.on('pointerdown', toggleFinger);
     });
 
     settingsOverlay.fretToggles.forEach((option) => {
-      option.background.on('pointerdown', () => {
+      const toggleFret = (): void => {
         if (this.selectedFrets.has(option.value)) {
           this.selectedFrets.delete(option.value);
         } else {
           this.selectedFrets.add(option.value);
         }
+        this.persistSessionSettingsPreference();
         refreshSelections();
-      });
+      };
+      option.background.on('pointerdown', toggleFret);
+      option.label.on('pointerdown', toggleFret);
     });
 
     startButton.on('pointerdown', startGame);
+    startLabel.on('pointerdown', startGame);
+    playIcon?.on('pointerdown', startGame);
 
     this.input.keyboard?.on('keydown-LEFT', () => {
       if (this.settingsOpen || songs.length === 0) return;
       this.selectedSongIndex = Math.max(0, this.selectedSongIndex - 1);
+      this.ensureSelectedSongVisible();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-RIGHT', () => {
       if (this.settingsOpen || songs.length === 0) return;
       this.selectedSongIndex = Math.min(songs.length - 1, this.selectedSongIndex + 1);
+      this.ensureSelectedSongVisible();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-UP', () => {
       if (this.settingsOpen) return;
       this.selectedDifficulty = previousDifficulty(this.selectedDifficulty);
+      this.persistSessionSettingsPreference();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-DOWN', () => {
       if (this.settingsOpen) return;
       this.selectedDifficulty = nextDifficulty(this.selectedDifficulty);
+      this.persistSessionSettingsPreference();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-ENTER', () => {
@@ -752,6 +873,8 @@ export class SongSelectScene extends Phaser.Scene {
       option.thumbnail.on('pointerdown', selectSong);
       option.thumbnailImage?.on('pointerdown', selectSong);
       option.thumbLabel?.on('pointerdown', selectSong);
+      option.label.on('pointerdown', selectSong);
+      option.subLabel.on('pointerdown', selectSong);
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -761,6 +884,19 @@ export class SongSelectScene extends Phaser.Scene {
       this.importInProgress = false;
       this.importInput?.remove();
       this.importInput = undefined;
+      this.input.off('wheel', onSongWheel);
+      this.input.off('pointerdown', onSongPointerDown);
+      this.input.off('pointermove', onSongPointerMove);
+      this.input.off('pointerup', onSongPointerUp);
+      this.input.off('pointerupoutside', onSongPointerUp);
+      this.songMaskGraphics?.destroy();
+      this.songMaskGraphics = undefined;
+      this.songViewportRect = undefined;
+      this.songScrollOffset = 0;
+      this.songScrollMax = 0;
+      this.songScrollDragPointerId = undefined;
+      this.songOptions.forEach((option) => option.thumbnailMaskGraphics?.destroy());
+      this.songOptions = [];
     });
 
     refreshSelections();
@@ -782,7 +918,7 @@ export class SongSelectScene extends Phaser.Scene {
     const lineYBase = height * 0.365;
     const spacing = height * 0.083;
     g.lineStyle(1.7, 0x93c5fd, 0.28);
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       const y = lineYBase + i * spacing;
       g.beginPath();
       g.moveTo(0, y);
@@ -802,6 +938,79 @@ export class SongSelectScene extends Phaser.Scene {
     vignette.fillStyle(0x020617, 0.2);
     vignette.fillRect(0, height * 0.76, width, height * 0.08);
 
+  }
+
+  private configureSongScroll(view: SongGridView): void {
+    this.songScrollOffset = 0;
+    this.songScrollMax = Math.max(0, view.contentBottom - (view.viewportTop + view.viewportHeight));
+    this.songViewportRect = new Phaser.Geom.Rectangle(view.viewportLeft, view.viewportTop, view.viewportWidth, view.viewportHeight);
+    this.songMaskGraphics?.destroy();
+
+    this.songMaskGraphics = this.add.graphics({ x: 0, y: 0 }).setVisible(false);
+    this.songMaskGraphics.fillStyle(0xffffff, 1);
+    this.songMaskGraphics.fillRect(view.viewportLeft, view.viewportTop, view.viewportWidth, view.viewportHeight);
+    const mask = this.songMaskGraphics.createGeometryMask();
+
+    this.songOptions.forEach((option) => {
+      option.glow.setMask(mask);
+      option.background.setMask(mask);
+      option.thumbnail.setMask(mask);
+      option.thumbLabel?.setMask(mask);
+      option.label.setMask(mask);
+      option.subLabel.setMask(mask);
+    });
+
+    this.applySongScroll();
+  }
+
+  private setSongScrollOffset(offset: number): void {
+    const clamped = Phaser.Math.Clamp(offset, 0, this.songScrollMax);
+    if (Math.abs(clamped - this.songScrollOffset) < 0.1) return;
+    this.songScrollOffset = clamped;
+    this.applySongScroll();
+  }
+
+  private applySongScroll(): void {
+    if (!this.songViewportRect) return;
+    const viewportTop = this.songViewportRect.top;
+    const viewportBottom = this.songViewportRect.bottom;
+
+    this.songOptions.forEach((option) => {
+      const y = option.baseY - this.songScrollOffset;
+      option.glow.setY(y);
+      option.background.setY(y);
+      option.thumbnail.setY(y);
+      option.thumbnailImage?.setY(y);
+      option.thumbnailMaskGraphics?.setY(y);
+      option.thumbLabel?.setY(y);
+      option.label.setY(option.labelBaseY - this.songScrollOffset);
+      option.subLabel.setY(option.subLabelBaseY - this.songScrollOffset);
+
+      const top = y - option.cardHeight / 2;
+      const bottom = y + option.cardHeight / 2;
+      const fullyVisible = top >= viewportTop + 2 && bottom <= viewportBottom - 2;
+      option.thumbnailImage?.setVisible(fullyVisible);
+      option.interactiveObjects.forEach((interactiveObject) => {
+        if (interactiveObject.input) interactiveObject.input.enabled = fullyVisible;
+      });
+    });
+  }
+
+  private ensureSelectedSongVisible(): void {
+    if (!this.songViewportRect || this.songOptions.length === 0) return;
+    const selectedOption = this.songOptions[this.selectedSongIndex];
+    if (!selectedOption) return;
+
+    const viewportTop = this.songViewportRect.top + 4;
+    const viewportBottom = this.songViewportRect.bottom - 4;
+    const optionTop = selectedOption.baseY - this.songScrollOffset - selectedOption.cardHeight / 2;
+    const optionBottom = selectedOption.baseY - this.songScrollOffset + selectedOption.cardHeight / 2;
+
+    if (optionTop < viewportTop) {
+      this.setSongScrollOffset(this.songScrollOffset - (viewportTop - optionTop));
+    } else if (optionBottom > viewportBottom) {
+      this.setSongScrollOffset(this.songScrollOffset + (optionBottom - viewportBottom));
+    }
   }
 
   private createSettingsOverlay(width: number, height: number, labelSize: number): SettingsOverlay {
@@ -900,7 +1109,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(18, labelSize + 2)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const allObjects: Phaser.GameObjects.GameObject[] = [
       backdrop,
@@ -994,7 +1204,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(13, labelSize - 2)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const closeButton = new RoundedBox(
       this,
@@ -1012,7 +1223,8 @@ export class SongSelectScene extends Phaser.Scene {
         color: '#e2e8f0',
         fontSize: `${Math.max(13, labelSize - 2)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const allObjects: Phaser.GameObjects.GameObject[] = [
       backdrop,
@@ -1149,6 +1361,10 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private async importSongFile(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
+    if (this.debugConverterMode === 'ab') {
+      throw new Error('Converter mode "ab" is no longer available. Use "legacy" or "neuralnote".');
+    }
+
     if (this.resolveImportRoute() === 'native') {
       await this.importSongFileNative(file, onProgress);
       return;
@@ -1169,9 +1385,15 @@ export class SongSelectScene extends Phaser.Scene {
       throw new Error('Unsupported audio format. Please upload MP3, OGG, or WAV.');
     }
 
-    await importAudioSongNative(file, ({ stage, progress }) => {
-      onProgress(stage, progress);
-    });
+    await importAudioSongNative(
+      file,
+      ({ stage, progress }) => {
+        onProgress(stage, progress);
+      },
+      {
+        converterMode: this.debugConverterMode
+      }
+    );
   }
 
   private async importSongFileViaServer(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
@@ -1185,7 +1407,8 @@ export class SongSelectScene extends Phaser.Scene {
       method: 'POST',
       headers: {
         'Content-Type': mimeType,
-        'X-Song-File-Name': encodeURIComponent(file.name)
+        'X-Song-File-Name': encodeURIComponent(file.name),
+        'X-Song-Converter-Mode': this.debugConverterMode
       },
       body
     });
@@ -1319,13 +1542,33 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private initializeDefaults(): void {
-    this.selectedStrings = new Set(DIFFICULTY_PRESETS.Easy.allowed_strings);
-    this.selectedFingers = new Set(DIFFICULTY_PRESETS.Easy.allowed_fingers);
+    const defaultPreset = DIFFICULTY_PRESETS[this.selectedDifficulty];
+    this.selectedStrings = new Set(defaultPreset.allowed_strings);
+    this.selectedFingers = new Set(defaultPreset.allowed_fingers);
 
     const defaultFrets =
-      DIFFICULTY_PRESETS.Easy.allowed_fret_list ??
-      rangeInclusive(DIFFICULTY_PRESETS.Easy.allowed_frets.min, DIFFICULTY_PRESETS.Easy.allowed_frets.max);
+      defaultPreset.allowed_fret_list ??
+      rangeInclusive(defaultPreset.allowed_frets.min, defaultPreset.allowed_frets.max);
     this.selectedFrets = new Set(defaultFrets);
+  }
+
+  private restoreSessionSettingsPreference(): void {
+    const stored = loadSessionSettingsPreference();
+    if (!stored) return;
+
+    this.selectedDifficulty = stored.difficulty;
+    this.selectedStrings = new Set(sanitizeSettingValues(stored.selectedStrings, 1, 6));
+    this.selectedFingers = new Set(sanitizeSettingValues(stored.selectedFingers, 1, 4));
+    this.selectedFrets = new Set(sanitizeSettingValues(stored.selectedFrets, 0, 21));
+  }
+
+  private persistSessionSettingsPreference(): void {
+    saveSessionSettingsPreference({
+      difficulty: this.selectedDifficulty,
+      selectedStrings: sortedValues(this.selectedStrings),
+      selectedFingers: sortedValues(this.selectedFingers),
+      selectedFrets: sortedValues(this.selectedFrets)
+    });
   }
 
   private async fetchManifestText(): Promise<string | null> {
@@ -1355,7 +1598,8 @@ export class SongSelectScene extends Phaser.Scene {
         folder: 'example',
         cover: 'cover.svg',
         midi: 'song.mid',
-        audio: 'song.mp3'
+        audio: 'song.mp3',
+        highScore: 0
       }
     ];
 
@@ -1406,7 +1650,8 @@ export class SongSelectScene extends Phaser.Scene {
         folder: entry.folder,
         cover: entry.cover,
         midi: entry.midi,
-        audio: entry.audio
+        audio: entry.audio,
+        highScore: entry.highScore
       }));
     } catch (error) {
       console.warn('Failed to load native song catalog', error);
@@ -1432,15 +1677,18 @@ export class SongSelectScene extends Phaser.Scene {
     }
 
     let audioUrl = midiUrl;
+    let usesMidiFallback = true;
     if (rawSong.audio && rawSong.audio.trim().length > 0) {
       const requestedAudio = this.resolveSongAssetPath(folder, rawSong.audio);
       if (await this.assetExists(requestedAudio)) {
         audioUrl = requestedAudio;
+        usesMidiFallback = false;
       }
     }
 
     const coverTextureKey =
       coverUrl === DEFAULT_SONG_COVER_URL ? DEFAULT_SONG_COVER_TEXTURE_KEY : `song-cover-${sanitizeKey(rawSong.id)}-${index}`;
+    const highScore = resolveSongHighScore(rawSong.id, rawSong.highScore);
 
     return {
       id: rawSong.id,
@@ -1449,6 +1697,8 @@ export class SongSelectScene extends Phaser.Scene {
       cover: coverUrl,
       midi: midiUrl,
       audio: audioUrl,
+      highScore,
+      usesMidiFallback,
       coverTextureKey
     };
   }
@@ -1467,7 +1717,9 @@ export class SongSelectScene extends Phaser.Scene {
     const cached = this.assetExistenceCache.get(url);
     if (cached !== undefined) return cached;
 
-    if (!isCapacitorFileUrl(url)) {
+    const capacitorFileUrl = isCapacitorFileUrl(url);
+
+    if (!capacitorFileUrl) {
       try {
         const headResponse = await fetch(url, { method: 'HEAD' });
         if (headResponse.ok) {
@@ -1486,7 +1738,7 @@ export class SongSelectScene extends Phaser.Scene {
 
     try {
       const getResponse = await fetch(url, { method: 'GET' });
-      const exists = getResponse.ok && isValidAssetResponse(url, getResponse);
+      const exists = getResponse.ok && (capacitorFileUrl || isValidAssetResponse(url, getResponse));
       this.assetExistenceCache.set(url, exists);
       return exists;
     } catch {
@@ -1529,7 +1781,7 @@ export class SongSelectScene extends Phaser.Scene {
     });
   }
 
-  private createSongOptions(songs: SongEntry[], width: number, height: number, labelSize: number): SongOption[] {
+  private createSongOptions(songs: SongEntry[], width: number, height: number, labelSize: number): SongGridView {
     const options: SongOption[] = [];
     const cols = 2;
     const gridLeft = width * 0.04;
@@ -1539,12 +1791,20 @@ export class SongSelectScene extends Phaser.Scene {
     const buttonHeight = Math.min(122, height * 0.22);
     const gapX = Math.max(12, width * 0.014);
     const gapY = Math.max(14, height * 0.028);
+    const viewportLeft = gridLeft - 8;
+    const viewportTop = Math.max(height * 0.2, gridTop - buttonHeight * 0.52);
+    const viewportRight = gridLeft + gridWidth + 8;
+    const viewportBottom = Math.min(height * 0.8, height - Math.max(96, buttonHeight * 0.85));
+    const viewportHeight = Math.max(buttonHeight + 16, viewportBottom - viewportTop);
+    let contentBottom = gridTop;
 
     songs.forEach((song, index) => {
       const row = Math.floor(index / cols);
       const col = index % cols;
       const x = gridLeft + buttonWidth / 2 + col * (buttonWidth + gapX);
       const y = gridTop + buttonHeight / 2 + row * (buttonHeight + gapY);
+      const labelY = y - buttonHeight * 0.12;
+      const subLabelY = y + buttonHeight * 0.2;
       const glow = new RoundedBox(this, x, y, buttonWidth + 6, buttonHeight + 6, 0x60a5fa, 0.3)
         .setStrokeStyle(1, 0x93c5fd, 0.3)
         .setAlpha(0);
@@ -1556,12 +1816,30 @@ export class SongSelectScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x475569, 0.55)
         .setInteractive({ useHandCursor: true });
 
-      const thumbnailImage = this.textures.exists(song.coverTextureKey)
+      const thumbnailTextureKey = song.usesMidiFallback ? DEFAULT_SONG_COVER_TEXTURE_KEY : song.coverTextureKey;
+      const thumbnailImageSize = thumbnailSize - 8;
+      const thumbnailImage = this.textures.exists(thumbnailTextureKey)
         ? this.add
-            .image(thumbnail.x, thumbnail.y, song.coverTextureKey)
-            .setDisplaySize(thumbnailSize - 8, thumbnailSize - 8)
+            .image(thumbnail.x, thumbnail.y, thumbnailTextureKey)
+            .setDisplaySize(thumbnailImageSize, thumbnailImageSize)
             .setInteractive({ useHandCursor: true })
         : undefined;
+      const thumbnailMaskGraphics =
+        thumbnailImage &&
+        this.add
+          .graphics({ x: thumbnail.x, y: thumbnail.y })
+          .setVisible(false)
+          .fillStyle(0xffffff, 1)
+          .fillRoundedRect(
+            -thumbnailImageSize / 2,
+            -thumbnailImageSize / 2,
+            thumbnailImageSize,
+            thumbnailImageSize,
+            Math.max(8, Math.round(thumbnailImageSize * 0.14))
+          );
+      if (thumbnailImage && thumbnailMaskGraphics) {
+        thumbnailImage.setMask(thumbnailMaskGraphics.createGeometryMask());
+      }
       const thumbLabel = thumbnailImage
         ? undefined
         : this.add
@@ -1575,50 +1853,90 @@ export class SongSelectScene extends Phaser.Scene {
             .setInteractive({ useHandCursor: true });
 
       const label = this.add
-        .text(x - buttonWidth * 0.02, y - buttonHeight * 0.12, song.name, {
+        .text(x - buttonWidth * 0.02, labelY, song.name, {
           color: '#cbd5e1',
           fontFamily: 'Trebuchet MS, Verdana, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(17, labelSize + 2)}px`,
           wordWrap: { width: buttonWidth * 0.38, useAdvancedWrap: true }
         })
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true });
+      this.fitSongTitleText(label, buttonWidth * 0.38, buttonHeight * 0.34, Math.max(17, labelSize + 2), 11);
 
       const subLabel = this.add
-        .text(x - buttonWidth * 0.02, y + buttonHeight * 0.2, song.audio === song.midi ? 'MIDI fallback' : 'Audio file', {
+        .text(
+          x - buttonWidth * 0.02,
+          subLabelY,
+          `${song.usesMidiFallback ? 'MIDI • ' : ''}Best: ${song.highScore}`,
+          {
           color: '#64748b',
           fontFamily: 'Trebuchet MS, Verdana, sans-serif',
           fontSize: `${Math.max(12, labelSize - 2)}px`
-        })
-        .setOrigin(0, 0.5);
+          }
+        )
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true });
 
-      options.push({ song, label, subLabel, background, glow, thumbnail, thumbnailImage, thumbLabel });
+      const interactiveObjects: Phaser.GameObjects.GameObject[] = [background, thumbnail, label, subLabel];
+      if (thumbnailImage) interactiveObjects.push(thumbnailImage);
+      if (thumbLabel) interactiveObjects.push(thumbLabel);
+
+      options.push({
+        song,
+        label,
+        subLabel,
+        background,
+        glow,
+        thumbnail,
+        thumbnailImage,
+        thumbnailMaskGraphics: thumbnailMaskGraphics || undefined,
+        thumbLabel,
+        baseY: y,
+        labelBaseY: labelY,
+        subLabelBaseY: subLabelY,
+        cardHeight: buttonHeight,
+        interactiveObjects
+      });
+
+      contentBottom = Math.max(contentBottom, y + buttonHeight / 2);
     });
 
-    return options;
+    return {
+      options,
+      viewportLeft,
+      viewportTop,
+      viewportWidth: viewportRight - viewportLeft,
+      viewportHeight,
+      contentBottom
+    };
   }
 
   private createDifficultyDropdown(width: number, height: number, labelSize: number): DifficultyDropdown {
     const difficulties: Difficulty[] = ['Easy', 'Medium', 'Hard'];
+    const optionCount = difficulties.length;
     const triggerX = width * 0.79;
     const triggerY = height * 0.27;
     const buttonWidth = Math.min(348, width * 0.34);
     const buttonHeight = Math.min(62, height * 0.1);
     const optionHeight = buttonHeight * 0.76;
     const optionGap = 8;
-    const optionWidth = (buttonWidth - optionGap * 4) / 3;
+    const innerPadding = 10;
+    const optionWidth = (buttonWidth - innerPadding * 2 - optionGap * (optionCount - 1)) / optionCount;
 
     const trigger = new RoundedBox(this, triggerX, triggerY, buttonWidth, buttonHeight, 0x1a2a53, 0.72)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
+      .setInteractive({ useHandCursor: true })
       .setDepth(90);
     const triggerLabel = this.add
-      .text(triggerX, triggerY - buttonHeight * 0.72, this.selectedDifficulty, {
+      .text(triggerX, triggerY - buttonHeight * 0.72, '', {
         color: '#bfdbfe',
         fontFamily: 'Trebuchet MS, Verdana, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(13, labelSize - 1)}px`
       })
       .setOrigin(0.5)
+      .setVisible(false)
       .setDepth(91);
     const chevron = this.add
       .text(triggerX + buttonWidth * 0.34, triggerY, '', {
@@ -1626,6 +1944,7 @@ export class SongSelectScene extends Phaser.Scene {
         fontSize: `${Math.max(14, labelSize - 1)}px`
       })
       .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
       .setDepth(91);
 
     const blocker = new RoundedBox(this, width / 2, height / 2, width, height, 0x000000, 0.001, 0)
@@ -1635,7 +1954,7 @@ export class SongSelectScene extends Phaser.Scene {
     const optionItems: Array<{ difficulty: Difficulty; background: RoundedBox; label: Phaser.GameObjects.Text }> = [];
     const optionObjects: Phaser.GameObjects.GameObject[] = [];
     difficulties.forEach((difficulty, index) => {
-      const x = triggerX - buttonWidth * 0.5 + optionGap * 2 + optionWidth * 0.5 + index * (optionWidth + optionGap);
+      const x = triggerX - buttonWidth * 0.5 + innerPadding + optionWidth * 0.5 + index * (optionWidth + optionGap);
       const y = triggerY;
       const background = new RoundedBox(this, x, y, optionWidth, optionHeight, 0x1e2f58, 0.66)
         .setStrokeStyle(1, 0x334155, 0.5)
@@ -1647,13 +1966,35 @@ export class SongSelectScene extends Phaser.Scene {
           fontStyle: 'bold',
           fontSize: `${Math.max(13, labelSize - 1)}px`
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
       optionItems.push({ difficulty, background, label });
       optionObjects.push(background, label);
     });
 
     const menuContainer = this.add.container(0, 0, optionObjects).setDepth(93).setVisible(true);
     return { trigger, triggerLabel, chevron, blocker, menuContainer, options: optionItems };
+  }
+
+  private fitSongTitleText(
+    label: Phaser.GameObjects.Text,
+    maxWidth: number,
+    maxHeight: number,
+    startFontSize: number,
+    minFontSize: number
+  ): void {
+    const minSize = Math.max(8, Math.floor(minFontSize));
+    let fontSize = Math.max(minSize, Math.floor(startFontSize));
+
+    label.setWordWrapWidth(maxWidth, true);
+    while (fontSize >= minSize) {
+      label.setFontSize(fontSize);
+      const bounds = label.getBounds();
+      if (bounds.width <= maxWidth + 0.5 && bounds.height <= maxHeight + 0.5) {
+        return;
+      }
+      fontSize -= 1;
+    }
   }
 
   private createImportSourceToggleOptions(
@@ -1718,7 +2059,8 @@ export class SongSelectScene extends Phaser.Scene {
           fontStyle: 'bold',
           fontSize: `${Math.max(14, labelSize - 1)}px`
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
       options.push({ value, background, label });
     });
 
@@ -1748,7 +2090,8 @@ export class SongSelectScene extends Phaser.Scene {
           fontStyle: 'bold',
           fontSize: `${Math.max(14, labelSize - 1)}px`
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
       options.push({ value, background, label });
     });
 
@@ -1784,7 +2127,8 @@ export class SongSelectScene extends Phaser.Scene {
           fontStyle: 'bold',
           fontSize: `${Math.max(12, labelSize - 3)}px`
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
       options.push({ value, background, label });
     });
 
@@ -1802,6 +2146,10 @@ function toSongManifestEntry(value: unknown): SongManifestEntry | null {
   const midi = typeof data.midi === 'string' ? data.midi : undefined;
   const audio = typeof data.audio === 'string' ? data.audio : undefined;
   const file = typeof data.file === 'string' ? data.file : undefined;
+  const highScore =
+    typeof data.highScore === 'number' && Number.isFinite(data.highScore) && data.highScore >= 0
+      ? Math.round(data.highScore)
+      : undefined;
 
   return {
     id: data.id,
@@ -1810,7 +2158,8 @@ function toSongManifestEntry(value: unknown): SongManifestEntry | null {
     cover,
     midi,
     audio,
-    file
+    file,
+    highScore
   };
 }
 
@@ -1900,6 +2249,27 @@ function saveImportSourceModePreference(mode: ImportSourceMode): void {
   window.localStorage.setItem(IMPORT_SOURCE_STORAGE_KEY, mode);
 }
 
+function parseDebugConverterMode(value: string | null): DebugConverterMode | null {
+  if (value === 'legacy' || value === 'neuralnote' || value === 'ab') {
+    return value;
+  }
+  return null;
+}
+
+function loadDebugConverterModePreference(): DebugConverterMode {
+  if (typeof window === 'undefined') return 'legacy';
+
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = parseDebugConverterMode(params.get('debugConverterMode'));
+  if (fromQuery) {
+    window.localStorage.setItem(DEBUG_CONVERTER_MODE_STORAGE_KEY, fromQuery);
+    return fromQuery;
+  }
+
+  const fromStorage = parseDebugConverterMode(window.localStorage.getItem(DEBUG_CONVERTER_MODE_STORAGE_KEY));
+  return fromStorage ?? 'legacy';
+}
+
 function sanitizeKey(value: string): string {
   return value
     .toLowerCase()
@@ -1970,4 +2340,14 @@ function rangeInclusive(start: number, end: number): number[] {
     values.push(value);
   }
   return values;
+}
+
+function sanitizeSettingValues(values: number[], min: number, max: number): number[] {
+  const unique = new Set<number>();
+  values.forEach((value) => {
+    if (!Number.isInteger(value)) return;
+    if (value < min || value > max) return;
+    unique.add(value);
+  });
+  return Array.from(unique).sort((a, b) => a - b);
 }

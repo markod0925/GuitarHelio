@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .vite/
+third_party/onnxruntime/windows-x64/lib/onnxruntime.pdb

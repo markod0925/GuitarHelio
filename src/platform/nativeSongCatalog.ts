@@ -13,6 +13,7 @@ export type NativeSongCatalogEntry = {
   cover?: string;
   midi: string;
   audio: string;
+  highScore?: number;
 };
 
 export async function readNativeSongCatalogEntries(): Promise<NativeSongCatalogEntry[]> {
@@ -21,7 +22,7 @@ export async function readNativeSongCatalogEntries(): Promise<NativeSongCatalogE
   const manifest = await readNativeSongsManifest();
   if (manifest.length === 0) return [];
 
-  const resolved = await Promise.all(manifest.map((song, index) => resolveCatalogEntry(song, index)));
+  const resolved = await Promise.all(manifest.map((song) => resolveCatalogEntry(song)));
   return resolved.filter((entry): entry is NativeSongCatalogEntry => entry !== null);
 }
 
@@ -33,8 +34,8 @@ async function resolveCatalogEntry(
     cover?: string;
     midi: string;
     audio: string;
-  },
-  index: number
+    highScore?: number;
+  }
 ): Promise<NativeSongCatalogEntry | null> {
   const midiPath = buildNativeSongAssetPath(song.folder, song.midi);
   if (!(await nativeSongAssetExists(midiPath))) {
@@ -58,11 +59,12 @@ async function resolveCatalogEntry(
   }
 
   return {
-    id: `native-${song.id}-${index}`,
+    id: `native-${song.id}`,
     name: song.name,
     folder: song.folder,
     cover: coverUrl,
     midi: midiUrl,
-    audio: audioUrl
+    audio: audioUrl,
+    highScore: song.highScore
   };
 }

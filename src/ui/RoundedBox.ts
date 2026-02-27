@@ -69,13 +69,13 @@ export class RoundedBox extends Phaser.GameObjects.Container {
     this.setSize(width, height);
     this.redraw();
     if (this.input?.hitArea instanceof Phaser.Geom.Rectangle) {
-      this.input.hitArea.setTo(-width / 2, -height / 2, width, height);
+      this.input.hitArea.setTo(0, 0, width, height);
     }
     return this;
   }
 
   setInteractive(config: Phaser.Types.Input.InputConfiguration = {}): this {
-    const hitArea = new Phaser.Geom.Rectangle(-this.boxWidth / 2, -this.boxHeight / 2, this.boxWidth, this.boxHeight);
+    const hitArea = new Phaser.Geom.Rectangle(0, 0, this.boxWidth, this.boxHeight);
     super.setInteractive({
       ...config,
       hitArea,

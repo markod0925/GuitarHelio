@@ -13,7 +13,9 @@ export type RuntimeUpdateOptions = {
   approachThresholdTicks?: number;
   gatingTimeoutSeconds?: number;
   targetTimeSeconds?: number;
+  songTimeSeconds?: number;
   lateHitWindowSeconds?: number;
+  finishWhenNoTargets?: boolean;
 };
 
 export function createInitialRuntimeState(): RuntimeState {
@@ -40,6 +42,17 @@ export function updateRuntimeState(
 
   const activeTarget = targets[state.active_target_index];
   if (!activeTarget) {
+    if (options.finishWhenNoTargets === false) {
+      return {
+        state: {
+          ...state,
+          state: PlayState.Playing,
+          waiting_started_at_s: undefined,
+          waiting_target_id: undefined
+        },
+        transition: 'none'
+      };
+    }
     return {
       state: {
         ...state,
@@ -63,10 +76,11 @@ export function updateRuntimeState(
     };
   }
 
+  const comparisonSongSeconds = options.songTimeSeconds ?? nowSeconds;
   const shouldEnterWaitingByTime =
     state.state === PlayState.Playing &&
     options.targetTimeSeconds !== undefined &&
-    nowSeconds >= options.targetTimeSeconds + lateHitWindowSeconds;
+    comparisonSongSeconds >= options.targetTimeSeconds + lateHitWindowSeconds;
   const shouldEnterWaitingByTick =
     state.state === PlayState.Playing && state.current_tick >= activeTarget.tick - approachThresholdTicks;
 

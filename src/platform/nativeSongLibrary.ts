@@ -8,6 +8,7 @@ export type NativeSongManifestEntry = {
   midi: string;
   audio: string;
   cover?: string;
+  highScore?: number;
 };
 
 const NATIVE_SONGS_ROOT_PATH = 'songs';
@@ -67,6 +68,36 @@ export async function writeNativeSongsManifest(entries: NativeSongManifestEntry[
     recursive: true,
     data: payload
   });
+}
+
+export async function updateNativeSongHighScore(songId: string, score: number): Promise<void> {
+  if (!isNativeSongLibraryAvailable()) return;
+
+  const normalizedScore = asOptionalNonNegativeInteger(score);
+  if (normalizedScore === undefined) return;
+
+  const entries = await readNativeSongsManifest();
+  if (entries.length === 0) return;
+
+  const trimmedSongId = songId.trim();
+  const unprefixedSongId = trimmedSongId.startsWith('native-') ? trimmedSongId.slice('native-'.length) : trimmedSongId;
+  let changed = false;
+
+  const nextEntries = entries.map((entry) => {
+    const isMatch = entry.id === trimmedSongId || entry.id === unprefixedSongId;
+    if (!isMatch) return entry;
+
+    const previous = asOptionalNonNegativeInteger(entry.highScore) ?? 0;
+    if (normalizedScore <= previous) return entry;
+    changed = true;
+    return {
+      ...entry,
+      highScore: normalizedScore
+    };
+  });
+
+  if (!changed) return;
+  await writeNativeSongsManifest(nextEntries);
 }
 
 export async function nativeSongAssetExists(pathValue: string): Promise<boolean> {
@@ -157,6 +188,7 @@ function normalizeNativeManifestEntry(value: unknown): NativeSongManifestEntry |
   const midi = asNonEmptyString(data.midi);
   const audio = asNonEmptyString(data.audio);
   const cover = asOptionalString(data.cover);
+  const highScore = asOptionalNonNegativeInteger(data.highScore);
 
   if (!id || !name || !folder || !midi || !audio) return null;
 
@@ -166,7 +198,8 @@ function normalizeNativeManifestEntry(value: unknown): NativeSongManifestEntry |
     folder,
     midi,
     audio,
-    cover
+    cover,
+    highScore
   };
 }
 
@@ -185,6 +218,11 @@ function asNonEmptyString(value: unknown): string | null {
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function asOptionalNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.round(value);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

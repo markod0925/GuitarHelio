@@ -49,6 +49,29 @@ describe('updateRuntimeState', () => {
     expect(afterLateWindow.state.state).toBe(PlayState.WaitingForHit);
   });
 
+  test('uses song timeline for waiting transition when songTimeSeconds is provided', () => {
+    const state: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1010,
+      active_target_index: 0
+    };
+
+    const updateBefore = updateRuntimeState(state, [target], 200, false, {
+      targetTimeSeconds: 10,
+      songTimeSeconds: 10.49,
+      lateHitWindowSeconds: 0.5
+    });
+    expect(updateBefore.transition).toBe('none');
+
+    const updateAfter = updateRuntimeState(state, [target], 200, false, {
+      targetTimeSeconds: 10,
+      songTimeSeconds: 10.5,
+      lateHitWindowSeconds: 0.5
+    });
+    expect(updateAfter.transition).toBe('entered_waiting');
+    expect(updateAfter.state.state).toBe(PlayState.WaitingForHit);
+  });
+
   test('validates hit directly while still playing', () => {
     const state: RuntimeState = {
       state: PlayState.Playing,
@@ -109,5 +132,19 @@ describe('updateRuntimeState', () => {
 
     expect(update.transition).toBe('finished');
     expect(update.state.state).toBe(PlayState.Finished);
+  });
+
+  test('keeps playing when no active targets remain and finish is deferred', () => {
+    const state: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1200,
+      active_target_index: 1
+    };
+
+    const update = updateRuntimeState(state, [target], 30, false, { finishWhenNoTargets: false });
+
+    expect(update.transition).toBe('none');
+    expect(update.state.state).toBe(PlayState.Playing);
+    expect(update.state.active_target_index).toBe(1);
   });
 });

@@ -4,12 +4,20 @@ import { PlayScene } from '../ui/PlayScene';
 import { SongSelectScene } from '../ui/SongSelectScene';
 import './styles.css';
 
+const BASE_WIDTH = 1024;
+const BASE_HEIGHT = 540;
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  width: 1024,
-  height: 540,
+  width: BASE_WIDTH,
+  height: BASE_HEIGHT,
   backgroundColor: '#050d22',
+  render: {
+    antialias: true,
+    roundPixels: false,
+    pixelArt: false
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH

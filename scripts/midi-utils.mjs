@@ -77,6 +77,7 @@ export function parseMidi(buffer) {
   const tempoEvents = [{ tick: 0, microsecondsPerQuarter: 500000 }];
   const notes = [];
   const activeNotes = new Map();
+  let maxTickSeen = 0;
 
   for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
     if (String.fromCharCode(...bytes.slice(offset, offset + 4)) !== 'MTrk') {
@@ -92,6 +93,7 @@ export function parseMidi(buffer) {
     while (cursor < trackEnd) {
       const delta = readVarLen(bytes, cursor);
       tick += delta.value;
+      if (tick > maxTickSeen) maxTickSeen = tick;
       cursor = delta.nextOffset;
 
       let status = bytes[cursor];
@@ -165,7 +167,9 @@ export function parseMidi(buffer) {
     };
   });
 
-  const durationSeconds = notesWithTime.reduce((max, note) => Math.max(max, note.timeOn + note.duration), 0);
+  const noteDurationSeconds = notesWithTime.reduce((max, note) => Math.max(max, note.timeOn + note.duration), 0);
+  const timelineDurationSeconds = ticksToSeconds(maxTickSeen, tempoEvents, ppq);
+  const durationSeconds = Math.max(noteDurationSeconds, timelineDurationSeconds);
 
   return {
     formatType,

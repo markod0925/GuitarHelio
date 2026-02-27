@@ -1,4 +1,4 @@
-Vendored Basic Pitch model assets used by the standalone conversion workflow in `tools/audio-midi-converter/` and by the compatibility wrapper `scripts/audio-to-midi.mjs`.
+Vendored Basic Pitch model assets used by browser-side utilities (for example `src/audio/audioToMidiBrowser.ts`).
 
 Source package: `@spotify/basic-pitch` (currently `1.0.1`)
 Original package path: `node_modules/@spotify/basic-pitch/model/`
