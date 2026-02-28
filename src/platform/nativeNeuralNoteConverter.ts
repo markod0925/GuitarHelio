@@ -34,7 +34,6 @@ type StartTranscriptionResult = { jobId: string };
 type NativeTranscriptionResult = {
   events?: CoreNoteEvent[];
   tempoBpm?: number;
-  tempoMap?: CoreTempoPoint[];
 };
 
 type TranscriptionStatus = {
@@ -154,7 +153,6 @@ export async function convertAudioBufferToMidiNativeCxx(
     const midi = new Midi();
     applyTempoMetadataToMidi(midi, {
       tempoBpm: Number(transcription.tempoBpm),
-      tempoMap: transcription.tempoMap,
       audioDurationSeconds,
       fallbackTempoBpm: BALANCED_PRESET.midiTempo
     });
@@ -232,7 +230,6 @@ function applyTempoMetadataToMidi(
   midi: Midi,
   options: {
     tempoBpm?: number;
-    tempoMap?: CoreTempoPoint[];
     audioDurationSeconds?: number;
     fallbackTempoBpm?: number;
   }
@@ -243,7 +240,7 @@ function applyTempoMetadataToMidi(
       ? clamp(Number(options.tempoBpm), TEMPO_BPM_MIN, TEMPO_BPM_MAX)
       : fallbackTempoBpm;
 
-  const normalizedTempoMap = normalizeTempoMap(options.tempoMap, resolvedTempoBpm);
+  const normalizedTempoMap = normalizeTempoMap(undefined, resolvedTempoBpm);
   const tempoMapWithEndPoint = appendTempoEndPoint(normalizedTempoMap, Number(options.audioDurationSeconds));
   const tempoEvents = toTempoTickEvents(tempoMapWithEndPoint, Number(midi.header.ppq));
 

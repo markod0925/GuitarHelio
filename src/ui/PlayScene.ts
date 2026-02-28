@@ -27,6 +27,13 @@ import { isNativeSongLibraryAvailable, updateNativeSongHighScore } from '../plat
 import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
 import { formatSummary } from './hud';
+import {
+  computePauseState,
+  resolveResumeSongSeconds,
+  resolveResumeSongSecondsForAudio,
+  resolveSongSecondsForRuntime,
+  sanitizeSongSeconds
+} from './playbackResumeState';
 import { RoundedBox } from './RoundedBox';
 
 type SceneData = {
@@ -101,12 +108,17 @@ type SongMinimapLayout = {
 export class PlayScene extends Phaser.Scene {
   private static readonly PAUSE_BUTTON_SIZE = 34;
   private static readonly PAUSE_BUTTON_GAP = 10;
+  private static readonly PLAYBACK_SPEED_MIN = 0.25;
+  private static readonly PLAYBACK_SPEED_MAX = 1.25;
+  private static readonly PLAYBACK_SPEED_DEFAULT = 1;
   private static readonly POST_SONG_END_SCREEN_DELAY_MS = 2000;
+  private static readonly PRE_PLAYBACK_DELAY_MS = 3500;
 
   private sceneData?: SceneData;
   private targets: TargetNote[] = [];
   private runtime = createInitialRuntimeState();
   private scoreEvents: ScoreEvent[] = [];
+  private correctlyHitTargetIds = new Set<string>();
   private latestFrames: PitchFrame[] = [];
   private waitingStartMs: number | null = null;
   private ticksPerQuarter = 480;
@@ -120,6 +132,10 @@ export class PlayScene extends Phaser.Scene {
   private feedbackUntilMs = 0;
   private playbackMode: PlaybackMode = 'midi';
   private backingTrackAudio?: HTMLAudioElement;
+  private pausedBackingAudioSeconds?: number;
+  private lastKnownBackingAudioSeconds = 0;
+  private mp3SeekDisabled = false;
+  private playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
   private laneLayer?: Phaser.GameObjects.Graphics;
   private starfieldLayer?: Phaser.GameObjects.Graphics;
@@ -142,8 +158,17 @@ export class PlayScene extends Phaser.Scene {
   private pauseButtonLeftBar?: Phaser.GameObjects.Rectangle;
   private pauseButtonRightBar?: Phaser.GameObjects.Rectangle;
   private pauseButtonPlayIcon?: Phaser.GameObjects.Triangle;
+  private playbackSpeedPanel?: RoundedBox;
+  private playbackSpeedTrack?: Phaser.GameObjects.Rectangle;
+  private playbackSpeedKnob?: Phaser.GameObjects.Arc;
+  private playbackSpeedLabel?: Phaser.GameObjects.Text;
+  private playbackSpeedValueText?: Phaser.GameObjects.Text;
   private runtimeTimer?: Phaser.Time.TimerEvent;
   private finishDelayTimer?: Phaser.Time.TimerEvent;
+  private finishQueuedAtMs?: number;
+  private playbackIntroTimer?: Phaser.Time.TimerEvent;
+  private playbackStarted = false;
+  private prePlaybackStartAtMs?: number;
 
   private audioCtx?: AudioContext;
   private debugSynth?: JzzTinySynth;
@@ -153,6 +178,10 @@ export class PlayScene extends Phaser.Scene {
   private pauseMenuBackListener?: (event: Event) => void;
   private pauseMenuPopStateListener?: (event: PopStateEvent) => void;
   private playbackWasRunningBeforePauseMenu = false;
+  private pauseMenuResumeSongSeconds?: number;
+  private playbackPausedByButton = false;
+  private playbackWasRunningBeforeButtonPause = false;
+  private waitingPauseStartedAtAudioTime?: number;
   private songMinimapBackground?: RoundedBox;
   private songMinimapStaticLayer?: Phaser.GameObjects.Graphics;
   private songMinimapDynamicLayer?: Phaser.GameObjects.Graphics;
@@ -195,6 +224,7 @@ export class PlayScene extends Phaser.Scene {
 
     this.runtime = createInitialRuntimeState();
     this.scoreEvents = [];
+    this.correctlyHitTargetIds.clear();
     this.latestFrames = [];
     this.waitingStartMs = null;
     this.playbackStartAudioTime = null;
@@ -204,10 +234,12 @@ export class PlayScene extends Phaser.Scene {
     this.feedbackUntilMs = 0;
     this.fallbackTimeoutSeconds = undefined;
     this.playbackMode = 'midi';
+    this.mp3SeekDisabled = false;
     this.hitDebugSnapshot = undefined;
     this.lastRuntimeTransition = 'none';
     this.lastRuntimeTransitionAtMs = 0;
     this.debugOverlayEnabled = isGameplayDebugOverlayEnabled();
+    this.playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
     this.laneLayer = this.add.graphics();
     this.starfieldLayer = this.add.graphics();
@@ -273,13 +305,15 @@ export class PlayScene extends Phaser.Scene {
       .rectangle(0, 0, 4, 16, 0xf8fafc, 1)
       .setDepth(290);
     this.pauseButtonPlayIcon = this.add
-      .triangle(0, 0, -4, -7, -4, 7, 8, 0, 0xf8fafc, 1)
+      .triangle(0, 0, -6, -7, -6, 7, 6, 0, 0xf8fafc, 1)
+      .setOrigin(0.5, 0.5)
       .setDepth(290)
       .setVisible(false);
     this.pauseButton.on('pointerdown', () => {
-      this.onBackRequested();
+      this.toggleGameplayPauseFromButton();
     });
-    this.setPauseButtonIconMode(false);
+    this.syncPauseButtonIcon();
+    this.createPlaybackSpeedSlider();
     if (this.debugOverlayEnabled) {
       this.createDebugOverlay();
       this.updateDebugOverlay();
@@ -310,6 +344,7 @@ export class PlayScene extends Phaser.Scene {
       loop: true,
       callback: () => this.tickRuntime()
     });
+    this.schedulePlaybackStart();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
@@ -354,16 +389,63 @@ export class PlayScene extends Phaser.Scene {
     }
 
     await audioCtx.resume();
-    this.startPlaybackClock(0);
-    const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, 0);
+    this.playbackMode = 'midi';
+    this.pausedBackingAudioSeconds = undefined;
+    this.lastKnownBackingAudioSeconds = 0;
+    this.mp3SeekDisabled = false;
+    this.playbackStarted = false;
+    this.pausedSongSeconds = 0;
+    this.playbackStartSongSeconds = 0;
+    this.playbackStartAudioTime = null;
+    this.prePlaybackStartAtMs = undefined;
+  }
+
+  private schedulePlaybackStart(delayMs: number = PlayScene.PRE_PLAYBACK_DELAY_MS): void {
+    if (this.runtime.state === PlayState.Finished || this.playbackStarted) return;
+    const clampedDelayMs = Math.max(0, delayMs);
+    this.prePlaybackStartAtMs = performance.now() + clampedDelayMs;
+    this.playbackIntroTimer?.remove(false);
+    this.playbackIntroTimer = this.time.delayedCall(clampedDelayMs, () => {
+      this.playbackIntroTimer = undefined;
+      if (!this.scene.isActive() || this.runtime.state === PlayState.Finished || this.playbackStarted) return;
+      if (this.pauseOverlay || this.playbackPausedByButton) {
+        this.schedulePlaybackStart(120);
+        return;
+      }
+      void this.beginSessionPlayback();
+    });
+  }
+
+  private async beginSessionPlayback(): Promise<void> {
+    if (!this.audioCtx || this.playbackStarted) return;
+    if (this.audioCtx.state !== 'running') {
+      await this.audioCtx.resume();
+    }
+
+    const startSongSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
+    this.startPlaybackClock(startSongSeconds);
+    this.playbackStarted = true;
+    this.prePlaybackStartAtMs = undefined;
+
+    const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, startSongSeconds);
     if (!startedBackingAudio) {
       this.playbackMode = 'midi';
-      this.scrubPlayer.resume(0, audioCtx.currentTime);
+      this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx.currentTime);
     }
+
+    this.feedbackText = 'Go!';
+    this.feedbackUntilMs = performance.now() + 900;
   }
 
   private tickRuntime(): void {
     if (!this.audioCtx || !this.tempoMap || this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
+    if (!this.playbackStarted) {
+      this.drawTopStarfield();
+      this.updateSongMinimapProgress();
+      this.updateHud();
+      this.updateDebugOverlay();
+      return;
+    }
     const previousState = this.runtime.state;
     let songSecondsNow: number | undefined;
 
@@ -445,6 +527,8 @@ export class PlayScene extends Phaser.Scene {
 
     if (!this.targets[this.runtime.active_target_index]) {
       this.queueFinishSong();
+    } else {
+      this.clearFinishSongQueue();
     }
   }
 
@@ -466,6 +550,9 @@ export class PlayScene extends Phaser.Scene {
       const deltaMs = this.measureHitDeltaMs(target, previousState);
       const rated = rateHit(deltaMs);
       this.scoreEvents.push({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
+      if (rated.rating !== 'Miss') {
+        this.correctlyHitTargetIds.add(target.id);
+      }
       this.waitingStartMs = null;
       this.latestFrames = [];
       this.feedbackText = `${rated.rating} +${rated.points}`;
@@ -488,7 +575,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private finishSong(): void {
-    if (this.resultsOverlay) return;
+    if (this.resultsOverlay?.active) return;
     this.runtime = {
       ...this.runtime,
       state: PlayState.Finished,
@@ -497,6 +584,15 @@ export class PlayScene extends Phaser.Scene {
     };
     this.finishDelayTimer?.remove(false);
     this.finishDelayTimer = undefined;
+    this.finishQueuedAtMs = undefined;
+    this.playbackIntroTimer?.remove(false);
+    this.playbackIntroTimer = undefined;
+    this.prePlaybackStartAtMs = undefined;
+    this.playbackStarted = false;
+    this.pauseMenuResumeSongSeconds = undefined;
+    this.playbackPausedByButton = false;
+    this.playbackWasRunningBeforeButtonPause = false;
+    this.waitingPauseStartedAtAudioTime = undefined;
     this.closePauseMenu();
     this.setBallAndTrailVisible(false);
     this.debugButton?.disableInteractive().setVisible(false);
@@ -505,6 +601,11 @@ export class PlayScene extends Phaser.Scene {
     this.pauseButtonLeftBar?.setVisible(false);
     this.pauseButtonRightBar?.setVisible(false);
     this.pauseButtonPlayIcon?.setVisible(false);
+    this.playbackSpeedTrack?.disableInteractive().setVisible(false);
+    this.playbackSpeedKnob?.disableInteractive().setVisible(false);
+    this.playbackSpeedPanel?.setVisible(false);
+    this.playbackSpeedLabel?.setVisible(false);
+    this.playbackSpeedValueText?.setVisible(false);
     this.debugOverlayContainer?.setVisible(false);
 
     this.runtimeTimer?.remove(false);
@@ -539,7 +640,7 @@ export class PlayScene extends Phaser.Scene {
       fontSize: `${Math.max(16, Math.floor(width * 0.02))}px`
     }).setOrigin(0.5, 0);
     const earnedStars = this.computeEndScreenStars(summary);
-    const starObjects = this.createEndScreenStars(width / 2, height * 0.6, earnedStars, width);
+    const starObjects = this.createEndScreenStars(width / 2, height * 0.18, earnedStars, width);
     const restartButtonY = height * 0.69;
     const backButtonY = height * 0.81;
     const actionButtonWidth = panelWidth * 0.74;
@@ -647,10 +748,14 @@ export class PlayScene extends Phaser.Scene {
         duration: 220,
         delay: 180 + index * 180,
         ease: 'Back.Out',
-        yoyo: true,
-        hold: 70,
-        onYoyo: () => {
-          fillStar.setScale(1);
+        onComplete: () => {
+          this.tweens.add({
+            targets: fillStar,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 110,
+            ease: 'Sine.Out'
+          });
         }
       });
       objects.push(fillStar);
@@ -689,20 +794,23 @@ export class PlayScene extends Phaser.Scene {
 
   private openPauseMenu(): void {
     if (this.pauseOverlay) return;
-    this.playbackWasRunningBeforePauseMenu = this.runtime.state === PlayState.Playing;
+    this.playbackWasRunningBeforePauseMenu =
+      this.runtime.state === PlayState.Playing && this.playbackStarted && !this.playbackPausedByButton;
+    this.pauseMenuResumeSongSeconds = undefined;
 
     if (this.runtimeTimer) {
       this.runtimeTimer.paused = true;
     }
     if (this.playbackWasRunningBeforePauseMenu) {
       this.pausePlaybackClock();
+      this.pauseMenuResumeSongSeconds = this.pausedSongSeconds;
       this.pauseBackingPlayback();
     }
     this.latestFrames = [];
 
     const { width, height } = this.scale;
     const panelWidth = Math.min(420, width * 0.84);
-    const panelHeight = Math.min(300, height * 0.58);
+    const panelHeight = Math.min(360, height * 0.7);
     const centerX = width / 2;
     const centerY = height / 2;
 
@@ -720,8 +828,21 @@ export class PlayScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const resetButtonY = centerY - panelHeight * 0.04;
-    const backButtonY = centerY + panelHeight * 0.22;
+    const continueButtonY = centerY - panelHeight * 0.12;
+    const resetButtonY = centerY + panelHeight * 0.08;
+    const backButtonY = centerY + panelHeight * 0.28;
+
+    const continueButton = new RoundedBox(this, centerX, continueButtonY, panelWidth * 0.72, 54, 0x1d4ed8, 1)
+      .setStrokeStyle(1, 0x93c5fd, 0.9)
+      .setInteractive({ useHandCursor: true });
+    const continueLabel = this.add
+      .text(centerX, continueButtonY, 'Continue', {
+        color: '#eff6ff',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
+      })
+      .setOrigin(0.5);
 
     const resetButton = new RoundedBox(this, centerX, resetButtonY, panelWidth * 0.72, 54, 0xf97316, 1)
       .setStrokeStyle(1, 0xfed7aa, 0.9)
@@ -747,12 +868,25 @@ export class PlayScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    continueButton.on('pointerdown', () => this.closePauseMenu());
+    continueLabel.on('pointerdown', () => this.closePauseMenu());
     resetButton.on('pointerdown', () => this.resetSession());
     backButton.on('pointerdown', () => this.goBackToStart());
 
-    this.pauseOverlay = this.add.container(0, 0, [backdrop, panelGlow, panel, title, resetButton, resetLabel, backButton, backLabel]);
+    this.pauseOverlay = this.add.container(0, 0, [
+      backdrop,
+      panelGlow,
+      panel,
+      title,
+      continueButton,
+      continueLabel,
+      resetButton,
+      resetLabel,
+      backButton,
+      backLabel
+    ]);
     this.pauseOverlay.setDepth(1000);
-    this.setPauseButtonIconMode(true);
+    this.syncPauseButtonIcon();
   }
 
   private closePauseMenu(): void {
@@ -762,14 +896,74 @@ export class PlayScene extends Phaser.Scene {
     this.pauseOverlay = undefined;
 
     if (this.runtimeTimer) {
-      this.runtimeTimer.paused = false;
+      this.runtimeTimer.paused = this.playbackPausedByButton;
     }
     if (this.playbackWasRunningBeforePauseMenu) {
+      if (this.pauseMenuResumeSongSeconds !== undefined) {
+        this.pausedSongSeconds = this.pauseMenuResumeSongSeconds;
+      }
       this.resumeBackingPlayback();
     }
     this.latestFrames = [];
     this.playbackWasRunningBeforePauseMenu = false;
-    this.setPauseButtonIconMode(false);
+    this.pauseMenuResumeSongSeconds = undefined;
+    this.syncPauseButtonIcon();
+  }
+
+  private toggleGameplayPauseFromButton(): void {
+    if (this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
+    if (this.playbackPausedByButton) {
+      this.resumeGameplayFromButtonPause();
+      return;
+    }
+    this.pauseGameplayFromButton();
+  }
+
+  private pauseGameplayFromButton(): void {
+    if (this.playbackPausedByButton) return;
+    this.playbackPausedByButton = true;
+    this.playbackWasRunningBeforeButtonPause = this.runtime.state === PlayState.Playing && this.playbackStarted;
+    this.waitingPauseStartedAtAudioTime =
+      this.runtime.state === PlayState.WaitingForHit && this.audioCtx ? this.audioCtx.currentTime : undefined;
+
+    if (this.runtimeTimer) {
+      this.runtimeTimer.paused = true;
+    }
+    if (this.playbackWasRunningBeforeButtonPause) {
+      this.pausePlaybackClock();
+      this.pauseBackingPlayback();
+    }
+    this.latestFrames = [];
+    this.syncPauseButtonIcon();
+  }
+
+  private resumeGameplayFromButtonPause(): void {
+    if (!this.playbackPausedByButton) return;
+    this.playbackPausedByButton = false;
+
+    if (
+      this.runtime.state === PlayState.WaitingForHit &&
+      this.audioCtx &&
+      this.runtime.waiting_started_at_s !== undefined &&
+      this.waitingPauseStartedAtAudioTime !== undefined
+    ) {
+      const pausedForSeconds = Math.max(0, this.audioCtx.currentTime - this.waitingPauseStartedAtAudioTime);
+      this.runtime = {
+        ...this.runtime,
+        waiting_started_at_s: this.runtime.waiting_started_at_s + pausedForSeconds
+      };
+    }
+    this.waitingPauseStartedAtAudioTime = undefined;
+
+    if (this.runtimeTimer) {
+      this.runtimeTimer.paused = false;
+    }
+    if (this.playbackWasRunningBeforeButtonPause) {
+      this.resumeBackingPlayback();
+    }
+    this.playbackWasRunningBeforeButtonPause = false;
+    this.latestFrames = [];
+    this.syncPauseButtonIcon();
   }
 
   private relayoutPauseOverlay(): void {
@@ -861,6 +1055,7 @@ export class PlayScene extends Phaser.Scene {
     const songSecondsNow =
       snapshot?.songSecondsNow ?? (this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds);
     const targetSeconds = snapshot?.targetSeconds ?? (active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined);
+    const playbackBpm = this.getCurrentPlaybackBpm(songSecondsNow);
     const deltaMs =
       snapshot?.targetDeltaMs ?? (songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined);
     const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
@@ -877,7 +1072,7 @@ export class PlayScene extends Phaser.Scene {
         ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
         : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
       `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
-      `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
+      `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s bpm=${formatDebugNumber(playbackBpm, 2)} d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
       `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
       `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
       `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
@@ -931,6 +1126,47 @@ export class PlayScene extends Phaser.Scene {
       this.laneLayer.strokePath();
     }
 
+    const sideBlockCount = 6;
+    const sideTopBlockWidth = Math.max(44, fretboardWidth * 0.06);
+    const sideBottomBlockWidth = Math.max(58, fretboardWidth * 0.08);
+    const sideBaseColor = 0x182437;
+    for (let i = 0; i < sideBlockCount; i += 1) {
+      const prevTopOffset = i * sideTopBlockWidth;
+      const nextTopOffset = (i + 1) * sideTopBlockWidth;
+      const prevBottomOffset = i * sideBottomBlockWidth;
+      const nextBottomOffset = (i + 1) * sideBottomBlockWidth;
+      const alpha = 0.8 - i * 0.12;
+
+      this.laneLayer.fillStyle(sideBaseColor, alpha);
+      this.laneLayer.beginPath();
+      this.laneLayer.moveTo(fretTopLeft - prevTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretTopLeft - nextTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretBottomLeft - nextBottomOffset, fretBottomY);
+      this.laneLayer.lineTo(fretBottomLeft - prevBottomOffset, fretBottomY);
+      this.laneLayer.closePath();
+      this.laneLayer.fillPath();
+
+      this.laneLayer.fillStyle(sideBaseColor, alpha);
+      this.laneLayer.beginPath();
+      this.laneLayer.moveTo(fretTopRight + prevTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretTopRight + nextTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretBottomRight + nextBottomOffset, fretBottomY);
+      this.laneLayer.lineTo(fretBottomRight + prevBottomOffset, fretBottomY);
+      this.laneLayer.closePath();
+      this.laneLayer.fillPath();
+
+      this.laneLayer.lineStyle(1, 0x64748b, 0.48);
+      this.laneLayer.beginPath();
+      this.laneLayer.moveTo(fretTopLeft - nextTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretBottomLeft - nextBottomOffset, fretBottomY);
+      this.laneLayer.strokePath();
+
+      this.laneLayer.beginPath();
+      this.laneLayer.moveTo(fretTopRight + nextTopOffset, fretTopY);
+      this.laneLayer.lineTo(fretBottomRight + nextBottomOffset, fretBottomY);
+      this.laneLayer.strokePath();
+    }
+
     const stringStyles = [
       { width: 2.2, color: 0xdbeafe, alpha: 0.9 },
       { width: 2.3, color: 0xdbeafe, alpha: 0.9 },
@@ -958,6 +1194,7 @@ export class PlayScene extends Phaser.Scene {
     this.drawTopStarfield();
     this.layoutHandReminder();
     this.layoutPauseButton();
+    this.layoutPlaybackSpeedSlider();
     this.layoutSongMinimap();
     this.redrawSongMinimapStatic();
     this.updateSongMinimapProgress();
@@ -1031,6 +1268,8 @@ export class PlayScene extends Phaser.Scene {
     const barOffsetX = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.15));
     const barHeight = Math.max(14, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.48));
     const barWidth = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.14));
+    const playIconOffsetX = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.3));
+    const playIconOffsetY = Math.max(4, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.3));
 
     this.pauseButton
       .setPosition(centerX, centerY)
@@ -1046,15 +1285,158 @@ export class PlayScene extends Phaser.Scene {
       .setDisplaySize(barWidth, barHeight)
       .setDepth(290);
     this.pauseButtonPlayIcon
-      .setPosition(centerX + Math.max(1, Math.floor(PlayScene.PAUSE_BUTTON_SIZE * 0.04)), centerY)
+      .setPosition(centerX + playIconOffsetX, centerY + playIconOffsetY)
       .setScale(Math.max(1, PlayScene.PAUSE_BUTTON_SIZE / 24))
       .setDepth(290);
+  }
+
+  private createPlaybackSpeedSlider(): void {
+    if (this.playbackSpeedPanel || this.playbackSpeedTrack || this.playbackSpeedKnob) return;
+
+    this.playbackSpeedPanel = new RoundedBox(this, 0, 0, 10, 10, 0x0b1228, 0.9)
+      .setStrokeStyle(1, 0x334155, 0.86)
+      .setDepth(292);
+    this.playbackSpeedLabel = this.add
+      .text(0, 0, 'Speed', {
+        color: '#cbd5e1',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.0125))}px`
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(293);
+    this.playbackSpeedValueText = this.add
+      .text(0, 0, '100%', {
+        color: '#f8fafc',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.0125))}px`
+      })
+      .setOrigin(1, 0.5)
+      .setDepth(293);
+    this.playbackSpeedTrack = this.add
+      .rectangle(0, 0, 100, 8, 0x334155, 0.95)
+      .setStrokeStyle(1, 0x64748b, 0.86)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(293);
+    this.playbackSpeedTrack.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.applyPlaybackSpeedFromSliderX(pointer.x);
+    });
+    this.playbackSpeedKnob = this.add
+      .circle(0, 0, 8, 0xf8fafc, 1)
+      .setStrokeStyle(2, 0x38bdf8, 1)
+      .setInteractive({ useHandCursor: true, draggable: true })
+      .setDepth(294);
+    this.input.setDraggable(this.playbackSpeedKnob);
+    this.playbackSpeedKnob.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number) => {
+      this.applyPlaybackSpeedFromSliderX(dragX);
+    });
+    this.playbackSpeedKnob.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.applyPlaybackSpeedFromSliderX(pointer.x);
+    });
+
+    this.layoutPlaybackSpeedSlider();
+    this.updatePlaybackSpeedSliderVisuals();
+  }
+
+  private layoutPlaybackSpeedSlider(): void {
+    if (
+      !this.playbackSpeedPanel ||
+      !this.playbackSpeedTrack ||
+      !this.playbackSpeedKnob ||
+      !this.playbackSpeedLabel ||
+      !this.playbackSpeedValueText
+    ) {
+      return;
+    }
+
+    const { width } = this.scale;
+    const panelWidth = Math.min(360, width * 0.4);
+    const panelHeight = 42;
+    const centerX = width / 2;
+    const centerY = 24;
+    const sidePadding = 12;
+    const labelWidth = Math.max(52, Math.floor(panelWidth * 0.2));
+    const valueWidth = Math.max(52, Math.floor(panelWidth * 0.2));
+    const trackWidth = Math.max(90, panelWidth - sidePadding * 2 - labelWidth - valueWidth - 16);
+
+    this.playbackSpeedPanel
+      .setPosition(centerX, centerY)
+      .setBoxSize(panelWidth, panelHeight);
+    this.playbackSpeedTrack
+      .setPosition(centerX - panelWidth / 2 + sidePadding + labelWidth + 8 + trackWidth / 2, centerY)
+      .setSize(trackWidth, 8)
+      .setDisplaySize(trackWidth, 8);
+    this.playbackSpeedKnob.setRadius(Math.max(7, Math.floor(panelHeight * 0.23)));
+    this.playbackSpeedLabel
+      .setPosition(centerX - panelWidth / 2 + sidePadding, centerY)
+      .setFontSize(`${Math.max(12, Math.floor(width * 0.0125))}px`);
+    this.playbackSpeedValueText
+      .setPosition(centerX + panelWidth / 2 - sidePadding, centerY)
+      .setFontSize(`${Math.max(12, Math.floor(width * 0.0125))}px`);
+
+    this.updatePlaybackSpeedSliderVisuals();
+  }
+
+  private applyPlaybackSpeedFromSliderX(pointerX: number): void {
+    if (!this.playbackSpeedTrack) return;
+    const left = this.playbackSpeedTrack.x - this.playbackSpeedTrack.displayWidth / 2;
+    const ratio = Phaser.Math.Clamp((pointerX - left) / this.playbackSpeedTrack.displayWidth, 0, 1);
+    const speed =
+      PlayScene.PLAYBACK_SPEED_MIN + ratio * (PlayScene.PLAYBACK_SPEED_MAX - PlayScene.PLAYBACK_SPEED_MIN);
+    this.setPlaybackSpeed(speed);
+  }
+
+  private setPlaybackSpeed(speedMultiplier: number): void {
+    const safeSpeed = Phaser.Math.Clamp(
+      speedMultiplier,
+      PlayScene.PLAYBACK_SPEED_MIN,
+      PlayScene.PLAYBACK_SPEED_MAX
+    );
+    const previousSpeed = this.playbackSpeedMultiplier;
+    if (Math.abs(previousSpeed - safeSpeed) < 0.0001) {
+      this.updatePlaybackSpeedSliderVisuals();
+      return;
+    }
+
+    const nowSongSeconds = this.getSongSecondsNow();
+    this.playbackSpeedMultiplier = safeSpeed;
+    if (this.playbackStarted) {
+      this.startPlaybackClock(nowSongSeconds);
+    } else {
+      this.pausedSongSeconds = nowSongSeconds;
+    }
+
+    if (this.backingTrackAudio) {
+      this.backingTrackAudio.playbackRate = safeSpeed;
+    }
+
+    this.feedbackText = `Speed ${Math.round(safeSpeed * 100)}%`;
+    this.feedbackUntilMs = performance.now() + 900;
+    this.updatePlaybackSpeedSliderVisuals();
+    this.updateHud();
+  }
+
+  private updatePlaybackSpeedSliderVisuals(): void {
+    if (!this.playbackSpeedTrack || !this.playbackSpeedKnob || !this.playbackSpeedValueText) return;
+
+    const ratio =
+      (this.playbackSpeedMultiplier - PlayScene.PLAYBACK_SPEED_MIN) /
+      (PlayScene.PLAYBACK_SPEED_MAX - PlayScene.PLAYBACK_SPEED_MIN);
+    const clampedRatio = Phaser.Math.Clamp(ratio, 0, 1);
+    const left = this.playbackSpeedTrack.x - this.playbackSpeedTrack.displayWidth / 2;
+    this.playbackSpeedKnob.setPosition(left + this.playbackSpeedTrack.displayWidth * clampedRatio, this.playbackSpeedTrack.y);
+    this.playbackSpeedValueText.setText(`${Math.round(this.playbackSpeedMultiplier * 100)}%`);
   }
 
   private setPauseButtonIconMode(showPlay: boolean): void {
     this.pauseButtonLeftBar?.setVisible(!showPlay);
     this.pauseButtonRightBar?.setVisible(!showPlay);
     this.pauseButtonPlayIcon?.setVisible(showPlay);
+  }
+
+  private syncPauseButtonIcon(): void {
+    this.setPauseButtonIconMode(this.pauseOverlay !== undefined || this.playbackPausedByButton);
   }
 
   private redrawSongMinimapStatic(): void {
@@ -1223,6 +1605,13 @@ export class PlayScene extends Phaser.Scene {
 
   private consumeDebugHit(): void {
     if (!this.audioCtx || !this.tempoMap) return;
+    if (!this.playbackStarted) {
+      this.feedbackText = 'Playback not started yet';
+      this.feedbackUntilMs = performance.now() + 700;
+      this.updateHud();
+      this.updateDebugOverlay();
+      return;
+    }
     const previousState = this.runtime.state;
     const active = this.targets[this.runtime.active_target_index];
     const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
@@ -1246,16 +1635,40 @@ export class PlayScene extends Phaser.Scene {
     this.updateDebugOverlay();
     if (!this.targets[this.runtime.active_target_index]) {
       this.queueFinishSong();
+    } else {
+      this.clearFinishSongQueue();
     }
   }
 
   private queueFinishSong(): void {
-    if (this.resultsOverlay || this.finishDelayTimer) return;
-    this.finishDelayTimer = this.time.delayedCall(PlayScene.POST_SONG_END_SCREEN_DELAY_MS, () => {
+    if (this.resultsOverlay?.active) return;
+    const now = performance.now();
+    if (this.finishQueuedAtMs === undefined) {
+      this.finishQueuedAtMs = now + PlayScene.POST_SONG_END_SCREEN_DELAY_MS;
+      if (!this.finishDelayTimer) {
+        this.finishDelayTimer = this.time.delayedCall(PlayScene.POST_SONG_END_SCREEN_DELAY_MS, () => {
+          this.finishDelayTimer = undefined;
+          this.finishQueuedAtMs = undefined;
+          if (!this.scene.isActive()) return;
+          this.finishSong();
+        });
+      }
+      return;
+    }
+
+    if (now >= this.finishQueuedAtMs) {
+      this.finishDelayTimer?.remove(false);
       this.finishDelayTimer = undefined;
+      this.finishQueuedAtMs = undefined;
       if (!this.scene.isActive()) return;
       this.finishSong();
-    });
+    }
+  }
+
+  private clearFinishSongQueue(): void {
+    this.finishDelayTimer?.remove(false);
+    this.finishDelayTimer = undefined;
+    this.finishQueuedAtMs = undefined;
   }
 
   private redrawTargetsAndBall(): void {
@@ -1288,8 +1701,9 @@ export class PlayScene extends Phaser.Scene {
       const isWaitingTarget = waitingTargetId === target.id;
       const isPast = target.tick < currentTick;
       const alpha = isWaitingTarget ? 1 : isPast ? 0.28 : 0.95;
+      const noteColor = this.correctlyHitTargetIds.has(target.id) ? 0x22c55e : (FINGER_COLORS[target.finger] ?? 0xffffff);
 
-      this.targetLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, alpha);
+      this.targetLayer.fillStyle(noteColor, alpha);
       this.targetLayer.fillRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
 
       const fretLabel = this.add
@@ -1335,7 +1749,10 @@ export class PlayScene extends Phaser.Scene {
 
     const streak = Math.max(1, currentStreak(this.scoreEvents));
     let status = `x${streak}`;
-    if (now < this.feedbackUntilMs) {
+    if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
+      const remainingMs = this.prePlaybackStartAtMs !== undefined ? Math.max(0, this.prePlaybackStartAtMs - now) : 0;
+      status = `x${streak}  Get ready (${(remainingMs / 1000).toFixed(1)}s)`;
+    } else if (now < this.feedbackUntilMs) {
       status = `x${streak}  ${this.feedbackText}`;
     } else if (this.runtime.state === PlayState.WaitingForHit) {
       if (timeoutSeconds !== undefined && this.audioCtx && this.runtime.waiting_started_at_s !== undefined) {
@@ -1501,7 +1918,13 @@ export class PlayScene extends Phaser.Scene {
 
     this.pauseOverlay?.destroy(true);
     this.pauseOverlay = undefined;
+    this.resultsOverlay?.destroy(true);
+    this.resultsOverlay = undefined;
     this.playbackWasRunningBeforePauseMenu = false;
+    this.pauseMenuResumeSongSeconds = undefined;
+    this.playbackPausedByButton = false;
+    this.playbackWasRunningBeforeButtonPause = false;
+    this.waitingPauseStartedAtAudioTime = undefined;
     this.pauseButton?.destroy();
     this.pauseButton = undefined;
     this.pauseButtonLeftBar?.destroy();
@@ -1510,6 +1933,16 @@ export class PlayScene extends Phaser.Scene {
     this.pauseButtonRightBar = undefined;
     this.pauseButtonPlayIcon?.destroy();
     this.pauseButtonPlayIcon = undefined;
+    this.playbackSpeedPanel?.destroy();
+    this.playbackSpeedPanel = undefined;
+    this.playbackSpeedTrack?.destroy();
+    this.playbackSpeedTrack = undefined;
+    this.playbackSpeedKnob?.destroy();
+    this.playbackSpeedKnob = undefined;
+    this.playbackSpeedLabel?.destroy();
+    this.playbackSpeedLabel = undefined;
+    this.playbackSpeedValueText?.destroy();
+    this.playbackSpeedValueText = undefined;
 
     this.handReminderImage?.destroy();
     this.handReminderImage = undefined;
@@ -1534,6 +1967,7 @@ export class PlayScene extends Phaser.Scene {
     this.debugOverlayPanel = undefined;
     this.debugOverlayText = undefined;
     this.hitDebugSnapshot = undefined;
+    this.mp3SeekDisabled = false;
 
     this.clearFretLabels();
 
@@ -1541,6 +1975,11 @@ export class PlayScene extends Phaser.Scene {
     this.runtimeTimer = undefined;
     this.finishDelayTimer?.remove(false);
     this.finishDelayTimer = undefined;
+    this.finishQueuedAtMs = undefined;
+    this.playbackIntroTimer?.remove(false);
+    this.playbackIntroTimer = undefined;
+    this.prePlaybackStartAtMs = undefined;
+    this.playbackStarted = false;
 
     this.stopBackingPlayback();
     this.scrubPlayer = undefined;
@@ -1573,6 +2012,8 @@ export class PlayScene extends Phaser.Scene {
     audio.loop = false;
     this.backingTrackAudio = audio;
     this.playbackMode = 'audio';
+    this.lastKnownBackingAudioSeconds = 0;
+    this.mp3SeekDisabled = false;
     const played = await this.playBackingTrackAudioFrom(startSongSeconds);
     if (played) return true;
 
@@ -1582,7 +2023,16 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private pauseBackingPlayback(): void {
+    if (!this.playbackStarted) return;
     if (this.playbackMode === 'audio') {
+      const pausedAudioSeconds = resolveSongSecondsForRuntime(
+        this.getSongSecondsFromClock(),
+        this.pausedSongSeconds,
+        this.backingTrackAudio?.currentTime
+      );
+      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds);
+      this.pausedBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds, this.pausedSongSeconds);
+      this.pausedSongSeconds = this.pausedBackingAudioSeconds;
       this.backingTrackAudio?.pause();
       return;
     }
@@ -1590,7 +2040,14 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private resumeBackingPlayback(): void {
-    const resumeSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? this.pausedSongSeconds;
+    if (!this.playbackStarted) return;
+    const runtimeResumeSeconds = resolveResumeSongSeconds(this.runtime.current_tick, this.pausedSongSeconds, this.tempoMap);
+    let resumeSeconds = runtimeResumeSeconds;
+    if (this.playbackMode === 'audio') {
+      resumeSeconds = resolveResumeSongSecondsForAudio(resumeSeconds, this.pausedBackingAudioSeconds);
+      resumeSeconds = Math.max(resumeSeconds, this.lastKnownBackingAudioSeconds);
+    }
+    this.pausedSongSeconds = resumeSeconds;
     this.startPlaybackClock(resumeSeconds);
 
     if (this.playbackMode === 'audio') {
@@ -1621,19 +2078,41 @@ export class PlayScene extends Phaser.Scene {
     if (!this.backingTrackAudio) return false;
     const safeSeconds = Math.max(0, songSeconds);
     const audio = this.backingTrackAudio;
+    audio.playbackRate = this.playbackSpeedMultiplier;
+    const beforeSeekSeconds = audio.currentTime;
 
-    try {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        audio.currentTime = Phaser.Math.Clamp(safeSeconds, 0, Math.max(0, audio.duration - 0.02));
-      } else {
-        audio.currentTime = safeSeconds;
+    await this.ensureAudioMetadataLoaded(audio);
+    const targetSeconds = this.clampAudioSeekSeconds(audio, safeSeconds);
+    if (!this.mp3SeekDisabled) {
+      try {
+        audio.currentTime = targetSeconds;
+        if (Math.abs(audio.currentTime - targetSeconds) > 0.25) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 0);
+          });
+          audio.currentTime = targetSeconds;
+        }
+      } catch {
+        // Ignore seek failures, we still try to play from current position.
       }
-    } catch {
-      // Ignore seek failures, we still try to play from current position.
     }
 
     try {
       await audio.play();
+      if (targetSeconds > 0.35 && audio.currentTime + 0.35 < targetSeconds) {
+        this.mp3SeekDisabled = true;
+        const rollbackSeconds = sanitizeSongSeconds(beforeSeekSeconds, audio.currentTime);
+        try {
+          audio.currentTime = rollbackSeconds;
+          await audio.play();
+        } catch {
+          // Keep best-effort current state.
+        }
+      }
+      const resolvedSeconds = sanitizeSongSeconds(audio.currentTime, beforeSeekSeconds);
+      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolvedSeconds, targetSeconds);
+      this.syncRuntimeToBackingTrackPosition(resolvedSeconds);
+      this.pausedBackingAudioSeconds = undefined;
       return true;
     } catch (error) {
       console.warn('Backing track play failed', { audioUrl: this.sceneData?.audioUrl, error });
@@ -1647,10 +2126,56 @@ export class PlayScene extends Phaser.Scene {
     this.backingTrackAudio.removeAttribute('src');
     this.backingTrackAudio.load();
     this.backingTrackAudio = undefined;
+    this.pausedBackingAudioSeconds = undefined;
+    this.lastKnownBackingAudioSeconds = 0;
+    this.mp3SeekDisabled = false;
+  }
+
+  private syncRuntimeToBackingTrackPosition(songSeconds: number): void {
+    const safeSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
+    this.startPlaybackClock(safeSeconds);
+    if (this.tempoMap) {
+      this.runtime = {
+        ...this.runtime,
+        current_tick: Math.max(0, this.tempoMap.secondsToTick(safeSeconds))
+      };
+    }
+  }
+
+  private clampAudioSeekSeconds(audio: HTMLAudioElement, songSeconds: number): number {
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return songSeconds;
+    return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, audio.duration - 0.02));
+  }
+
+  private async ensureAudioMetadataLoaded(audio: HTMLAudioElement): Promise<void> {
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return;
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const cleanup = (): void => {
+        audio.removeEventListener('loadedmetadata', onReady);
+        audio.removeEventListener('loadeddata', onReady);
+        audio.removeEventListener('canplay', onReady);
+      };
+      const onReady = (): void => {
+        if (done) return;
+        done = true;
+        cleanup();
+        resolve();
+      };
+      audio.addEventListener('loadedmetadata', onReady, { once: true });
+      audio.addEventListener('loadeddata', onReady, { once: true });
+      audio.addEventListener('canplay', onReady, { once: true });
+      window.setTimeout(onReady, 700);
+      try {
+        audio.load();
+      } catch {
+        onReady();
+      }
+    });
   }
 
   private startPlaybackClock(songSeconds: number): void {
-    const safeSongSeconds = Math.max(0, songSeconds);
+    const safeSongSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
     this.playbackStartSongSeconds = safeSongSeconds;
     this.pausedSongSeconds = safeSongSeconds;
     this.playbackStartAudioTime = this.audioCtx ? this.audioCtx.currentTime : null;
@@ -1658,20 +2183,60 @@ export class PlayScene extends Phaser.Scene {
 
   private pausePlaybackClock(): void {
     if (!this.audioCtx) return;
-    this.pausedSongSeconds = this.getSongSecondsNow();
+    const pauseSnapshot = computePauseState(
+      this.getSongSecondsNow(),
+      this.pausedSongSeconds,
+      this.runtime.current_tick,
+      this.tempoMap
+    );
+    this.pausedSongSeconds = pauseSnapshot.pausedSongSeconds;
+    this.runtime = {
+      ...this.runtime,
+      current_tick: pauseSnapshot.currentTick
+    };
     this.playbackStartAudioTime = null;
     this.playbackStartSongSeconds = this.pausedSongSeconds;
   }
 
   private getSongSecondsNow(): number {
+    const expectedClockSongSeconds = this.getSongSecondsFromClock();
     if (this.playbackMode === 'audio' && this.backingTrackAudio) {
-      return this.backingTrackAudio.currentTime;
+      const resolved = resolveSongSecondsForRuntime(
+        expectedClockSongSeconds,
+        this.pausedSongSeconds,
+        this.backingTrackAudio.currentTime
+      );
+      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolved);
+      return resolved;
     }
+    return expectedClockSongSeconds;
+  }
+
+  private getSongSecondsFromClock(): number {
     if (!this.audioCtx || this.playbackStartAudioTime === null) {
       return this.pausedSongSeconds;
     }
     const elapsed = Math.max(0, this.audioCtx.currentTime - this.playbackStartAudioTime);
-    return this.playbackStartSongSeconds + elapsed;
+    return sanitizeSongSeconds(this.playbackStartSongSeconds + elapsed * this.playbackSpeedMultiplier, this.pausedSongSeconds);
+  }
+
+  private getCurrentPlaybackBpm(songSeconds: number | undefined): number | undefined {
+    if (!this.tempoMap || songSeconds === undefined || !Number.isFinite(songSeconds)) return undefined;
+    const segments = this.tempoMap.segments;
+    if (segments.length === 0) return undefined;
+
+    const safeSeconds = Math.max(0, songSeconds);
+    let selected = segments[0];
+    for (const segment of segments) {
+      if (segment.startSeconds <= safeSeconds) {
+        selected = segment;
+        continue;
+      }
+      break;
+    }
+
+    if (!Number.isFinite(selected.usPerQuarter) || selected.usPerQuarter <= 0) return undefined;
+    return 60_000_000 / selected.usPerQuarter;
   }
 
   private clearFretLabels(): void {

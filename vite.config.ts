@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import os from 'node:os';
@@ -13,6 +14,8 @@ import {
 } from './src/platform/converterMode';
 
 type SupportedAudioExtension = '.mp3' | '.ogg' | '.wav';
+type SupportedMidiExtension = '.mid' | '.midi';
+type SupportedImportSource = 'audio' | 'midi';
 type SongImportStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 type MidiAnalysisSummary = {
@@ -46,7 +49,7 @@ type SongManifestEntry = {
   folder: string;
   cover?: string;
   midi: string;
-  audio: string;
+  audio?: string;
 };
 
 type SongManifestDocument = {
@@ -66,7 +69,9 @@ type SongImportJob = {
   result?: {
     song: SongManifestEntry;
     coverExtracted: boolean;
-    audioExtension: SupportedAudioExtension;
+    sourceType: SupportedImportSource;
+    sourceExtension: SupportedAudioExtension | '.mid';
+    audioExtension?: SupportedAudioExtension;
     converterMode: RequestedConverterMode;
     converterComparison?: ConverterComparisonSummary;
   };
@@ -75,7 +80,9 @@ type SongImportJob = {
 type SongImportPayload = {
   fileName: string;
   mimeType: string;
-  audioExtension: SupportedAudioExtension;
+  sourceType: SupportedImportSource;
+  sourceExtension: SupportedAudioExtension | '.mid';
+  audioExtension?: SupportedAudioExtension;
   converterMode: RequestedConverterMode;
   buffer: Buffer;
 };
@@ -114,11 +121,14 @@ let runtimeSongManifestPath = path.resolve(PUBLIC_SONGS_DIR, 'manifest.json');
 
 const IMPORT_START_PATH = '/api/song-import/start';
 const IMPORT_STATUS_PATH_PREFIX = '/api/song-import/status/';
+const SONG_REMOVE_PATH = '/api/song-remove';
+const SONGS_PATH_PREFIX = '/songs/';
 const SONG_CONVERTER_MODE_HEADER = 'x-song-converter-mode';
 const MAX_IMPORT_AUDIO_BYTES = 80 * 1024 * 1024;
 const JOB_RETENTION_MS = 30 * 60 * 1000;
 const CONVERTER_DEBUG_ENV_FLAG = 'GH_ENABLE_DEBUG_CONVERTER';
 const SUPPORTED_AUDIO_EXTENSIONS = new Set<SupportedAudioExtension>(['.mp3', '.ogg', '.wav']);
+const SUPPORTED_MIDI_EXTENSIONS = new Set<SupportedMidiExtension>(['.mid', '.midi']);
 const TEMPO_CLI_BASENAME = process.platform === 'win32' ? 'tempo_cnn_cli.exe' : 'tempo_cnn_cli';
 const ONNX_RUNTIME_SUBDIR = process.platform === 'win32' ? 'windows-x64' : 'linux-x64';
 
@@ -151,6 +161,11 @@ function registerImportApiMiddleware(
     const method = (req.method ?? 'GET').toUpperCase();
     const pathname = stripQuery(req.url ?? '/');
 
+    if ((method === 'GET' || method === 'HEAD') && pathname.startsWith(SONGS_PATH_PREFIX)) {
+      void handleSongsAssetRequest(req, res, pathname, next);
+      return;
+    }
+
     if (method === 'POST' && pathname === IMPORT_START_PATH) {
       void handleImportStart(req, res);
       return;
@@ -163,13 +178,106 @@ function registerImportApiMiddleware(
       return;
     }
 
+    if (method === 'POST' && pathname === SONG_REMOVE_PATH) {
+      void handleSongRemove(req, res);
+      return;
+    }
+
     next();
   });
+}
+
+async function handleSongsAssetRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  next: () => void
+): Promise<void> {
+  const filePath = resolveSongsFilePath(pathname);
+  if (!filePath) {
+    next();
+    return;
+  }
+
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      next();
+      return;
+    }
+
+    const method = (req.method ?? 'GET').toUpperCase();
+    const contentType = detectSongsContentType(filePath);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Length', String(stat.size));
+
+    if (method === 'HEAD') {
+      res.end();
+      return;
+    }
+
+    const readStream = fsSync.createReadStream(filePath);
+    readStream.on('error', () => {
+      if (res.writableEnded) return;
+      res.statusCode = 500;
+      res.end('Failed to read song asset.');
+    });
+    readStream.pipe(res);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      next();
+      return;
+    }
+    if (!res.writableEnded) {
+      res.statusCode = 500;
+      res.end('Failed to load song asset.');
+    }
+  }
 }
 
 function stripQuery(urlValue: string): string {
   const marker = urlValue.indexOf('?');
   return marker === -1 ? urlValue : urlValue.slice(0, marker);
+}
+
+function resolveSongsFilePath(pathname: string): string | null {
+  if (!pathname.startsWith(SONGS_PATH_PREFIX)) return null;
+  const encodedRelative = pathname.slice(SONGS_PATH_PREFIX.length);
+  const decodedRelative = encodedRelative
+    .split('/')
+    .map((segment) => safeDecodeURIComponent(segment))
+    .join('/');
+
+  const normalized = path.posix.normalize(`/${decodedRelative}`).slice(1);
+  if (!normalized || normalized.startsWith('..') || normalized.includes('\0')) return null;
+
+  const root = path.resolve(runtimeSongsDir);
+  const candidate = path.resolve(root, ...normalized.split('/'));
+  if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function detectSongsContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.json') return 'application/json; charset=utf-8';
+  if (ext === '.mid' || ext === '.midi') return 'audio/midi';
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.ogg') return 'audio/ogg';
+  if (ext === '.wav') return 'audio/wav';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.bmp') return 'image/bmp';
+  if (ext === '.svg') return 'image/svg+xml';
+  return 'application/octet-stream';
 }
 
 function clampProgress(value: number): number {
@@ -261,6 +369,42 @@ function detectAudioExtension(fileName: string, mimeType: string): SupportedAudi
   return null;
 }
 
+function detectMidiExtension(fileName: string, mimeType: string): SupportedMidiExtension | null {
+  const ext = path.extname(fileName).toLowerCase() as SupportedMidiExtension;
+  if (SUPPORTED_MIDI_EXTENSIONS.has(ext)) return ext;
+
+  const mime = String(mimeType || '').toLowerCase();
+  if (
+    mime.includes('audio/midi') ||
+    mime.includes('audio/mid') ||
+    mime.includes('audio/x-midi') ||
+    mime.includes('audio/sp-midi') ||
+    mime.includes('application/midi') ||
+    mime.includes('application/x-midi')
+  ) {
+    return '.mid';
+  }
+
+  return null;
+}
+
+function detectImportSource(
+  fileName: string,
+  mimeType: string
+): { sourceType: 'audio'; sourceExtension: SupportedAudioExtension } | { sourceType: 'midi'; sourceExtension: '.mid' } | null {
+  const midiExtension = detectMidiExtension(fileName, mimeType);
+  if (midiExtension && SUPPORTED_MIDI_EXTENSIONS.has(midiExtension)) {
+    return { sourceType: 'midi', sourceExtension: '.mid' };
+  }
+
+  const audioExtension = detectAudioExtension(fileName, mimeType);
+  if (audioExtension && SUPPORTED_AUDIO_EXTENSIONS.has(audioExtension)) {
+    return { sourceType: 'audio', sourceExtension: audioExtension };
+  }
+
+  return null;
+}
+
 function createInitialJob(id: string, fileName: string): SongImportJob {
   const timestamp = nowIso();
   return {
@@ -310,7 +454,7 @@ async function readRequestBody(req: IncomingMessage, maxBytes = MAX_IMPORT_AUDIO
       totalBytes += data.length;
 
       if (totalBytes > maxBytes) {
-        reject(new Error(`Uploaded audio exceeds ${(maxBytes / (1024 * 1024)).toFixed(0)} MB limit.`));
+        reject(new Error(`Uploaded file exceeds ${(maxBytes / (1024 * 1024)).toFixed(0)} MB limit.`));
         req.destroy();
         return;
       }
@@ -392,7 +536,7 @@ async function estimateTempoFromAudioBuffer(
       tempoModelOnnxPath: path.resolve(PROJECT_ROOT, 'third_party/tempo_cnn/tempocnn/models/fcn.onnx'),
       onnxLibDir: path.resolve(PROJECT_ROOT, 'third_party/onnxruntime', ONNX_RUNTIME_SUBDIR, 'lib'),
       interpolate: true,
-      localTempo: true,
+      localTempo: false,
       useFfmpeg: false
     });
 
@@ -401,16 +545,7 @@ async function estimateTempoFromAudioBuffer(
       throw new Error('Tempo estimator returned an invalid BPM value.');
     }
 
-    const tempoMap = Array.isArray(estimated?.tempoMap)
-      ? estimated.tempoMap
-          .map((entry) => ({
-            timeSeconds: Number(entry?.timeSeconds ?? 0),
-            bpm: Number(entry?.bpm ?? 0)
-          }))
-          .filter((entry) => Number.isFinite(entry.timeSeconds) && entry.timeSeconds >= 0 && Number.isFinite(entry.bpm) && entry.bpm > 0)
-      : [];
-
-    return { tempoBpm, tempoMap };
+    return { tempoBpm, tempoMap: [] };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -590,14 +725,14 @@ function normalizeManifestEntry(value: unknown): SongManifestEntry | null {
   const audio = typeof data.audio === 'string' ? data.audio.trim() : '';
   const cover = typeof data.cover === 'string' ? data.cover.trim() : undefined;
 
-  if (!id || !name || !folder || !midi || !audio) return null;
+  if (!id || !name || !folder || !midi) return null;
 
   return {
     id,
     name,
     folder,
     midi,
-    audio,
+    ...(audio ? { audio } : {}),
     cover: cover && cover.length > 0 ? cover : undefined
   };
 }
@@ -667,69 +802,87 @@ async function processSongImport(jobId: string, payload: SongImportPayload): Pro
     songDirectoryPath = path.join(runtimeSongsDir, folderName);
     await fs.mkdir(songDirectoryPath, { recursive: false });
 
-    updateImportJob(jobId, {
-      stage: 'Saving source audio...',
-      progress: 0.1
-    });
-
-    const audioFileName = `song${payload.audioExtension}`;
-    await fs.writeFile(path.join(songDirectoryPath, audioFileName), payload.buffer);
-
-    updateImportJob(jobId, {
-      stage: 'Estimating tempo (Tempo-CNN ONNX)...',
-      progress: 0.16
-    });
-
-    const tempoEstimate = await estimateTempoFromAudioBuffer(payload.buffer, payload.audioExtension);
-
-    const runConverter = async (
-      mode: ConverterMode,
-      progressStart: number,
-      progressSpan: number,
-      fallbackStage: string
-    ): Promise<Buffer> => {
-      const converter = await loadAudioToMidiConverter(mode);
-      return converter.convertAudioBufferToMidiBuffer(payload.buffer, payload.audioExtension, {
-        conversionPreset: 'balanced',
-        tempoBpm: tempoEstimate.tempoBpm,
-        tempoMap: tempoEstimate.tempoMap,
-        onProgress: ({ stage, progress }) => {
-          const normalizedProgress = clampProgress(Number(progress ?? 0));
-          const stageLabel = String(stage || fallbackStage).trim() || fallbackStage;
-          updateImportJob(jobId, {
-            stage: stageLabel,
-            progress: progressStart + normalizedProgress * progressSpan
-          });
-        }
-      });
-    };
-
-    const converterMode = toExecutableConverterMode(payload.converterMode);
-    if (!converterMode) {
-      throw new Error('Converter mode "ab" is no longer available. Use "legacy" or "neuralnote" (C++/ONNX aliases).');
-    }
-    const midiBuffer = await runConverter(converterMode, 0.22, 0.68, 'Converting audio to MIDI (C++/ONNX)...');
-
     const midiFileName = 'song.mid';
-    await fs.writeFile(path.join(songDirectoryPath, midiFileName), midiBuffer);
-
-    updateImportJob(jobId, {
-      stage: 'Checking embedded artwork...',
-      progress: 0.92
-    });
-
-    const coverExtractor = await loadCoverExtractor();
-    const embeddedCover = coverExtractor.extractEmbeddedCover({
-      buffer: payload.buffer,
-      fileName: payload.fileName,
-      mimeType: payload.mimeType
-    });
-
+    let audioFileName: string | undefined;
     let coverFileName: string | undefined;
-    if (embeddedCover && embeddedCover.data && Number(embeddedCover.data.length) > 0) {
-      const coverExt = getCoverFileExtension(embeddedCover);
-      coverFileName = `cover${coverExt}`;
-      await fs.writeFile(path.join(songDirectoryPath, coverFileName), Buffer.from(embeddedCover.data));
+
+    if (payload.sourceType === 'audio') {
+      if (!payload.audioExtension) {
+        throw new Error('Invalid import payload: missing audio extension.');
+      }
+
+      updateImportJob(jobId, {
+        stage: 'Saving source audio...',
+        progress: 0.1
+      });
+
+      audioFileName = `song${payload.audioExtension}`;
+      await fs.writeFile(path.join(songDirectoryPath, audioFileName), payload.buffer);
+
+      updateImportJob(jobId, {
+        stage: 'Estimating tempo (Tempo-CNN ONNX)...',
+        progress: 0.16
+      });
+
+      const tempoEstimate = await estimateTempoFromAudioBuffer(payload.buffer, payload.audioExtension);
+
+      const runConverter = async (
+        mode: ConverterMode,
+        progressStart: number,
+        progressSpan: number,
+        fallbackStage: string
+      ): Promise<Buffer> => {
+        const converter = await loadAudioToMidiConverter(mode);
+        return converter.convertAudioBufferToMidiBuffer(payload.buffer, payload.audioExtension, {
+          conversionPreset: 'balanced',
+          tempoBpm: tempoEstimate.tempoBpm,
+          tempoMap: tempoEstimate.tempoMap,
+          onProgress: ({ stage, progress }) => {
+            const normalizedProgress = clampProgress(Number(progress ?? 0));
+            const stageLabel = String(stage || fallbackStage).trim() || fallbackStage;
+            updateImportJob(jobId, {
+              stage: stageLabel,
+              progress: progressStart + normalizedProgress * progressSpan
+            });
+          }
+        });
+      };
+
+      const converterMode = toExecutableConverterMode(payload.converterMode);
+      if (!converterMode) {
+        throw new Error('Converter mode "ab" is no longer available. Use "legacy" or "neuralnote" (C++/ONNX aliases).');
+      }
+      const midiBuffer = await runConverter(converterMode, 0.22, 0.68, 'Converting audio to MIDI (C++/ONNX)...');
+      await fs.writeFile(path.join(songDirectoryPath, midiFileName), midiBuffer);
+
+      updateImportJob(jobId, {
+        stage: 'Checking embedded artwork...',
+        progress: 0.92
+      });
+
+      const coverExtractor = await loadCoverExtractor();
+      const embeddedCover = coverExtractor.extractEmbeddedCover({
+        buffer: payload.buffer,
+        fileName: payload.fileName,
+        mimeType: payload.mimeType
+      });
+
+      if (embeddedCover && embeddedCover.data && Number(embeddedCover.data.length) > 0) {
+        const coverExt = getCoverFileExtension(embeddedCover);
+        coverFileName = `cover${coverExt}`;
+        await fs.writeFile(path.join(songDirectoryPath, coverFileName), Buffer.from(embeddedCover.data));
+      }
+    } else {
+      updateImportJob(jobId, {
+        stage: 'Saving source MIDI...',
+        progress: 0.2
+      });
+      await fs.writeFile(path.join(songDirectoryPath, midiFileName), payload.buffer);
+
+      updateImportJob(jobId, {
+        stage: 'Skipping artwork extraction for MIDI source...',
+        progress: 0.92
+      });
     }
 
     updateImportJob(jobId, {
@@ -745,10 +898,12 @@ async function processSongImport(jobId: string, payload: SongImportPayload): Pro
       id: songId,
       name: songName,
       folder: folderName,
-      midi: midiFileName,
-      audio: audioFileName
+      midi: midiFileName
     };
 
+    if (audioFileName) {
+      newSongEntry.audio = audioFileName;
+    }
     if (coverFileName) {
       newSongEntry.cover = coverFileName;
     }
@@ -764,7 +919,9 @@ async function processSongImport(jobId: string, payload: SongImportPayload): Pro
       result: {
         song: newSongEntry,
         coverExtracted: Boolean(coverFileName),
-        audioExtension: payload.audioExtension,
+        sourceType: payload.sourceType,
+        sourceExtension: payload.sourceExtension,
+        ...(payload.audioExtension ? { audioExtension: payload.audioExtension } : {}),
         converterMode: payload.converterMode
       }
     });
@@ -773,7 +930,7 @@ async function processSongImport(jobId: string, payload: SongImportPayload): Pro
       await fs.rm(songDirectoryPath, { recursive: true, force: true }).catch(() => undefined);
     }
 
-    const message = error instanceof Error && error.message ? error.message : 'Audio import failed.';
+    const message = error instanceof Error && error.message ? error.message : 'Song import failed.';
     updateImportJob(jobId, {
       status: 'failed',
       stage: 'Import failed.',
@@ -798,10 +955,10 @@ async function handleImportStart(req: IncomingMessage, res: ServerResponse): Pro
       return;
     }
 
-    const audioExtension = detectAudioExtension(fileName, mimeType);
-    if (!audioExtension || !SUPPORTED_AUDIO_EXTENSIONS.has(audioExtension)) {
+    const importSource = detectImportSource(fileName, mimeType);
+    if (!importSource) {
       sendJson(res, 400, {
-        error: 'Unsupported audio format. Please upload MP3, OGG, or WAV.'
+        error: 'Unsupported format. Please upload MIDI, MP3, or OGG.'
       });
       return;
     }
@@ -817,7 +974,9 @@ async function handleImportStart(req: IncomingMessage, res: ServerResponse): Pro
     void processSongImport(jobId, {
       fileName,
       mimeType,
-      audioExtension,
+      sourceType: importSource.sourceType,
+      sourceExtension: importSource.sourceExtension,
+      ...(importSource.sourceType === 'audio' ? { audioExtension: importSource.sourceExtension } : {}),
       converterMode,
       buffer: inputBuffer
     });
@@ -854,6 +1013,54 @@ async function handleImportStatus(res: ServerResponse, jobId: string): Promise<v
     createdAt: job.createdAt,
     updatedAt: job.updatedAt
   });
+}
+
+async function handleSongRemove(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const body = await readRequestBody(req);
+    if (body.length <= 0) {
+      sendJson(res, 400, { error: 'Missing request body.' });
+      return;
+    }
+
+    const payload = JSON.parse(body.toString('utf8')) as { songId?: unknown; folder?: unknown };
+    const songId = typeof payload.songId === 'string' ? payload.songId.trim() : '';
+    const folder = typeof payload.folder === 'string' ? payload.folder.trim() : '';
+    if (!songId && !folder) {
+      sendJson(res, 400, { error: 'Missing song id or folder.' });
+      return;
+    }
+
+    const manifest = await readSongManifest();
+    const index = manifest.songs.findIndex((song) => {
+      if (songId && song.id === songId) return true;
+      if (folder && song.folder === folder) return true;
+      return false;
+    });
+    if (index < 0) {
+      sendJson(res, 404, { error: 'Song not found.' });
+      return;
+    }
+
+    const [removedSong] = manifest.songs.splice(index, 1);
+    await writeSongManifest(manifest);
+
+    const folderToDelete = removedSong?.folder?.trim();
+    if (folderToDelete) {
+      const songDirectoryPath = path.resolve(runtimeSongsDir, folderToDelete);
+      const rootPath = path.resolve(runtimeSongsDir);
+      if (songDirectoryPath === rootPath || !songDirectoryPath.startsWith(`${rootPath}${path.sep}`)) {
+        sendJson(res, 500, { error: 'Resolved song path is outside songs root.' });
+        return;
+      }
+      await fs.rm(songDirectoryPath, { recursive: true, force: true });
+    }
+
+    sendJson(res, 200, { ok: true, songId: removedSong?.id ?? songId });
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : 'Could not remove song.';
+    sendJson(res, 500, { error: message });
+  }
 }
 
 export default defineConfig({

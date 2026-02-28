@@ -17,33 +17,9 @@
       "cover": "cover.png"
     },
     {
-      "id": "i-residui-di-supposta-di-maria",
-      "name": "I residui di supposta di Maria",
-      "folder": "I residui di supposta di Maria",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.jpg"
-    },
-    {
-      "id": "smoke-test",
-      "name": "smoke test",
-      "folder": "smoke-test",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.jpg"
-    },
-    {
       "id": "un-cane-una-scoreggia-un-gatto-una-cacca",
       "name": "Un cane una scoreggia un gatto una cacca",
       "folder": "Un cane una scoreggia un gatto una cacca",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.jpg"
-    },
-    {
-      "id": "deeh",
-      "name": "Deeh",
-      "folder": "Deeh",
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"

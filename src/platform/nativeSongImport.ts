@@ -19,7 +19,8 @@ export type NativeSongImportProgress = {
 export type NativeSongImportResult = {
   song: NativeSongManifestEntry;
   coverExtracted: boolean;
-  audioExtension: '.mp3' | '.ogg' | '.wav';
+  sourceType: 'audio' | 'midi';
+  sourceExtension: '.mp3' | '.ogg' | '.wav' | '.mid';
 };
 
 export type NativeConverterMode = 'legacy' | 'neuralnote' | 'ab';
@@ -28,9 +29,10 @@ export type NativeSongImportOptions = {
   converterMode?: NativeConverterMode;
 };
 
-const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav']);
+const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav'] as const);
+const SUPPORTED_MIDI_EXTENSIONS = new Set(['.mid', '.midi'] as const);
 
-export async function importAudioSongNative(
+export async function importSongNative(
   file: File,
   onProgress?: (update: NativeSongImportProgress) => void,
   options: NativeSongImportOptions = {}
@@ -40,43 +42,46 @@ export async function importAudioSongNative(
   }
 
   const fileName = sanitizeUploadFileName(file.name);
-  const audioExtension = detectAudioExtension(fileName, file.type);
-  if (!audioExtension || !SUPPORTED_AUDIO_EXTENSIONS.has(audioExtension)) {
-    throw new Error('Unsupported audio format. Please upload MP3, OGG, or WAV.');
+  const sourceInfo = detectImportSource(fileName, file.type);
+  if (!sourceInfo) {
+    throw new Error('Unsupported format. Please upload MIDI, MP3, or OGG.');
   }
 
-  const audioBuffer = await file.arrayBuffer();
-  if (audioBuffer.byteLength <= 0) {
+  const fileBuffer = await file.arrayBuffer();
+  if (fileBuffer.byteLength <= 0) {
     throw new Error('Uploaded file is empty.');
   }
-
-  const audioBytes = new Uint8Array(audioBuffer);
+  const fileBytes = new Uint8Array(fileBuffer);
   reportProgress(onProgress, 'Creating song folder...', 0.05);
 
   const baseFolder = sanitizeSongFolderName(fileName);
   const folder = await createUniqueNativeSongFolder(baseFolder);
   await ensureNativeSongFolder(folder);
 
-  const audioFileName = `song${audioExtension}` as const;
-  const audioPath = buildNativeSongAssetPath(folder, audioFileName);
-
-  reportProgress(onProgress, 'Saving source audio...', 0.1);
-  await writeNativeSongBinaryFile(audioPath, audioBytes);
-
-  const converterMode = normalizeNativeConverterMode(options.converterMode);
-  const midiBytes = await convertAudioToMidiWithMode(audioBuffer, audioExtension, converterMode, onProgress);
-
-  const midiFileName = 'song.mid';
-  const midiPath = buildNativeSongAssetPath(folder, midiFileName);
-  await writeNativeSongBinaryFile(midiPath, midiBytes);
-
-  reportProgress(onProgress, 'Checking embedded artwork...', 0.92);
-  const cover = extractEmbeddedCoverFromAudio(audioBytes, fileName, file.type);
-
+  let midiFileName = 'song.mid';
+  let audioFileName: string | undefined;
   let coverFileName: string | undefined;
-  if (cover) {
-    coverFileName = `cover${cover.extension}`;
-    await writeNativeSongBinaryFile(buildNativeSongAssetPath(folder, coverFileName), cover.data);
+
+  if (sourceInfo.sourceType === 'audio') {
+    audioFileName = `song${sourceInfo.sourceExtension}` as const;
+    const audioPath = buildNativeSongAssetPath(folder, audioFileName);
+    reportProgress(onProgress, 'Saving source audio...', 0.1);
+    await writeNativeSongBinaryFile(audioPath, fileBytes);
+
+    const converterMode = normalizeNativeConverterMode(options.converterMode);
+    const midiBytes = await convertAudioToMidiWithMode(fileBuffer, sourceInfo.sourceExtension, converterMode, onProgress);
+    await writeNativeSongBinaryFile(buildNativeSongAssetPath(folder, midiFileName), midiBytes);
+
+    reportProgress(onProgress, 'Checking embedded artwork...', 0.92);
+    const cover = extractEmbeddedCoverFromAudio(fileBytes, fileName, file.type);
+    if (cover) {
+      coverFileName = `cover${cover.extension}`;
+      await writeNativeSongBinaryFile(buildNativeSongAssetPath(folder, coverFileName), cover.data);
+    }
+  } else {
+    reportProgress(onProgress, 'Saving source MIDI...', 0.18);
+    await writeNativeSongBinaryFile(buildNativeSongAssetPath(folder, midiFileName), fileBytes);
+    reportProgress(onProgress, 'Skipping artwork extraction for MIDI source...', 0.92);
   }
 
   reportProgress(onProgress, 'Updating song manifest...', 0.97);
@@ -89,8 +94,8 @@ export async function importAudioSongNative(
     name: songName,
     folder,
     midi: midiFileName,
-    audio: audioFileName,
     highScore: 0,
+    ...(audioFileName ? { audio: audioFileName } : {}),
     ...(coverFileName ? { cover: coverFileName } : {})
   };
 
@@ -100,9 +105,12 @@ export async function importAudioSongNative(
   return {
     song: newSong,
     coverExtracted: Boolean(coverFileName),
-    audioExtension
+    sourceType: sourceInfo.sourceType,
+    sourceExtension: sourceInfo.sourceExtension
   };
 }
+
+export const importAudioSongNative = importSongNative;
 
 export function normalizeNativeConverterMode(value: NativeConverterMode | undefined): NativeConverterMode {
   if (value === 'neuralnote' || value === 'ab') return value;
@@ -158,6 +166,43 @@ function detectAudioExtension(fileName: string, mimeType: string): '.mp3' | '.og
   }
   if (loweredMime.includes('audio/wav') || loweredMime.includes('audio/wave') || loweredMime.includes('audio/x-wav')) {
     return '.wav';
+  }
+
+  return null;
+}
+
+function detectMidiExtension(fileName: string, mimeType: string): '.mid' | '.midi' | null {
+  const lowered = fileName.toLowerCase();
+  if (lowered.endsWith('.mid')) return '.mid';
+  if (lowered.endsWith('.midi')) return '.midi';
+
+  const loweredMime = String(mimeType || '').toLowerCase();
+  if (
+    loweredMime.includes('audio/midi') ||
+    loweredMime.includes('audio/mid') ||
+    loweredMime.includes('audio/x-midi') ||
+    loweredMime.includes('audio/sp-midi') ||
+    loweredMime.includes('application/midi') ||
+    loweredMime.includes('application/x-midi')
+  ) {
+    return '.mid';
+  }
+
+  return null;
+}
+
+function detectImportSource(
+  fileName: string,
+  mimeType: string
+): { sourceType: 'audio'; sourceExtension: '.mp3' | '.ogg' | '.wav' } | { sourceType: 'midi'; sourceExtension: '.mid' } | null {
+  const midiExtension = detectMidiExtension(fileName, mimeType);
+  if (midiExtension && SUPPORTED_MIDI_EXTENSIONS.has(midiExtension)) {
+    return { sourceType: 'midi', sourceExtension: '.mid' };
+  }
+
+  const audioExtension = detectAudioExtension(fileName, mimeType);
+  if (audioExtension && SUPPORTED_AUDIO_EXTENSIONS.has(audioExtension)) {
+    return { sourceType: 'audio', sourceExtension: audioExtension };
   }
 
   return null;

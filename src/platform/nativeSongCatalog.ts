@@ -33,7 +33,7 @@ async function resolveCatalogEntry(
     folder: string;
     cover?: string;
     midi: string;
-    audio: string;
+    audio?: string;
     highScore?: number;
   }
 ): Promise<NativeSongCatalogEntry | null> {
@@ -45,9 +45,11 @@ async function resolveCatalogEntry(
   const midiUrl = await getNativeSongAssetUrl(midiPath);
 
   let audioUrl = midiUrl;
-  const audioPath = buildNativeSongAssetPath(song.folder, song.audio);
-  if (await nativeSongAssetExists(audioPath)) {
-    audioUrl = await getNativeSongAssetUrl(audioPath);
+  if (song.audio) {
+    const audioPath = buildNativeSongAssetPath(song.folder, song.audio);
+    if (await nativeSongAssetExists(audioPath)) {
+      audioUrl = await getNativeSongAssetUrl(audioPath);
+    }
   }
 
   let coverUrl: string | undefined;

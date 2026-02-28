@@ -556,6 +556,7 @@ Properties:
 * each note must have a minimum circular head size: visual width MUST never be smaller than note height (circle-equivalent footprint)
 * when note duration is longer, the shape MUST extend horizontally as a capsule/pill from that circular minimum
 * color based on finger
+* once a TargetNote is played correctly (`Perfect`, `Great`, or `OK`), its bar color MUST turn green
 * show the fret number directly on each target bar (no circular background)
 * fret number must be visible as soon as the note appears on screen, not only during waiting state
 
@@ -597,17 +598,32 @@ During active gameplay (Playing or WaitingForHit), pressing:
 * `Esc` (desktop keyboard)
 * hardware/software `Back` on smartphone
 
-MUST open a pause menu with exactly two actions:
+MUST open a pause menu with exactly three actions:
 
 The gameplay HUD MUST also include a bottom-left pause button that shows icon-only controls (no text):
 * while gameplay is active: classic pause icon (`||`)
-* while pause menu is open: classic play icon (right-pointing triangle)
-Pressing this button MUST open/close the same pause menu.
+* while gameplay is paused by the button itself: classic play icon (right-pointing triangle)
+Pressing this button MUST pause/resume gameplay directly (freeze runtime progression and stop backing playback), without opening the pause menu.
+The pause menu MUST be opened only by `Esc` or smartphone `Back`.
 
+* `Continue` → close pause menu and resume gameplay from the paused position
 * `Reset` → restart the current session with the same song and difficulty
 * `Back to Start` → leave gameplay and return to `SongSelectScene`
 
 While this menu is open, runtime progression and playback MUST remain paused.
+
+---
+
+## 11.5.1 Session pre-roll
+
+When entering `PlayScene`, actual song playback (audio or MIDI) MUST start with a short pre-roll delay to let the user prepare.
+
+Requirements:
+
+* pre-roll duration MUST be between 3 and 5 seconds (default target: 3.5s)
+* during pre-roll, song progression/timeline MUST stay frozen at the song start
+* during pre-roll, HUD SHOULD show a clear "get ready" indication with remaining time
+* the first playable note timing MUST be evaluated only after pre-roll playback start
 
 ---
 
@@ -627,6 +643,9 @@ Pressing this button MUST open a modal settings panel with a dimmed background o
 All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
 The song list in start screen MUST be rendered inside an invisible scrollable viewport (mouse wheel + drag/touch scroll) so users can browse and select songs beyond the initially visible rows.
 Song titles in song cards MUST always stay inside their fixed label box; if a title is too long, UI MUST reduce title font size until it fits.
+Start-screen song cards MUST support long-press (tap/click hold) to open a small `Remove` button anchored to that card.
+If the user taps/clicks anywhere outside that `Remove` button, the remove button MUST close.
+Pressing `Remove` MUST delete the selected song from filesystem and manifest/catalog (both server/web and native library modes), then refresh the song list.
 
 Inside this panel, the user can choose:
 
@@ -723,7 +742,7 @@ Each song entry in `public/songs/manifest.json` MUST include:
 
 * cover image reference (`cover`)
 * MIDI reference file (`midi`)
-* WAV/MP3/OGG reference file (`audio`)
+* optional WAV/MP3/OGG reference file (`audio`)
 * optional high-score seed (`highScore`, integer >= 0)
 
 Songs MUST be organized in dedicated folders under `public/songs/<song-folder>/`.
@@ -732,11 +751,27 @@ For Capacitor native runtime, the same catalog structure MUST also be supported 
 
 Fallback behavior:
 
-* if `midi` is missing or not found, that song MUST NOT be shown in song selection
+* if `midi` is missing in manifest entry, that song MUST NOT be shown in song selection
+* if `midi` path is present but file is missing/unreachable at runtime, session start MUST fail with a clear user-facing error while keeping start screen usable
 * if `cover` is missing or not found, use default asset `public/ui/song-cover-default.svg`
 * if `audio` is missing or not found, use the song MIDI reference as fallback audio source
 * if `audio` falls back to MIDI, the song-select button thumbnail MUST show fallback cover art
 * during gameplay playback, if a valid WAV/MP3/OGG file is available it MUST be used as backing track; otherwise playback MUST use MIDI synth rendering
+
+---
+
+## 11.13.2 Start-screen startup loading policy
+
+Start-screen startup MUST prioritize fast first interaction over full upfront validation.
+
+Startup requirements:
+
+* start-screen UI MUST render immediately, without waiting for full song-catalog asset validation
+* song catalog entries MUST be parsed/normalized first, then hydrated progressively
+* cover images MUST load lazily with visible cards prioritized before off-screen cards
+* startup flow MUST NOT perform mass `HEAD/GET` validation for every song asset on web runtime
+* hard asset validation MUST happen only when starting a session for the selected song
+* if selected song validation fails (missing MIDI or invalid source), runtime MUST show an explicit error and keep start-screen interactive
 
 ---
 
@@ -773,25 +808,26 @@ Runtime strategy constraints:
 * production/default mode MUST use the C++/ONNX converter
 * debug converter labels `legacy` and `neuralnote` MUST remain accepted for backward compatibility, but both MUST map to the same C++/ONNX backend
 * debug converter mode `ab` MUST be rejected explicitly with a clear user-facing error
-* import conversion MUST estimate tempo via Tempo-CNN ONNX and apply both:
-  * `tempoBpm` global value
-  * optional local `tempoMap` points when available
+* import conversion MUST estimate a constant tempo via Tempo-CNN ONNX and apply only:
+  * `tempoBpm` global constant value
 * for all conversion modes, exported MIDI end-of-track time MUST match input audio duration (MP3/OGG/WAV), including trailing silence up to audio end
 
 ---
 
-## 11.15 Start-screen audio import workflow
+## 11.15 Start-screen song import workflow
 
-The start screen MUST include an `Import MP3/OGG` action that allows uploading a local audio file (`.mp3` or `.ogg`).
+The start screen MUST include an `Import MIDI/MP3/OGG` action that allows uploading a local source file (`.mid`/`.midi`, `.mp3`, `.ogg`).
 
-When an audio file is selected:
+When a source file is selected:
 
 * create a dedicated song folder using the uploaded filename without extension
-* save the original uploaded audio as song backing track in that folder
-* convert the uploaded audio into MIDI (`song.mid`) using the local converter
-* show a conversion progress bar in start screen while the job is running
-* inspect embedded metadata artwork and, when available, extract and save it as the song cover in the same folder
-* append/update the song manifest with the new song entry (`id`, `name`, `folder`, `midi`, `audio`, optional `cover`)
+* for MP3/OGG input: save the original uploaded audio as song backing track in that folder
+* for MP3/OGG input: convert the uploaded audio into MIDI (`song.mid`) using the local converter
+* for MIDI input: save the uploaded MIDI as `song.mid` directly (no audio conversion)
+* show an import progress bar in start screen while the job is running
+* for MP3/OGG input: inspect embedded metadata artwork and, when available, extract and save it as the song cover in the same folder
+* for MIDI input: no audio (`audio`) and no cover (`cover`) are required
+* append/update the song manifest with the new song entry (`id`, `name`, `folder`, `midi`, optional `audio`, optional `cover`)
 * refresh the start-screen song list automatically so the new song appears immediately after import
 
 Manifest/storage target by platform:
@@ -803,7 +839,7 @@ Implementation constraints for import paths:
 
 * web dev/preview import default MUST run through the C++/ONNX converter wrapper
 * Capacitor Android import default MUST run through the native C++/ONNX plugin bridge
-* server/native import MUST estimate tempo via Tempo-CNN ONNX and inject MIDI tempo metadata (`tempoBpm` + local `tempoMap` when present)
+* server/native import MUST estimate constant tempo via Tempo-CNN ONNX and inject MIDI tempo metadata using only `tempoBpm` (no local `tempoMap`) for MP3/OGG sources
 * debug converter labels `legacy` and `neuralnote` MUST remain accepted as aliases for the same backend
 * debug converter mode `ab` MUST be rejected explicitly (server HTTP `400`, native import error)
 
@@ -845,6 +881,20 @@ Minimap requirements:
 * progression MUST remain synchronized with gameplay timeline (`runtime.current_tick`)
 * minimap bounds MUST keep a clear gap from the bottom-right hand reminder widget (no overlap)
 * minimap height MUST be doubled versus previous baseline sizing
+
+---
+
+## 11.18 Play-scene speed slider
+
+The gameplay scene MUST include a playback speed slider centered at the top of the screen.
+
+Speed control requirements:
+
+* slider range MUST be from `25%` to `125%`
+* default value MUST be `100%`
+* changing speed MUST affect song progression/timeline pace in real time
+* when an audio backing track is active, slider changes MUST also update backing audio playback rate to stay synchronized with gameplay progression
+* current selected speed value MUST be visible in the slider HUD
 
 ---
 

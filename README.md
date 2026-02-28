@@ -175,22 +175,28 @@ Struttura dati nel manifest (`public/songs/manifest.json`):
 ```
 
 Regole fallback:
-- Se manca/è invalido `midi`: la canzone non viene mostrata nella schermata iniziale.
+- Se manca `midi` nel manifest: la canzone non viene mostrata nella schermata iniziale.
+- Se `midi` è presente ma il file non è raggiungibile: l'avvio sessione fallisce con errore esplicito, senza bloccare la Start Screen.
 - Se manca/è invalido `cover`: viene usato `public/ui/song-cover-default.svg`.
 - Se manca/è invalido `audio`: viene usato il file MIDI come riferimento audio.
 - In gameplay: se `audio` punta a un WAV/MP3/OGG valido viene usato come backing track; altrimenti viene usato il playback MIDI.
 
-## Import audio da Start Screen
+Policy startup (web):
+- La Start Screen viene mostrata subito (senza attesa di validazione massiva di tutti gli asset).
+- La lista canzoni si aggiorna in background.
+- Le cover vengono caricate in lazy loading (prima quelle visibili, poi le altre).
 
-Nella schermata iniziale è disponibile il pulsante `Import MP3/OGG`.
+## Import song da Start Screen
+
+Nella schermata iniziale è disponibile il pulsante `Import MIDI/MP3/OGG`.
 
 Flusso:
-- selezioni un file `.mp3` o `.ogg`
+- selezioni un file `.mid`/`.midi` oppure `.mp3`/`.ogg`
 - viene creata una cartella canzone con il nome del file (senza estensione)
-- l'audio originale viene salvato come `song.mp3` oppure `song.ogg`
-- parte la conversione audio → MIDI con barra di avanzamento
-- il file MIDI generato viene salvato come `song.mid`
-- se nei metadata audio è presente un'immagine embedded, viene estratta e salvata come `cover.*`
+- input MP3/OGG: l'audio originale viene salvato come `song.mp3` oppure `song.ogg`
+- input MP3/OGG: parte la conversione audio -> MIDI con barra di avanzamento
+- input MIDI: il file viene salvato direttamente come `song.mid` (senza conversione audio)
+- input MP3/OGG: se nei metadata audio è presente un'immagine embedded, viene estratta e salvata come `cover.*`
 - il catalogo canzoni viene aggiornato e la lista in Start Screen si ricarica automaticamente
 
 Persistenza per piattaforma:
@@ -200,3 +206,23 @@ Persistenza per piattaforma:
 Debug import source:
 - In build debug/dev è visibile il selettore `Import Source` (`Auto`, `Server`, `Native`) sotto il pulsante import.
 - `Auto` usa il percorso corretto in base alla piattaforma (server su web, native su Capacitor).
+
+## Benchmark startup CLI
+
+Per misurare il costo startup catalogo:
+
+```bash
+npm run perf:startup
+```
+
+Opzioni utili:
+
+```bash
+node scripts/benchmark-startup.mjs --mode current --repeat 20
+node scripts/benchmark-startup.mjs --mode optimized --repeat 20
+node scripts/benchmark-startup.mjs --mode both --manifest public/songs/manifest.json --repeat 30
+```
+
+Output:
+- riepilogo in console con `avg/p50/p95/max`
+- JSON completo salvato in `/tmp/guitarhelio-startup-benchmark.json`

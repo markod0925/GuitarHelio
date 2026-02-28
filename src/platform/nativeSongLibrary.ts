@@ -6,7 +6,7 @@ export type NativeSongManifestEntry = {
   name: string;
   folder: string;
   midi: string;
-  audio: string;
+  audio?: string;
   cover?: string;
   highScore?: number;
 };
@@ -100,6 +100,23 @@ export async function updateNativeSongHighScore(songId: string, score: number): 
   await writeNativeSongsManifest(nextEntries);
 }
 
+export async function deleteNativeSongById(songId: string): Promise<boolean> {
+  if (!isNativeSongLibraryAvailable()) return false;
+
+  const trimmedSongId = songId.trim();
+  const unprefixedSongId = trimmedSongId.startsWith('native-') ? trimmedSongId.slice('native-'.length) : trimmedSongId;
+  if (!unprefixedSongId) return false;
+
+  const entries = await readNativeSongsManifest();
+  const target = entries.find((entry) => entry.id === unprefixedSongId);
+  if (!target) return false;
+
+  await removeNativeSongFolder(target.folder);
+  const remaining = entries.filter((entry) => entry.id !== unprefixedSongId);
+  await writeNativeSongsManifest(remaining);
+  return true;
+}
+
 export async function nativeSongAssetExists(pathValue: string): Promise<boolean> {
   try {
     await Filesystem.stat({
@@ -186,11 +203,11 @@ function normalizeNativeManifestEntry(value: unknown): NativeSongManifestEntry |
   const name = asNonEmptyString(data.name);
   const folder = asNonEmptyString(data.folder);
   const midi = asNonEmptyString(data.midi);
-  const audio = asNonEmptyString(data.audio);
+  const audio = asOptionalString(data.audio);
   const cover = asOptionalString(data.cover);
   const highScore = asOptionalNonNegativeInteger(data.highScore);
 
-  if (!id || !name || !folder || !midi || !audio) return null;
+  if (!id || !name || !folder || !midi) return null;
 
   return {
     id,
@@ -233,4 +250,17 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
+}
+
+async function removeNativeSongFolder(folder: string): Promise<void> {
+  const folderPath = `${NATIVE_SONGS_ROOT_PATH}/${folder}`;
+  try {
+    await Filesystem.rmdir({
+      path: folderPath,
+      directory: Directory.Data,
+      recursive: true
+    });
+  } catch {
+    // Ignore removal failures to keep manifest cleanup resilient.
+  }
 }

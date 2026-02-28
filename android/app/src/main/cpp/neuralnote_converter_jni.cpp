@@ -134,7 +134,7 @@ Java_com_guitarhelio_app_converter_NeuralNoteConverterPlugin_runTranscription(
         TempoCnn tempoEstimator(tempoModelPath);
         TempoEstimateOptions tempoOptions;
         tempoOptions.interpolate = true;
-        tempoOptions.localTempo = true;
+        tempoOptions.localTempo = false;
         auto tempoEstimate = tempoEstimator.estimate(tempoSamples, tempoOptions);
 
         if (!writeTranscriptionAndTempoJson(outputPath, coreEvents, tempoEstimate, ioError)) {

@@ -9,8 +9,8 @@ import { createMicNode } from '../audio/micInput';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { STANDARD_TUNING } from '../guitar/tuning';
 import { readNativeSongCatalogEntries } from '../platform/nativeSongCatalog';
-import { importAudioSongNative } from '../platform/nativeSongImport';
-import { isNativeSongLibraryAvailable } from '../platform/nativeSongLibrary';
+import { importSongNative } from '../platform/nativeSongImport';
+import { deleteNativeSongById, isNativeSongLibraryAvailable } from '../platform/nativeSongLibrary';
 import { RoundedBox } from './RoundedBox';
 
 type Difficulty = 'Easy' | 'Medium' | 'Hard';
@@ -37,7 +37,8 @@ type SongOption = {
   glow: RoundedBox;
   thumbnail: RoundedBox;
   thumbnailImage?: Phaser.GameObjects.Image;
-  thumbnailMaskGraphics?: Phaser.GameObjects.Graphics;
+  thumbnailImageMaskGraphics?: Phaser.GameObjects.Graphics;
+  thumbnailImageFrame?: RoundedBox;
   thumbLabel?: Phaser.GameObjects.Text;
   baseY: number;
   labelBaseY: number;
@@ -55,6 +56,12 @@ type SongGridView = {
   contentBottom: number;
 };
 
+type SongRemovePrompt = {
+  songId: string;
+  button: RoundedBox;
+  label: Phaser.GameObjects.Text;
+};
+
 type SongManifestEntry = {
   id: string;
   name: string;
@@ -64,6 +71,17 @@ type SongManifestEntry = {
   audio?: string;
   file?: string;
   highScore?: number;
+};
+
+type SongCatalogLoadPolicy = {
+  validateAssetsOnStartup: boolean;
+  lazyCoverLoading: 'none' | 'visible-first';
+  coverLoadConcurrency: number;
+};
+
+type AssetExistenceCacheEntry = {
+  exists: boolean;
+  expiresAtMs?: number;
 };
 
 type DifficultyDropdown = {
@@ -145,9 +163,19 @@ const IMPORT_STATUS_POLL_MS = 700;
 const IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
 const IMPORT_SOURCE_STORAGE_KEY = 'gh_import_source_mode';
 const DEBUG_CONVERTER_MODE_STORAGE_KEY = 'gh_debug_converter_mode';
+const ASSET_NEGATIVE_CACHE_TTL_MS = 30_000;
+const DEFAULT_COVER_LOAD_CONCURRENCY = 3;
+const SONG_REMOVE_LONG_PRESS_MS = 560;
+const SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+
+const WEB_STARTUP_CATALOG_POLICY: SongCatalogLoadPolicy = {
+  validateAssetsOnStartup: false,
+  lazyCoverLoading: 'visible-first',
+  coverLoadConcurrency: DEFAULT_COVER_LOAD_CONCURRENCY
+};
 
 export class SongSelectScene extends Phaser.Scene {
-  private readonly assetExistenceCache = new Map<string, boolean>();
+  private readonly assetExistenceCache = new Map<string, AssetExistenceCacheEntry>();
   private songOptions: SongOption[] = [];
   private songScrollOffset = 0;
   private songScrollMax = 0;
@@ -156,6 +184,11 @@ export class SongSelectScene extends Phaser.Scene {
   private songScrollDragPointerId?: number;
   private songScrollDragStartY = 0;
   private songScrollDragStartOffset = 0;
+  private songLongPressPointerId?: number;
+  private songLongPressStartX = 0;
+  private songLongPressStartY = 0;
+  private songLongPressTimer?: Phaser.Time.TimerEvent;
+  private songRemovePrompt?: SongRemovePrompt;
   private selectedSongIndex = 0;
   private selectedDifficulty: Difficulty = 'Medium';
   private selectedStrings = new Set<number>();
@@ -174,17 +207,24 @@ export class SongSelectScene extends Phaser.Scene {
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
   private debugConverterMode: DebugConverterMode = 'legacy';
+  private reloadSongsTask?: () => Promise<void>;
+  private coverLoadGeneration = 0;
+  private catalogLoadGeneration = 0;
 
   constructor() {
     super('SongSelectScene');
   }
 
   async create(): Promise<void> {
+    this.coverLoadGeneration += 1;
+    this.catalogLoadGeneration += 1;
     const { width, height } = this.scale;
     const titleSize = Math.max(34, Math.floor(width * 0.058));
     const labelSize = Math.max(14, Math.floor(width * 0.017));
     this.initializeDefaults();
     this.restoreSessionSettingsPreference();
+    let songs: SongEntry[] = [];
+    let isCatalogLoading = true;
 
     this.drawNeonStartBackdrop(width, height);
 
@@ -195,11 +235,6 @@ export class SongSelectScene extends Phaser.Scene {
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0.5);
-    const songs = await this.readManifestSongs();
-    await this.preloadSongCoverTextures(songs);
-    if (!this.scene.isActive()) return;
-    loadingSongsLabel.destroy();
-    this.selectedSongIndex = Phaser.Math.Clamp(this.selectedSongIndex, 0, Math.max(0, songs.length - 1));
 
     if (this.textures.exists('logoGuitarHelio')) {
       const logoWidth = Math.min(420, width * 0.46);
@@ -226,8 +261,7 @@ export class SongSelectScene extends Phaser.Scene {
     }
 
     const songGridView = this.createSongOptions(songs, width, height, labelSize);
-    const songOptions = songGridView.options;
-    this.songOptions = songOptions;
+    this.songOptions = songGridView.options;
     this.configureSongScroll(songGridView);
 
     const difficultyDropdown = this.createDifficultyDropdown(width, height, labelSize);
@@ -280,7 +314,8 @@ export class SongSelectScene extends Phaser.Scene {
         fontFamily: 'Courier New, monospace',
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setVisible(false);
     const settingsSummary = this.add
       .text(settingsButton.x, settingsButtonY + 39, '', {
         color: '#a5b4fc',
@@ -293,7 +328,7 @@ export class SongSelectScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
     const importLabel = this.add
-      .text(importButton.x, importButtonY, 'Import MP3/OGG', {
+      .text(importButton.x, importButtonY, 'Import MIDI/MP3/OGG', {
         color: '#f1f5f9',
         fontFamily: 'Trebuchet MS, Verdana, sans-serif',
         fontStyle: 'bold',
@@ -340,12 +375,11 @@ export class SongSelectScene extends Phaser.Scene {
         )
       : [];
     const describeImportSummary = (): string => {
-      const sourceSummary =
-        this.importSourceMode === 'auto' ? 'Adds song folder + MIDI + cover' : `Forced source: ${this.importSourceMode}`;
+      const sourceSummary = this.importSourceMode === 'auto' ? '' : `Forced source: ${this.importSourceMode}`;
       if (!showImportSourceDebug || this.debugConverterMode === 'legacy') {
         return sourceSummary;
       }
-      return `${sourceSummary} • conv: ${this.debugConverterMode}`;
+      return sourceSummary ? `${sourceSummary} • conv: ${this.debugConverterMode}` : `conv: ${this.debugConverterMode}`;
     };
     let importSummaryMessage = describeImportSummary();
     let importSummaryColor = '#a5b4fc';
@@ -414,9 +448,9 @@ export class SongSelectScene extends Phaser.Scene {
     const refreshSelections = (): void => {
       const settingsValid = this.selectedStrings.size > 0 && this.selectedFingers.size > 0 && this.selectedFrets.size > 0;
       const hasPlayableSongs = songs.length > 0;
-      const canStartSession = settingsValid && hasPlayableSongs && !this.importInProgress;
+      const canStartSession = settingsValid && hasPlayableSongs && !this.importInProgress && !isCatalogLoading;
 
-      songOptions.forEach((option, index) => {
+      this.songOptions.forEach((option, index) => {
         const active = index === this.selectedSongIndex;
         option.glow.setAlpha(active ? 0.38 : 0);
         option.background.setFillStyle(active ? 0x1e3a8a : 0x162447, active ? 0.78 : 0.55);
@@ -461,7 +495,7 @@ export class SongSelectScene extends Phaser.Scene {
       importButton.setStrokeStyle(2, this.importInProgress ? 0xf59e0b : 0x3b82f6, this.importInProgress ? 0.82 : 0.52);
       importLabel.setColor(this.importInProgress ? '#fef3c7' : '#f1f5f9');
       importSummary.setText(
-        truncateLabel(this.importInProgress ? 'Converting audio to MIDI...' : importSummaryMessage, Math.max(28, Math.floor(width * 0.036)))
+        truncateLabel(this.importInProgress ? 'Import in progress...' : importSummaryMessage, Math.max(28, Math.floor(width * 0.036)))
       );
       importSummary.setColor(this.importInProgress ? '#fde68a' : importSummaryColor);
       importSourceTitle?.setColor(this.importInProgress ? '#fcd34d' : '#94a3b8');
@@ -506,10 +540,12 @@ export class SongSelectScene extends Phaser.Scene {
       startLabel.setText(this.importInProgress ? 'Import in progress...' : canStartSession ? 'Start Session' : 'Fix Song Setup');
       playIcon?.setAlpha(canStartSession ? 0.98 : 0.72);
 
-      if (!hasPlayableSongs) {
+      if (isCatalogLoading) {
+        hint.setText('Loading songs...');
+      } else if (!hasPlayableSongs) {
         hint.setText('No songs with a valid MIDI file found in /public/songs.');
       } else if (this.importInProgress) {
-        hint.setText('Importing song: keep this screen open until conversion finishes.');
+        hint.setText('Importing song: keep this screen open until import finishes.');
       } else {
         hint.setText(settingsValid ? '' : 'Open Settings and select at least one string, one finger and one fret.');
       }
@@ -544,7 +580,7 @@ export class SongSelectScene extends Phaser.Scene {
       importSummaryMessage = `Importing ${file.name} (${importRoute})`;
       importSummaryColor = '#fde68a';
       importOverlay.container.setVisible(true);
-      setImportOverlayProgress('Uploading audio...', 0.02);
+      setImportOverlayProgress('Uploading file...', 0.02);
       refreshSelections();
 
       try {
@@ -560,9 +596,7 @@ export class SongSelectScene extends Phaser.Scene {
         refreshSelections();
 
         await waitMs(480);
-        if (this.scene.isActive()) {
-          this.scene.restart();
-        }
+        await this.refreshSongListAfterImport();
         return;
       } catch (error) {
         const message = toErrorMessage(error);
@@ -582,6 +616,7 @@ export class SongSelectScene extends Phaser.Scene {
 
     const openSettings = (): void => {
       if (this.importInProgress) return;
+      this.hideSongRemovePrompt();
       closeDifficulty();
       closeTuner();
       this.settingsOpen = true;
@@ -598,6 +633,7 @@ export class SongSelectScene extends Phaser.Scene {
     const openTuner = (): void => {
       if (this.importInProgress) return;
       if (this.settingsOpen) return;
+      this.hideSongRemovePrompt();
       closeDifficulty();
       this.tunerOpen = true;
       this.tunerPanel?.container.setVisible(true);
@@ -621,6 +657,7 @@ export class SongSelectScene extends Phaser.Scene {
 
     const openImportPicker = (): void => {
       if (this.importInProgress) return;
+      this.hideSongRemovePrompt();
       if (this.settingsOpen) closeSettings();
       if (this.tunerOpen) closeTuner();
       closeDifficulty();
@@ -629,9 +666,14 @@ export class SongSelectScene extends Phaser.Scene {
       refreshSelections();
     };
 
-    const startGame = (): void => {
+    const startGame = async (): Promise<void> => {
       if (this.importInProgress) return;
+      this.hideSongRemovePrompt();
       if (this.settingsOpen) return;
+      if (isCatalogLoading) {
+        refreshSelections();
+        return;
+      }
       if (this.difficultyOpen) {
         closeDifficulty();
         refreshSelections();
@@ -657,16 +699,42 @@ export class SongSelectScene extends Phaser.Scene {
         hint.setText('No playable songs found: add a song folder with a valid MIDI file.');
         return;
       }
+      const validatedSong = await this.validateSongBeforeStart(song);
+      if (!validatedSong) {
+        hint.setText('Selected song has missing assets (MIDI required).');
+        refreshSelections();
+        return;
+      }
+      songs[this.selectedSongIndex] = validatedSong;
+      const selectedOption = this.songOptions[this.selectedSongIndex];
+      if (selectedOption) {
+        selectedOption.song = validatedSong;
+      }
       this.persistSessionSettingsPreference();
       this.scene.start('PlayScene', {
-        songId: song.id,
-        midiUrl: song.midi,
-        audioUrl: song.audio,
+        songId: validatedSong.id,
+        midiUrl: validatedSong.midi,
+        audioUrl: validatedSong.audio,
         difficulty: this.selectedDifficulty,
         allowedStrings: sortedValues(this.selectedStrings),
         allowedFingers: sortedValues(this.selectedFingers),
         allowedFrets: sortedValues(this.selectedFrets)
       });
+    };
+
+    const removeSong = async (song: SongEntry): Promise<void> => {
+      if (this.importInProgress) return;
+      this.cancelSongLongPress();
+      this.hideSongRemovePrompt();
+      hint.setText(`Removing "${song.name}"...`);
+      try {
+        await this.removeSongFromLibrary(song);
+        this.assetExistenceCache.clear();
+        await this.refreshSongListAfterImport();
+      } catch (error) {
+        hint.setText(`Remove failed: ${truncateLabel(toErrorMessage(error), 62)}`);
+        refreshSelections();
+      }
     };
 
     const onSongWheel = (
@@ -681,6 +749,9 @@ export class SongSelectScene extends Phaser.Scene {
       refreshSelections();
     };
     const onSongPointerDown = (pointer: Phaser.Input.Pointer): void => {
+      if (this.songRemovePrompt && !this.isPointerInsideObject(pointer, this.songRemovePrompt.button)) {
+        this.hideSongRemovePrompt();
+      }
       if (!this.songViewportRect || this.songScrollMax <= 0) return;
       if (!this.songViewportRect.contains(pointer.worldX, pointer.worldY)) return;
       this.songScrollDragPointerId = pointer.id;
@@ -688,12 +759,22 @@ export class SongSelectScene extends Phaser.Scene {
       this.songScrollDragStartOffset = this.songScrollOffset;
     };
     const onSongPointerMove = (pointer: Phaser.Input.Pointer): void => {
+      if (
+        this.songLongPressPointerId === pointer.id &&
+        Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.songLongPressStartX, this.songLongPressStartY) >
+          SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX
+      ) {
+        this.cancelSongLongPress();
+      }
       if (this.songScrollDragPointerId !== pointer.id || !pointer.isDown) return;
       const dragDelta = this.songScrollDragStartY - pointer.worldY;
       this.setSongScrollOffset(this.songScrollDragStartOffset + dragDelta);
       refreshSelections();
     };
     const onSongPointerUp = (pointer: Phaser.Input.Pointer): void => {
+      if (this.songLongPressPointerId === pointer.id) {
+        this.cancelSongLongPress();
+      }
       if (this.songScrollDragPointerId !== pointer.id) return;
       this.songScrollDragPointerId = undefined;
     };
@@ -810,9 +891,9 @@ export class SongSelectScene extends Phaser.Scene {
       option.label.on('pointerdown', toggleFret);
     });
 
-    startButton.on('pointerdown', startGame);
-    startLabel.on('pointerdown', startGame);
-    playIcon?.on('pointerdown', startGame);
+    startButton.on('pointerdown', () => void startGame());
+    startLabel.on('pointerdown', () => void startGame());
+    playIcon?.on('pointerdown', () => void startGame());
 
     this.input.keyboard?.on('keydown-LEFT', () => {
       if (this.settingsOpen || songs.length === 0) return;
@@ -843,11 +924,11 @@ export class SongSelectScene extends Phaser.Scene {
         closeSettings();
         return;
       }
-      startGame();
+      void startGame();
     });
     this.input.keyboard?.on('keydown-SPACE', () => {
       if (this.settingsOpen) return;
-      startGame();
+      void startGame();
     });
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.settingsOpen) {
@@ -862,23 +943,108 @@ export class SongSelectScene extends Phaser.Scene {
       }
     });
 
-    songOptions.forEach((option, index) => {
-      const selectSong = (): void => {
-        if (this.settingsOpen || songs.length === 0) return;
-        if (this.difficultyOpen) closeDifficulty();
-        this.selectedSongIndex = index;
+    const bindSongInteractions = (): void => {
+      this.songOptions.forEach((option, index) => {
+        const selectSong = (): void => {
+          if (this.settingsOpen || songs.length === 0) return;
+          if (this.difficultyOpen) closeDifficulty();
+          this.hideSongRemovePrompt();
+          this.selectedSongIndex = index;
+          refreshSelections();
+        };
+        const startLongPress = (pointer: Phaser.Input.Pointer): void => {
+          if (this.settingsOpen || songs.length === 0 || this.importInProgress) return;
+          this.cancelSongLongPress();
+          this.songLongPressPointerId = pointer.id;
+          this.songLongPressStartX = pointer.worldX;
+          this.songLongPressStartY = pointer.worldY;
+          this.songLongPressTimer = this.time.delayedCall(SONG_REMOVE_LONG_PRESS_MS, () => {
+            this.songLongPressTimer = undefined;
+            if (this.songLongPressPointerId !== pointer.id || !pointer.isDown) return;
+            if (
+              Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.songLongPressStartX, this.songLongPressStartY) >
+              SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX
+            ) {
+              return;
+            }
+            this.showSongRemovePrompt(option, () => {
+              const liveSong = songs[index];
+              if (!liveSong) return;
+              void removeSong(liveSong);
+            });
+          });
+        };
+        const stopLongPress = (pointer: Phaser.Input.Pointer): void => {
+          if (this.songLongPressPointerId !== pointer.id) return;
+          this.cancelSongLongPress();
+        };
+        option.background.on('pointerdown', selectSong);
+        option.thumbnail.on('pointerdown', selectSong);
+        option.thumbnailImage?.on('pointerdown', selectSong);
+        option.thumbLabel?.on('pointerdown', selectSong);
+        option.label.on('pointerdown', selectSong);
+        option.subLabel.on('pointerdown', selectSong);
+        option.background.on('pointerdown', startLongPress);
+        option.thumbnail.on('pointerdown', startLongPress);
+        option.thumbnailImage?.on('pointerdown', startLongPress);
+        option.thumbLabel?.on('pointerdown', startLongPress);
+        option.label.on('pointerdown', startLongPress);
+        option.subLabel.on('pointerdown', startLongPress);
+        option.background.on('pointerup', stopLongPress);
+        option.thumbnail.on('pointerup', stopLongPress);
+        option.thumbnailImage?.on('pointerup', stopLongPress);
+        option.thumbLabel?.on('pointerup', stopLongPress);
+        option.label.on('pointerup', stopLongPress);
+        option.subLabel.on('pointerup', stopLongPress);
+        option.background.on('pointerout', stopLongPress);
+        option.thumbnail.on('pointerout', stopLongPress);
+        option.thumbnailImage?.on('pointerout', stopLongPress);
+        option.thumbLabel?.on('pointerout', stopLongPress);
+        option.label.on('pointerout', stopLongPress);
+        option.subLabel.on('pointerout', stopLongPress);
+      });
+    };
+    bindSongInteractions();
+
+    const reloadSongsInBackground = async (): Promise<void> => {
+      const loadGeneration = ++this.catalogLoadGeneration;
+      isCatalogLoading = true;
+      refreshSelections();
+      try {
+        const loadedSongs = await this.readManifestSongs(WEB_STARTUP_CATALOG_POLICY);
+        if (!this.scene.isActive() || loadGeneration !== this.catalogLoadGeneration) return;
+
+        songs = loadedSongs;
+        this.selectedSongIndex = Phaser.Math.Clamp(this.selectedSongIndex, 0, Math.max(0, songs.length - 1));
+        this.hideSongRemovePrompt();
+        this.destroySongOptions();
+        const nextSongGrid = this.createSongOptions(songs, width, height, labelSize);
+        this.songOptions = nextSongGrid.options;
+        this.configureSongScroll(nextSongGrid);
+        bindSongInteractions();
+        this.ensureSelectedSongVisible();
+        isCatalogLoading = false;
+        loadingSongsLabel.setVisible(false);
         refreshSelections();
-      };
-      option.background.on('pointerdown', selectSong);
-      option.thumbnail.on('pointerdown', selectSong);
-      option.thumbnailImage?.on('pointerdown', selectSong);
-      option.thumbLabel?.on('pointerdown', selectSong);
-      option.label.on('pointerdown', selectSong);
-      option.subLabel.on('pointerdown', selectSong);
-    });
+        if (WEB_STARTUP_CATALOG_POLICY.lazyCoverLoading === 'visible-first') {
+          void this.preloadSongCoverTexturesLazy(songs, WEB_STARTUP_CATALOG_POLICY.coverLoadConcurrency);
+        }
+      } catch (error) {
+        console.warn('Failed to load songs in background', error);
+        if (!this.scene.isActive() || loadGeneration !== this.catalogLoadGeneration) return;
+        isCatalogLoading = false;
+        loadingSongsLabel.setVisible(false);
+        refreshSelections();
+      }
+    };
+    this.reloadSongsTask = reloadSongsInBackground;
+    void reloadSongsInBackground();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       void this.stopTuner(false);
+      this.coverLoadGeneration += 1;
+      this.catalogLoadGeneration += 1;
+      this.reloadSongsTask = undefined;
       this.tunerOpen = false;
       this.tunerPanel = undefined;
       this.importInProgress = false;
@@ -889,14 +1055,15 @@ export class SongSelectScene extends Phaser.Scene {
       this.input.off('pointermove', onSongPointerMove);
       this.input.off('pointerup', onSongPointerUp);
       this.input.off('pointerupoutside', onSongPointerUp);
+      this.cancelSongLongPress();
+      this.hideSongRemovePrompt();
       this.songMaskGraphics?.destroy();
       this.songMaskGraphics = undefined;
+      this.destroySongOptions();
       this.songViewportRect = undefined;
       this.songScrollOffset = 0;
       this.songScrollMax = 0;
       this.songScrollDragPointerId = undefined;
-      this.songOptions.forEach((option) => option.thumbnailMaskGraphics?.destroy());
-      this.songOptions = [];
     });
 
     refreshSelections();
@@ -940,6 +1107,22 @@ export class SongSelectScene extends Phaser.Scene {
 
   }
 
+  private destroySongOptions(): void {
+    this.hideSongRemovePrompt();
+    this.songOptions.forEach((option) => {
+      option.glow.destroy();
+      option.background.destroy();
+      option.thumbnail.destroy();
+      option.thumbnailImage?.destroy();
+      option.thumbnailImageMaskGraphics?.destroy();
+      option.thumbnailImageFrame?.destroy();
+      option.thumbLabel?.destroy();
+      option.label.destroy();
+      option.subLabel.destroy();
+    });
+    this.songOptions = [];
+  }
+
   private configureSongScroll(view: SongGridView): void {
     this.songScrollOffset = 0;
     this.songScrollMax = Math.max(0, view.contentBottom - (view.viewportTop + view.viewportHeight));
@@ -955,6 +1138,7 @@ export class SongSelectScene extends Phaser.Scene {
       option.glow.setMask(mask);
       option.background.setMask(mask);
       option.thumbnail.setMask(mask);
+      option.thumbnailImageFrame?.setMask(mask);
       option.thumbLabel?.setMask(mask);
       option.label.setMask(mask);
       option.subLabel.setMask(mask);
@@ -981,19 +1165,42 @@ export class SongSelectScene extends Phaser.Scene {
       option.background.setY(y);
       option.thumbnail.setY(y);
       option.thumbnailImage?.setY(y);
-      option.thumbnailMaskGraphics?.setY(y);
+      option.thumbnailImageMaskGraphics?.setY(y);
+      option.thumbnailImageFrame?.setY(y);
       option.thumbLabel?.setY(y);
       option.label.setY(option.labelBaseY - this.songScrollOffset);
       option.subLabel.setY(option.subLabelBaseY - this.songScrollOffset);
+      this.applySongThumbnailViewportCrop(option, viewportTop, viewportBottom);
 
       const top = y - option.cardHeight / 2;
       const bottom = y + option.cardHeight / 2;
-      const fullyVisible = top >= viewportTop + 2 && bottom <= viewportBottom - 2;
-      option.thumbnailImage?.setVisible(fullyVisible);
+      const intersectsViewport = bottom >= viewportTop + 2 && top <= viewportBottom - 2;
       option.interactiveObjects.forEach((interactiveObject) => {
-        if (interactiveObject.input) interactiveObject.input.enabled = fullyVisible;
+        if (interactiveObject.input) interactiveObject.input.enabled = intersectsViewport;
       });
     });
+  }
+
+  private applySongThumbnailViewportCrop(option: SongOption, viewportTop: number, viewportBottom: number): void {
+    const image = option.thumbnailImage;
+    if (!image) return;
+
+    const top = image.y - image.displayHeight / 2;
+    const bottom = image.y + image.displayHeight / 2;
+    const visibleTop = Math.max(top, viewportTop);
+    const visibleBottom = Math.min(bottom, viewportBottom);
+    const isVisible = visibleBottom > visibleTop + 0.5;
+
+    image.setVisible(isVisible);
+    option.thumbnailImageFrame?.setVisible(isVisible);
+    if (!isVisible) return;
+
+    const frameHeight = Math.max(1, image.frame.height);
+    const frameWidth = Math.max(1, image.frame.width);
+    const scaleY = image.displayHeight / frameHeight;
+    const cropY = Math.max(0, (visibleTop - top) / scaleY);
+    const cropHeight = Math.max(1, (visibleBottom - visibleTop) / scaleY);
+    image.setCrop(0, cropY, frameWidth, cropHeight);
   }
 
   private ensureSelectedSongVisible(): void {
@@ -1313,7 +1520,7 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const tip = this.add
-      .text(panelX, panelY + panelHeight * 0.39, 'Keep this window open during conversion.', {
+      .text(panelX, panelY + panelHeight * 0.39, 'Keep this window open during import.', {
         color: '#94a3b8',
         fontFamily: 'Trebuchet MS, Verdana, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
@@ -1353,11 +1560,112 @@ export class SongSelectScene extends Phaser.Scene {
 
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.mp3,.ogg,audio/mpeg,audio/ogg';
+    input.accept = '.mid,.midi,.mp3,.ogg,audio/midi,audio/mid,audio/x-midi,application/midi,application/x-midi,audio/mpeg,audio/ogg';
     input.style.display = 'none';
     document.body.appendChild(input);
     this.importInput = input;
     return input;
+  }
+
+  private async refreshSongListAfterImport(): Promise<void> {
+    if (this.scene.isActive() && this.reloadSongsTask) {
+      try {
+        await this.reloadSongsTask();
+        return;
+      } catch {
+        // Fall back to full restart when incremental refresh fails.
+      }
+    }
+
+    if (this.scene.isActive()) {
+      this.scene.restart();
+      return;
+    }
+
+    const restartWhenActive = (): void => {
+      if (!this.scene.isActive()) return;
+      this.scene.restart();
+    };
+
+    this.events.once(Phaser.Scenes.Events.WAKE, restartWhenActive);
+    this.events.once(Phaser.Scenes.Events.RESUME, restartWhenActive);
+  }
+
+  private cancelSongLongPress(): void {
+    this.songLongPressPointerId = undefined;
+    this.songLongPressTimer?.remove(false);
+    this.songLongPressTimer = undefined;
+  }
+
+  private hideSongRemovePrompt(): void {
+    if (!this.songRemovePrompt) return;
+    this.songRemovePrompt.button.destroy();
+    this.songRemovePrompt.label.destroy();
+    this.songRemovePrompt = undefined;
+  }
+
+  private showSongRemovePrompt(option: SongOption, onRemove: () => void): void {
+    this.hideSongRemovePrompt();
+
+    const buttonWidth = 84;
+    const buttonHeight = 28;
+    const x = option.background.x + option.background.width * 0.34;
+    const y = option.background.y - option.cardHeight * 0.34;
+    const button = new RoundedBox(this, x, y, buttonWidth, buttonHeight, 0x7f1d1d, 0.98)
+      .setStrokeStyle(1, 0xfca5a5, 0.95)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(980);
+    const label = this.add
+      .text(x, y, 'Remove', {
+        color: '#ffe4e6',
+        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.012))}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(981);
+
+    const remove = (): void => {
+      this.cancelSongLongPress();
+      this.hideSongRemovePrompt();
+      onRemove();
+    };
+    button.on('pointerdown', remove);
+    label.on('pointerdown', remove);
+    this.songRemovePrompt = { songId: option.song.id, button, label };
+  }
+
+  private isPointerInsideObject(pointer: Phaser.Input.Pointer, object: Phaser.GameObjects.GameObject): boolean {
+    if (!('getBounds' in object) || typeof object.getBounds !== 'function') return false;
+    const bounds = object.getBounds();
+    return bounds.contains(pointer.worldX, pointer.worldY);
+  }
+
+  private async removeSongFromLibrary(song: SongEntry): Promise<void> {
+    if (song.id.startsWith('native-')) {
+      const removed = await deleteNativeSongById(song.id);
+      if (!removed) {
+        throw new Error('Song not found in native library.');
+      }
+      return;
+    }
+    await this.removeSongViaServer(song);
+  }
+
+  private async removeSongViaServer(song: SongEntry): Promise<void> {
+    const response = await fetch('/api/song-remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        songId: song.id,
+        folder: song.folder
+      })
+    });
+
+    if (response.ok) return;
+    const payload = (await parseJsonSafe(response)) as { error?: string } | null;
+    throw new Error(firstNonEmpty(payload?.error, `Song remove failed (${response.status}).`) ?? 'Song remove failed.');
   }
 
   private async importSongFile(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
@@ -1380,12 +1688,12 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private async importSongFileNative(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
-    const mimeType = file.type && file.type.trim().length > 0 ? file.type : inferAudioMimeType(file.name);
-    if (!/\.(mp3|ogg|wav)$/i.test(file.name) && !/^audio\/(mpeg|mp3|ogg|wav|wave|x-wav)/i.test(mimeType)) {
-      throw new Error('Unsupported audio format. Please upload MP3, OGG, or WAV.');
+    const mimeType = file.type && file.type.trim().length > 0 ? file.type : inferUploadMimeType(file.name);
+    if (!detectSongImportKind(file.name, mimeType)) {
+      throw new Error('Unsupported format. Please upload MIDI, MP3, or OGG.');
     }
 
-    await importAudioSongNative(
+    await importSongNative(
       file,
       ({ stage, progress }) => {
         onProgress(stage, progress);
@@ -1397,7 +1705,10 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private async importSongFileViaServer(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
-    const mimeType = file.type && file.type.trim().length > 0 ? file.type : inferAudioMimeType(file.name);
+    const mimeType = file.type && file.type.trim().length > 0 ? file.type : inferUploadMimeType(file.name);
+    if (!detectSongImportKind(file.name, mimeType)) {
+      throw new Error('Unsupported format. Please upload MIDI, MP3, or OGG.');
+    }
     const body = await file.arrayBuffer();
     if (body.byteLength <= 0) {
       throw new Error('The selected file is empty.');
@@ -1442,7 +1753,7 @@ export class SongSelectScene extends Phaser.Scene {
         throw new Error(firstNonEmpty(payload?.error, `Import status failed (${response.status}).`));
       }
 
-      onProgress(firstNonEmpty(payload.stage, 'Converting audio to MIDI...') ?? 'Converting audio to MIDI...', clamp01(payload.progress ?? 0));
+      onProgress(firstNonEmpty(payload.stage, 'Import in progress...') ?? 'Import in progress...', clamp01(payload.progress ?? 0));
 
       if (payload.status === 'completed') {
         onProgress('Import completed.', 1);
@@ -1450,7 +1761,7 @@ export class SongSelectScene extends Phaser.Scene {
       }
 
       if (payload.status === 'failed') {
-        throw new Error(firstNonEmpty(payload.error, 'Audio import failed.') ?? 'Audio import failed.');
+        throw new Error(firstNonEmpty(payload.error, 'Song import failed.') ?? 'Song import failed.');
       }
 
       if (Date.now() - startedAt > IMPORT_TIMEOUT_MS) {
@@ -1590,7 +1901,7 @@ export class SongSelectScene extends Phaser.Scene {
     return typeof cached === 'string' ? cached : null;
   }
 
-  private async readManifestSongs(): Promise<SongEntry[]> {
+  private async readManifestSongs(policy: SongCatalogLoadPolicy): Promise<SongEntry[]> {
     const fallbackManifestSongs: SongManifestEntry[] = [
       {
         id: 'example',
@@ -1625,7 +1936,7 @@ export class SongSelectScene extends Phaser.Scene {
     const mergedSongs = [...sourceSongs, ...nativeSongs];
 
     const songs = (
-      await Promise.all(mergedSongs.map((rawSong, index) => this.resolveSongEntry(rawSong, index)))
+      await Promise.all(mergedSongs.map((rawSong, index) => this.resolveSongEntry(rawSong, index, policy)))
     ).filter((song): song is SongEntry => song !== null);
 
     if (songs.length > 0) return songs;
@@ -1633,7 +1944,9 @@ export class SongSelectScene extends Phaser.Scene {
     // Last-resort fallback in case the manifest exists but all entries are invalid/missing MIDI.
     const fallbackSongs = (
       await Promise.all(
-        fallbackManifestSongs.map((rawSong, index) => this.resolveSongEntry(rawSong, mergedSongs.length + index))
+        fallbackManifestSongs.map((rawSong, index) =>
+          this.resolveSongEntry(rawSong, mergedSongs.length + index, policy)
+        )
       )
     ).filter((song): song is SongEntry => song !== null);
     return fallbackSongs;
@@ -1659,30 +1972,36 @@ export class SongSelectScene extends Phaser.Scene {
     }
   }
 
-  private async resolveSongEntry(rawSong: SongManifestEntry, index: number): Promise<SongEntry | null> {
+  private async resolveSongEntry(
+    rawSong: SongManifestEntry,
+    index: number,
+    policy: SongCatalogLoadPolicy
+  ): Promise<SongEntry | null> {
     const folder = normalizeFolder(rawSong.folder);
     if (!folder) return null;
 
     const midiField = firstNonEmpty(rawSong.midi, rawSong.file);
     if (!midiField) return null;
     const midiUrl = this.resolveSongAssetPath(folder, midiField);
-    if (!(await this.assetExists(midiUrl))) return null;
+    if (policy.validateAssetsOnStartup && !(await this.assetExists(midiUrl))) return null;
 
     let coverUrl = DEFAULT_SONG_COVER_URL;
     if (rawSong.cover && rawSong.cover.trim().length > 0) {
       const requestedCover = this.resolveSongAssetPath(folder, rawSong.cover);
-      if (await this.assetExists(requestedCover)) {
+      if (!policy.validateAssetsOnStartup || (await this.assetExists(requestedCover))) {
         coverUrl = requestedCover;
       }
     }
 
     let audioUrl = midiUrl;
-    let usesMidiFallback = true;
+    let usesMidiFallback = !rawSong.audio;
     if (rawSong.audio && rawSong.audio.trim().length > 0) {
       const requestedAudio = this.resolveSongAssetPath(folder, rawSong.audio);
-      if (await this.assetExists(requestedAudio)) {
+      if (!policy.validateAssetsOnStartup || (await this.assetExists(requestedAudio))) {
         audioUrl = requestedAudio;
         usesMidiFallback = false;
+      } else {
+        usesMidiFallback = true;
       }
     }
 
@@ -1715,20 +2034,29 @@ export class SongSelectScene extends Phaser.Scene {
 
   private async assetExists(url: string): Promise<boolean> {
     const cached = this.assetExistenceCache.get(url);
-    if (cached !== undefined) return cached;
+    const now = Date.now();
+    if (cached) {
+      if (cached.exists) return true;
+      if ((cached.expiresAtMs ?? 0) > now) return false;
+      this.assetExistenceCache.delete(url);
+    }
 
     const capacitorFileUrl = isCapacitorFileUrl(url);
+    const requestUrl = url;
 
     if (!capacitorFileUrl) {
       try {
-        const headResponse = await fetch(url, { method: 'HEAD' });
+        const headResponse = await fetch(requestUrl, { method: 'HEAD', cache: 'no-store' });
         if (headResponse.ok) {
           const exists = isValidAssetResponse(url, headResponse);
-          this.assetExistenceCache.set(url, exists);
+          this.assetExistenceCache.set(
+            url,
+            exists ? { exists: true } : { exists: false, expiresAtMs: now + ASSET_NEGATIVE_CACHE_TTL_MS }
+          );
           return exists;
         }
         if (headResponse.status !== 405 && headResponse.status !== 501) {
-          this.assetExistenceCache.set(url, false);
+          this.assetExistenceCache.set(url, { exists: false, expiresAtMs: now + ASSET_NEGATIVE_CACHE_TTL_MS });
           return false;
         }
       } catch {
@@ -1737,17 +2065,51 @@ export class SongSelectScene extends Phaser.Scene {
     }
 
     try {
-      const getResponse = await fetch(url, { method: 'GET' });
+      const getResponse = await fetch(requestUrl, { method: 'GET', cache: 'no-store' });
       const exists = getResponse.ok && (capacitorFileUrl || isValidAssetResponse(url, getResponse));
-      this.assetExistenceCache.set(url, exists);
+      this.assetExistenceCache.set(
+        url,
+        exists ? { exists: true } : { exists: false, expiresAtMs: now + ASSET_NEGATIVE_CACHE_TTL_MS }
+      );
       return exists;
     } catch {
-      this.assetExistenceCache.set(url, false);
+      this.assetExistenceCache.set(url, { exists: false, expiresAtMs: now + ASSET_NEGATIVE_CACHE_TTL_MS });
       return false;
     }
   }
 
-  private async preloadSongCoverTextures(songs: SongEntry[]): Promise<void> {
+  private async validateSongBeforeStart(song: SongEntry): Promise<SongEntry | null> {
+    const midiExists = await this.assetExists(song.midi);
+    if (!midiExists) return null;
+
+    let audioUrl = song.midi;
+    let usesMidiFallback = true;
+    if (song.audio && song.audio !== song.midi) {
+      if (await this.assetExists(song.audio)) {
+        audioUrl = song.audio;
+        usesMidiFallback = false;
+      }
+    }
+
+    let coverUrl = DEFAULT_SONG_COVER_URL;
+    let coverTextureKey = DEFAULT_SONG_COVER_TEXTURE_KEY;
+    if (song.cover && song.cover !== DEFAULT_SONG_COVER_URL) {
+      if (await this.assetExists(song.cover)) {
+        coverUrl = song.cover;
+        coverTextureKey = song.coverTextureKey;
+      }
+    }
+
+    return {
+      ...song,
+      cover: coverUrl,
+      coverTextureKey,
+      audio: audioUrl,
+      usesMidiFallback
+    };
+  }
+
+  private async preloadSongCoverTexturesLazy(songs: SongEntry[], concurrency: number): Promise<void> {
     const coversToLoad = songs.filter(
       (song) =>
         song.coverTextureKey !== DEFAULT_SONG_COVER_TEXTURE_KEY &&
@@ -1756,21 +2118,53 @@ export class SongSelectScene extends Phaser.Scene {
     );
     if (coversToLoad.length === 0) return;
 
+    const visibleSongIds = new Set(
+      this.songOptions
+        .filter((option) => this.songViewportRect?.contains(option.background.x, option.background.y) ?? false)
+        .map((option) => option.song.id)
+    );
+    const prioritized = [
+      ...coversToLoad.filter((song) => visibleSongIds.has(song.id)),
+      ...coversToLoad.filter((song) => !visibleSongIds.has(song.id))
+    ];
+
+    const safeConcurrency = Math.max(1, Math.floor(concurrency));
+    const generation = ++this.coverLoadGeneration;
+    for (let index = 0; index < prioritized.length; index += safeConcurrency) {
+      if (!this.scene.isActive() || generation !== this.coverLoadGeneration) return;
+      const batch = prioritized.slice(index, index + safeConcurrency);
+      await this.loadSongCoverBatch(batch);
+      if (!this.scene.isActive() || generation !== this.coverLoadGeneration) return;
+      this.refreshLoadedSongCoverTextures();
+      await waitMs(0);
+    }
+  }
+
+  private async loadSongCoverBatch(batch: SongEntry[]): Promise<void> {
+    if (batch.length === 0) return;
+
     await new Promise<void>((resolve) => {
+      const failedKeys = new Set<string>();
       const onFileError = (file: Phaser.Loader.File): void => {
-        const failedSong = coversToLoad.find((song) => song.coverTextureKey === file.key);
-        if (!failedSong) return;
-        failedSong.cover = DEFAULT_SONG_COVER_URL;
-        failedSong.coverTextureKey = DEFAULT_SONG_COVER_TEXTURE_KEY;
+        failedKeys.add(file.key);
       };
       const onComplete = (): void => {
         this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, onFileError);
+        if (failedKeys.size > 0) {
+          batch.forEach((song) => {
+            if (failedKeys.has(song.coverTextureKey)) {
+              song.cover = DEFAULT_SONG_COVER_URL;
+              song.coverTextureKey = DEFAULT_SONG_COVER_TEXTURE_KEY;
+            }
+          });
+        }
         resolve();
       };
 
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, onFileError);
       this.load.once(Phaser.Loader.Events.COMPLETE, onComplete);
-      coversToLoad.forEach((song) => {
+      batch.forEach((song) => {
+        if (this.textures.exists(song.coverTextureKey)) return;
         if (song.cover.toLowerCase().endsWith('.svg')) {
           this.load.svg(song.coverTextureKey, song.cover);
         } else {
@@ -1778,6 +2172,22 @@ export class SongSelectScene extends Phaser.Scene {
         }
       });
       this.load.start();
+    });
+  }
+
+  private refreshLoadedSongCoverTextures(): void {
+    this.songOptions.forEach((option) => {
+      if (!option.thumbnailImage) return;
+      const hasSongCoverTexture = this.textures.exists(option.song.coverTextureKey);
+      const hasDefaultCoverTexture = this.textures.exists(DEFAULT_SONG_COVER_TEXTURE_KEY);
+      const key =
+        option.song.usesMidiFallback || !hasSongCoverTexture
+          ? hasDefaultCoverTexture
+            ? DEFAULT_SONG_COVER_TEXTURE_KEY
+            : option.song.coverTextureKey
+          : option.song.coverTextureKey;
+      if (option.thumbnailImage.texture.key === key) return;
+      option.thumbnailImage.setTexture(key);
     });
   }
 
@@ -1816,41 +2226,38 @@ export class SongSelectScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x475569, 0.55)
         .setInteractive({ useHandCursor: true });
 
-      const thumbnailTextureKey = song.usesMidiFallback ? DEFAULT_SONG_COVER_TEXTURE_KEY : song.coverTextureKey;
-      const thumbnailImageSize = thumbnailSize - 8;
-      const thumbnailImage = this.textures.exists(thumbnailTextureKey)
+      const hasSongCoverTexture = this.textures.exists(song.coverTextureKey);
+      const hasDefaultCoverTexture = this.textures.exists(DEFAULT_SONG_COVER_TEXTURE_KEY);
+      const thumbnailTextureKey =
+        song.usesMidiFallback || !hasSongCoverTexture
+          ? hasDefaultCoverTexture
+            ? DEFAULT_SONG_COVER_TEXTURE_KEY
+            : song.coverTextureKey
+          : song.coverTextureKey;
+      const thumbnailImageSize = thumbnailSize - 2;
+      const thumbnailCornerRadius = Math.max(7, Math.round(thumbnailImageSize * 0.13));
+      const thumbnailImage = this.add
+        .image(thumbnail.x, thumbnail.y, thumbnailTextureKey)
+        .setDisplaySize(thumbnailImageSize, thumbnailImageSize)
+        .setInteractive({ useHandCursor: true });
+      const thumbnailImageMaskGraphics = thumbnailImage
         ? this.add
-            .image(thumbnail.x, thumbnail.y, thumbnailTextureKey)
-            .setDisplaySize(thumbnailImageSize, thumbnailImageSize)
-            .setInteractive({ useHandCursor: true })
+            .graphics({ x: thumbnail.x, y: thumbnail.y })
+            .setVisible(false)
+            .fillStyle(0xffffff, 1)
+            .fillRoundedRect(
+              -thumbnailImageSize / 2,
+              -thumbnailImageSize / 2,
+              thumbnailImageSize,
+              thumbnailImageSize,
+              thumbnailCornerRadius
+            )
         : undefined;
-      const thumbnailMaskGraphics =
-        thumbnailImage &&
-        this.add
-          .graphics({ x: thumbnail.x, y: thumbnail.y })
-          .setVisible(false)
-          .fillStyle(0xffffff, 1)
-          .fillRoundedRect(
-            -thumbnailImageSize / 2,
-            -thumbnailImageSize / 2,
-            thumbnailImageSize,
-            thumbnailImageSize,
-            Math.max(8, Math.round(thumbnailImageSize * 0.14))
-          );
-      if (thumbnailImage && thumbnailMaskGraphics) {
-        thumbnailImage.setMask(thumbnailMaskGraphics.createGeometryMask());
+      if (thumbnailImage && thumbnailImageMaskGraphics) {
+        thumbnailImage.setMask(thumbnailImageMaskGraphics.createGeometryMask());
       }
-      const thumbLabel = thumbnailImage
-        ? undefined
-        : this.add
-            .text(thumbnail.x, thumbnail.y, song.name.toLowerCase().includes('star wars') ? '✦' : '♪', {
-              color: '#94a3b8',
-              fontFamily: 'Trebuchet MS, Verdana, sans-serif',
-              fontStyle: 'bold',
-              fontSize: `${Math.max(26, labelSize + 10)}px`
-            })
-            .setOrigin(0.5)
-            .setInteractive({ useHandCursor: true });
+      const thumbnailImageFrame = undefined;
+      const thumbLabel = undefined;
 
       const label = this.add
         .text(x - buttonWidth * 0.02, labelY, song.name, {
@@ -1878,9 +2285,7 @@ export class SongSelectScene extends Phaser.Scene {
         .setOrigin(0, 0.5)
         .setInteractive({ useHandCursor: true });
 
-      const interactiveObjects: Phaser.GameObjects.GameObject[] = [background, thumbnail, label, subLabel];
-      if (thumbnailImage) interactiveObjects.push(thumbnailImage);
-      if (thumbLabel) interactiveObjects.push(thumbLabel);
+      const interactiveObjects: Phaser.GameObjects.GameObject[] = [background, thumbnail, thumbnailImage, label, subLabel];
 
       options.push({
         song,
@@ -1890,7 +2295,8 @@ export class SongSelectScene extends Phaser.Scene {
         glow,
         thumbnail,
         thumbnailImage,
-        thumbnailMaskGraphics: thumbnailMaskGraphics || undefined,
+        thumbnailImageMaskGraphics,
+        thumbnailImageFrame,
         thumbLabel,
         baseY: y,
         labelBaseY: labelY,
@@ -2199,15 +2605,30 @@ function truncateLabel(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`;
 }
 
-function inferAudioMimeType(fileName: string): string {
+function inferUploadMimeType(fileName: string): string {
   const lowered = fileName.toLowerCase();
+  if (lowered.endsWith('.mid') || lowered.endsWith('.midi')) {
+    return 'audio/midi';
+  }
   if (lowered.endsWith('.ogg') || lowered.endsWith('.oga') || lowered.endsWith('.opus')) {
     return 'audio/ogg';
   }
-  if (lowered.endsWith('.wav')) {
-    return 'audio/wav';
-  }
   return 'audio/mpeg';
+}
+
+function detectSongImportKind(fileName: string, mimeType: string): 'audio' | 'midi' | null {
+  const lowered = fileName.toLowerCase();
+  if (/\.(mid|midi)$/i.test(lowered)) return 'midi';
+  if (/\.(mp3|ogg)$/i.test(lowered)) return 'audio';
+
+  const loweredMime = String(mimeType || '').toLowerCase();
+  if (/^(audio\/midi|audio\/mid|audio\/x-midi|audio\/sp-midi|application\/midi|application\/x-midi)/i.test(loweredMime)) {
+    return 'midi';
+  }
+  if (/^audio\/(mpeg|mp3|ogg|x-ogg|opus)/i.test(loweredMime)) {
+    return 'audio';
+  }
+  return null;
 }
 
 function stripFileExtension(fileName: string): string {
