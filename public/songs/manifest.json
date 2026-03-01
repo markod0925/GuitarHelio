@@ -15,14 +15,6 @@
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.png"
-    },
-    {
-      "id": "un-cane-una-scoreggia-un-gatto-una-cacca",
-      "name": "Un cane una scoreggia un gatto una cacca",
-      "folder": "Un cane una scoreggia un gatto una cacca",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.jpg"
     }
   ]
 }

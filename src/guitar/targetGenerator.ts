@@ -115,29 +115,17 @@ function projectToGuitar(
 ): WeightedCandidate | null {
   const direct = buildCandidates(sourceMidi, sourceMidi, tick, durationTicks, profile);
   if (direct.length > 0) {
-    return direct.sort(
-      (a, b) =>
-        cost(a, previousFret, previousFinger, previousBoxStart, profile) -
-        cost(b, previousFret, previousFinger, previousBoxStart, profile)
-    )[0];
+    return pickBestCandidate(direct, previousFret, previousFinger, previousBoxStart, profile);
   }
 
   const upOctave = buildCandidates(sourceMidi + 12, sourceMidi, tick, durationTicks, profile);
   if (upOctave.length > 0) {
-    return upOctave.sort(
-      (a, b) =>
-        cost(a, previousFret, previousFinger, previousBoxStart, profile) -
-        cost(b, previousFret, previousFinger, previousBoxStart, profile)
-    )[0];
+    return pickBestCandidate(upOctave, previousFret, previousFinger, previousBoxStart, profile);
   }
 
   const downOctave = buildCandidates(sourceMidi - 12, sourceMidi, tick, durationTicks, profile);
   if (downOctave.length > 0) {
-    return downOctave.sort(
-      (a, b) =>
-        cost(a, previousFret, previousFinger, previousBoxStart, profile) -
-        cost(b, previousFret, previousFinger, previousBoxStart, profile)
-    )[0];
+    return pickBestCandidate(downOctave, previousFret, previousFinger, previousBoxStart, profile);
   }
 
   return null;
@@ -188,4 +176,24 @@ function cost(
     openStringBonus +
     pinkyPreparedBonus
   );
+}
+
+function pickBestCandidate(
+  candidates: WeightedCandidate[],
+  previousFret: number | null,
+  previousFinger: number | null,
+  previousBoxStart: number | null,
+  profile: DifficultyProfile
+): WeightedCandidate {
+  let best = candidates[0];
+  let bestCost = cost(best, previousFret, previousFinger, previousBoxStart, profile);
+  for (let i = 1; i < candidates.length; i += 1) {
+    const candidate = candidates[i];
+    const candidateCost = cost(candidate, previousFret, previousFinger, previousBoxStart, profile);
+    if (candidateCost < bestCost) {
+      best = candidate;
+      bestCost = candidateCost;
+    }
+  }
+  return best;
 }

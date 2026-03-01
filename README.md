@@ -1,5 +1,25 @@
 # Guitar Helio
 
+## Panoramica
+
+Guitar Helio e un trainer chitarra con:
+
+- **Start Screen** con catalogo canzoni, import `MIDI/MP3/OGG`, tuner e impostazioni sessione.
+- **Play Scene** con target note semplificate, gating a tempo, scoring e minimappa timeline.
+- **Modalita playback ibrida**: usa backing audio (`mp3/wav/ogg`) quando disponibile, altrimenti fallback MIDI synth.
+- **Persistenza locale**: punteggi migliori per canzone + impostazioni difficolta/corde/dita/tasti.
+
+## Comandi principali
+
+```bash
+npm run dev            # sviluppo web locale
+npm run dev:mobile     # sviluppo LAN (telefono nella stessa rete)
+npm run build          # typecheck + build produzione
+npm run preview        # preview build produzione
+npm run test           # test unitari (Vitest)
+npm run lint           # typecheck TS senza emit
+```
+
 ## Avvio rapido (PC + smartphone in LAN)
 
 1. Installa Node.js 20+ sul computer.
@@ -18,6 +38,14 @@
    ```
 5. Apri dal telefono (stessa rete Wi-Fi) l'URL mostrato come `Network`, ad esempio:
    `http://192.168.1.10:5173`
+
+## Controlli gameplay
+
+- `Esc` o tasto `Back` (mobile): apre/chiude il menu pausa (`Continue`, `Reset`, `Back to Start`).
+- Pulsante pausa in basso a sinistra: pausa/riprende direttamente il gameplay senza aprire il menu.
+- Slider velocita in alto: `25%` -> `125%` (default `100%`), sincronizzato con timeline e backing audio.
+- Pulsante `Debug Note`: suona la nota target corrente.
+- `F3` (debug/dev): toggle overlay diagnostico centrale.
 
 ## Convertitore Audio -> MIDI (NeuralNote + Tempo-CNN C++/ONNX)
 
@@ -105,6 +133,8 @@ Inoltre il permesso va richiesto a runtime (Capacitor/Android) prima di iniziare
 
 - Checklist di conformità implementativa al GDD: `IMPLEMENTATION_QA_CHECKLIST.md`
 - Suite test manuali runtime (Desktop + Android): `MANUAL_QA_RUNTIME_SUITE.md`
+- Test automatici: `npm run test`
+- Verifica build completa: `npm run build`
 
 ### Smoke test rapido conversione Audio -> MIDI (Server + Android)
 
@@ -226,3 +256,16 @@ node scripts/benchmark-startup.mjs --mode both --manifest public/songs/manifest.
 Output:
 - riepilogo in console con `avg/p50/p95/max`
 - JSON completo salvato in `/tmp/guitarhelio-startup-benchmark.json`
+
+## Note performance e stabilita
+
+- Le label dei fret in gameplay sono renderizzate con **pooling** (riuso oggetti) per evitare creazione/distruzione ad ogni frame.
+- Score e streak HUD sono aggiornati in modo **incrementale** su eventi di scoring, riducendo lavoro nel loop runtime.
+- Le azioni del menu pausa sono cliccabili sia sul bottone che sul testo (desktop/touch).
+- Le feature di import/conversione native (**NeuralNote + Tempo-CNN**, catalogo native songs, persistenza high score native) sono caricate **on-demand** tramite `import()` solo quando servono dalla Start Screen o a fine partita.
+
+### Large chunk warnings (Vite)
+
+- Il warning Vite `Some chunks are larger than 500 kB` segnala **qualsiasi chunk** sopra soglia, inclusi chunk lazy, non solo il bootstrap iniziale.
+- Nel build attuale resta un chunk grande **core** (runtime Phaser + gameplay/audio necessari all'app).
+- Il precedente lazy chunk molto grande legato ai decoder audio WASM non è più nel bundle frontend: il decode usa WebAudio nativo del runtime.

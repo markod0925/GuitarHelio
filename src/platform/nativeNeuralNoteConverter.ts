@@ -1,18 +1,11 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
-import decodeAudio from 'audio-decode';
+import { decodeAudioBuffer, type DecodedAudioBuffer } from '../audio/decodeAudioBuffer';
 import { Midi } from '@tonejs/midi';
 
 export type NativeAudioToMidiProgress = {
   stage: string;
   progress: number;
-};
-
-type DecodedAudioBuffer = {
-  numberOfChannels: number;
-  sampleRate: number;
-  length: number;
-  getChannelData: (channel: number) => Float32Array;
 };
 
 type CoreNoteEvent = {
@@ -96,7 +89,7 @@ export async function convertAudioBufferToMidiNativeCxx(
   }
 
   reportProgress(onProgress, 'Decoding audio...', 0.16);
-  const decoded = (await decodeAudio(sourceBuffer)) as DecodedAudioBuffer;
+  const decoded = await decodeAudioBuffer(sourceBuffer);
   const sourceSampleRate = Math.max(1, Number(decoded.sampleRate) || NEURALNOTE_SAMPLE_RATE);
   const mono = downmixToMono(decoded);
   const audioDurationSeconds = Math.max(0, mono.length / sourceSampleRate);

@@ -1,4 +1,3 @@
-```markdown
 # Guitar Trainer (Working Title)
 ## Codex-Ready Technical Specification
 
@@ -126,7 +125,7 @@ manifest.json
 example/
 song.mid
 
-````
+```
 
 ---
 
@@ -145,7 +144,7 @@ type SourceNote = {
   channel: number
   track: number
 }
-````
+```
 
 These MUST always be scheduled in audio playback.
 
@@ -507,6 +506,10 @@ Points:
 * OK: +40
 * Miss: +0
 
+HUD/runtime performance constraint:
+
+* displayed score and streak SHOULD be maintained incrementally on score events, avoiding per-frame full-array reductions/scans
+
 ---
 
 ## 10.3 End-of-song metrics
@@ -559,6 +562,7 @@ Properties:
 * once a TargetNote is played correctly (`Perfect`, `Great`, or `OK`), its bar color MUST turn green
 * show the fret number directly on each target bar (no circular background)
 * fret number must be visible as soon as the note appears on screen, not only during waiting state
+* fret-number labels MUST use reusable pooled text objects (no create/destroy per frame in the runtime loop)
 
 Suggested finger colors:
 
@@ -575,14 +579,18 @@ Suggested finger colors:
 ## 11.3 Hit line
 
 * fixed vertical line
-* ball aligned with it
+* target-note timing is still referenced to this line
+* the ball may leave the hit line while traveling, but it must touch the pad at note timing
 
 ---
 
 ## 11.4 Ball behavior
 
-* bounces on beat
-* must be vertically anchored to the string of the first incoming TargetNote (active target), at the hit line
+* must move with a ballistic trajectory between consecutive TargetNotes (no instant teleport between strings)
+* trajectory must evolve on both axes (`x` + `y`) during flight; impacts happen on-pad only at note timing
+* must touch the target pad exactly when the note has to be played
+* after touching a note, it must bounce toward the next note location
+* at song start, before the first impact, the ball must appear already in motion: launch from string 3 at maximum height and fall into the first timed impact
 * bounce amplitude must be configurable via app constants/settings and default to a visibly pronounced jump
 * must render a visible ghost trail behind the ball; the trail must remain clearly readable even on sudden jumps between different strings
 * freezes during WaitingForHit
@@ -605,6 +613,7 @@ The gameplay HUD MUST also include a bottom-left pause button that shows icon-on
 * while gameplay is paused by the button itself: classic play icon (right-pointing triangle)
 Pressing this button MUST pause/resume gameplay directly (freeze runtime progression and stop backing playback), without opening the pause menu.
 The pause menu MUST be opened only by `Esc` or smartphone `Back`.
+All pause menu actions MUST be clickable both on button backgrounds and on their text labels.
 
 * `Continue` → close pause menu and resume gameplay from the paused position
 * `Reset` → restart the current session with the same song and difficulty
@@ -843,6 +852,16 @@ Implementation constraints for import paths:
 * debug converter labels `legacy` and `neuralnote` MUST remain accepted as aliases for the same backend
 * debug converter mode `ab` MUST be rejected explicitly (server HTTP `400`, native import error)
 
+### 11.15.1 Runtime chunking constraints (core vs on-demand)
+
+* gameplay-critical modules (scene rendering, runtime state machine, pitch/timing validation, audio playback required to play a session) MUST remain part of core app loading.
+* import/conversion modules that are not required to start or play a normal session MUST be loaded on-demand via dynamic import:
+  * native import workflow (`nativeSongImport`)
+  * native converter bridge (`nativeNeuralNoteConverter`, NeuralNote/Tempo-CNN path)
+  * native catalog/library helpers used only by import/remove/persist-native operations
+* client-side audio decode for import SHOULD use runtime-native WebAudio decode to avoid bundling heavy optional codec decoder stacks in frontend chunks.
+* build chunk-size warnings MUST be interpreted as per-chunk warnings (core and lazy chunks), not as guaranteed startup download size.
+
 Debug/testing support:
 
 * in debug builds, the start screen MUST expose an `Import Source` selector (`Auto`, `Server`, `Native`) to force the import path for validation
@@ -946,7 +965,7 @@ The MVP is complete when:
 * MIDI loads and plays full music
 * TargetNotes are generated per difficulty
 * lanes and bars render correctly
-* ball stops at each TargetNote
+* ball follows ballistic transitions between notes and lands on-note at required timing
 * microphone pitch triggers progression
 * scoring accumulates
 * song completes with results screen
@@ -955,8 +974,3 @@ The MVP is complete when:
 ---
 
 # End of Specification
-
-```
-
-::contentReference[oaicite:0]{index=0}
-```

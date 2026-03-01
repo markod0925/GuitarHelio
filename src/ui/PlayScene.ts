@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Capacitor } from '@capacitor/core';
 import {
   BALL_BOUNCE_AMPLITUDE_FACTOR,
   BALL_BOUNCE_AMPLITUDE_MAX_PX,
@@ -23,7 +24,6 @@ import { createInitialRuntimeState, type RuntimeTransition, updateRuntimeState }
 import { generateTargetNotes } from '../guitar/targetGenerator';
 import { loadMidiFromUrl } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
-import { isNativeSongLibraryAvailable, updateNativeSongHighScore } from '../platform/nativeSongLibrary';
 import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
 import { formatSummary } from './hud';
@@ -116,8 +116,11 @@ export class PlayScene extends Phaser.Scene {
 
   private sceneData?: SceneData;
   private targets: TargetNote[] = [];
+  private targetOnsetSeconds: number[] = [];
   private runtime = createInitialRuntimeState();
   private scoreEvents: ScoreEvent[] = [];
+  private totalScore = 0;
+  private currentComboStreak = 0;
   private correctlyHitTargetIds = new Set<string>();
   private latestFrames: PitchFrame[] = [];
   private waitingStartMs: number | null = null;
@@ -221,9 +224,12 @@ export class PlayScene extends Phaser.Scene {
     this.tempoMap = loaded.tempoMap;
     this.ticksPerQuarter = loaded.ticksPerQuarter;
     this.targets = generateTargetNotes(loaded.sourceNotes, this.profile, loaded.tempoMap);
+    this.targetOnsetSeconds = this.targets.map((target) => loaded.tempoMap.tickToSeconds(target.tick));
 
     this.runtime = createInitialRuntimeState();
     this.scoreEvents = [];
+    this.totalScore = 0;
+    this.currentComboStreak = 0;
     this.correctlyHitTargetIds.clear();
     this.latestFrames = [];
     this.waitingStartMs = null;
@@ -424,6 +430,7 @@ export class PlayScene extends Phaser.Scene {
 
     const startSongSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
     this.startPlaybackClock(startSongSeconds);
+    this.resetBallTrailHistory();
     this.playbackStarted = true;
     this.prePlaybackStartAtMs = undefined;
 
@@ -549,7 +556,7 @@ export class PlayScene extends Phaser.Scene {
       }
       const deltaMs = this.measureHitDeltaMs(target, previousState);
       const rated = rateHit(deltaMs);
-      this.scoreEvents.push({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
+      this.recordScoreEvent({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
       if (rated.rating !== 'Miss') {
         this.correctlyHitTargetIds.add(target.id);
       }
@@ -566,12 +573,22 @@ export class PlayScene extends Phaser.Scene {
       }
       const fallbackDeltaMs = (this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds ?? 0) * 1000;
       const deltaMs = this.waitingStartMs === null ? fallbackDeltaMs : performance.now() - this.waitingStartMs;
-      this.scoreEvents.push({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
+      this.recordScoreEvent({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
       this.waitingStartMs = null;
       this.latestFrames = [];
       this.feedbackText = 'Miss (timeout)';
       this.feedbackUntilMs = performance.now() + 900;
     }
+  }
+
+  private recordScoreEvent(event: ScoreEvent): void {
+    this.scoreEvents.push(event);
+    this.totalScore += event.points;
+    if (event.rating === 'Miss') {
+      this.currentComboStreak = 0;
+      return;
+    }
+    this.currentComboStreak += 1;
   }
 
   private finishSong(): void {
@@ -842,7 +859,8 @@ export class PlayScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const resetButton = new RoundedBox(this, centerX, resetButtonY, panelWidth * 0.72, 54, 0xf97316, 1)
       .setStrokeStyle(1, 0xfed7aa, 0.9)
@@ -854,7 +872,8 @@ export class PlayScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const backButton = new RoundedBox(this, centerX, backButtonY, panelWidth * 0.72, 54, 0x1e293b, 1)
       .setStrokeStyle(1, 0x64748b, 0.9)
@@ -866,12 +885,15 @@ export class PlayScene extends Phaser.Scene {
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     continueButton.on('pointerdown', () => this.closePauseMenu());
     continueLabel.on('pointerdown', () => this.closePauseMenu());
     resetButton.on('pointerdown', () => this.resetSession());
+    resetLabel.on('pointerdown', () => this.resetSession());
     backButton.on('pointerdown', () => this.goBackToStart());
+    backLabel.on('pointerdown', () => this.goBackToStart());
 
     this.pauseOverlay = this.add.container(0, 0, [
       backdrop,
@@ -990,10 +1012,13 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private persistNativeSongHighScore(songScoreKey: string, bestScore: number): void {
-    if (!isNativeSongLibraryAvailable()) return;
-    void updateNativeSongHighScore(songScoreKey, bestScore).catch((error) => {
-      console.warn('Failed to persist native high score', { songScoreKey, bestScore, error });
-    });
+    if (!Capacitor.isNativePlatform()) return;
+
+    void import('../platform/nativeSongLibrary')
+      .then(({ updateNativeSongHighScore }) => updateNativeSongHighScore(songScoreKey, bestScore))
+      .catch((error) => {
+        console.warn('Failed to persist native high score', { songScoreKey, bestScore, error });
+      });
   }
 
   private createDebugOverlay(): void {
@@ -1676,6 +1701,7 @@ export class PlayScene extends Phaser.Scene {
 
     if (this.runtime.state === PlayState.Finished) {
       this.setBallAndTrailVisible(false);
+      this.hideUnusedFretLabels(0);
       return;
     }
     this.setBallAndTrailVisible(true);
@@ -1688,7 +1714,7 @@ export class PlayScene extends Phaser.Scene {
     const labelFontSize = `${Math.max(11, Math.floor(layout.noteHeight * 0.95))}px`;
 
     this.targetLayer.clear();
-    this.clearFretLabels();
+    let visibleFretLabels = 0;
 
     for (const target of this.targets) {
       const x = layout.hitLineX + (target.tick - currentTick) * layout.pxPerTick;
@@ -1706,39 +1732,168 @@ export class PlayScene extends Phaser.Scene {
       this.targetLayer.fillStyle(noteColor, alpha);
       this.targetLayer.fillRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
 
-      const fretLabel = this.add
-        .text(x + noteRadius, y, `${target.fret}`, {
-          color: '#0b1020',
-          fontSize: labelFontSize,
-          fontStyle: 'bold'
-        })
-        .setOrigin(0.5)
-        .setAlpha(alpha);
-      this.fretLabels.push(fretLabel);
+      const fretLabel = this.getOrCreateFretLabel(visibleFretLabels);
+      fretLabel
+        .setPosition(x + noteRadius, y)
+        .setText(`${target.fret}`)
+        .setFontSize(labelFontSize)
+        .setAlpha(alpha)
+        .setVisible(true);
+      visibleFretLabels += 1;
 
       if (isWaitingTarget) {
         this.targetLayer.lineStyle(2, 0xffffff, 1);
         this.targetLayer.strokeRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
       }
     }
+    this.hideUnusedFretLabels(visibleFretLabels);
 
-    this.ball.x = layout.hitLineX;
-    const anchorY = this.getBallAnchorY(layout);
-    if (this.runtime.state === PlayState.WaitingForHit) {
-      this.ball.y = anchorY;
-      this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
-      return;
+    const ballPosition = this.resolveBallPosition(layout);
+    this.ball.setPosition(ballPosition.x, ballPosition.y);
+    this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
+  }
+
+  private resolveBallPosition(layout: Layout): { x: number; y: number } {
+    if (this.targets.length === 0) {
+      return {
+        x: layout.hitLineX,
+        y: layout.top - Math.max(18, this.scale.height * 0.04)
+      };
     }
 
-    const beatTick = ((this.runtime.current_tick % this.ticksPerQuarter) + this.ticksPerQuarter) % this.ticksPerQuarter;
-    const beatPhase = beatTick / this.ticksPerQuarter;
-    const amplitude = Phaser.Math.Clamp(
+    const waitingTarget = this.runtime.state === PlayState.WaitingForHit ? this.targets[this.runtime.active_target_index] : undefined;
+    if (waitingTarget) {
+      return { x: layout.hitLineX, y: this.getStringCenterY(layout, waitingTarget.string) };
+    }
+
+    const firstTarget = this.targets[0];
+    if (this.targetOnsetSeconds.length !== this.targets.length) {
+      return { x: layout.hitLineX, y: this.getStringCenterY(layout, firstTarget.string) };
+    }
+
+    const firstTargetSeconds = Math.max(0.001, this.targetOnsetSeconds[0]);
+    if (!this.playbackStarted) {
+      return this.resolvePrePlaybackBallPosition(layout, firstTarget, firstTargetSeconds);
+    }
+
+    const songSecondsNow = this.getSongSecondsNow();
+    if (songSecondsNow <= firstTargetSeconds) {
+      const progressToFirstTarget = Phaser.Math.Clamp(songSecondsNow / firstTargetSeconds, 0, 1);
+      return this.resolveIntroBallPosition(layout, firstTarget, progressToFirstTarget, firstTargetSeconds);
+    }
+
+    const nextTargetIndex = this.findTargetIndexAtOrAfterSongSeconds(songSecondsNow);
+    if (nextTargetIndex === -1) {
+      const lastTarget = this.targets[this.targets.length - 1];
+      return { x: layout.hitLineX, y: this.getStringCenterY(layout, lastTarget.string) };
+    }
+
+    if (nextTargetIndex === 0) {
+      return { x: layout.hitLineX, y: this.getStringCenterY(layout, this.targets[0].string) };
+    }
+
+    const previousTargetIndex = nextTargetIndex - 1;
+    const previousTarget = this.targets[previousTargetIndex];
+    const nextTarget = this.targets[nextTargetIndex];
+    const previousTargetSeconds = this.targetOnsetSeconds[previousTargetIndex];
+    const nextTargetSeconds = this.targetOnsetSeconds[nextTargetIndex];
+    const intervalSeconds = Math.max(0.001, nextTargetSeconds - previousTargetSeconds);
+    const progress = Phaser.Math.Clamp((songSecondsNow - previousTargetSeconds) / intervalSeconds, 0, 1);
+    const startY = this.getStringCenterY(layout, previousTarget.string);
+    const endY = this.getStringCenterY(layout, nextTarget.string);
+    const arcHeight = this.resolveBallArcHeight(layout, startY, endY, intervalSeconds);
+    const lateralExcursion = this.resolveBallLateralExcursion(layout, startY, endY, intervalSeconds);
+    const linearY = Phaser.Math.Linear(startY, endY, progress);
+    const arcOffset = 4 * arcHeight * progress * (1 - progress);
+
+    return {
+      x: layout.hitLineX + Math.sin(progress * Math.PI) * lateralExcursion,
+      y: linearY - arcOffset
+    };
+  }
+
+  private resolvePrePlaybackBallPosition(
+    layout: Layout,
+    firstTarget: TargetNote,
+    firstTargetSeconds: number
+  ): { x: number; y: number } {
+    if (this.prePlaybackStartAtMs === undefined) {
+      return this.resolveIntroBallPosition(layout, firstTarget, 0, firstTargetSeconds);
+    }
+
+    const elapsedRatio = Phaser.Math.Clamp(
+      1 - Math.max(0, this.prePlaybackStartAtMs - performance.now()) / PlayScene.PRE_PLAYBACK_DELAY_MS,
+      0,
+      1
+    );
+    return this.resolveIntroBallPosition(layout, firstTarget, elapsedRatio * 0.9, firstTargetSeconds);
+  }
+
+  private resolveIntroBallPosition(
+    layout: Layout,
+    firstTarget: TargetNote,
+    progress: number,
+    firstTargetSeconds: number
+  ): { x: number; y: number } {
+    const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+    const thirdStringY = this.getStringCenterY(layout, 3);
+    const targetY = this.getStringCenterY(layout, firstTarget.string);
+    const startY = thirdStringY - BALL_BOUNCE_AMPLITUDE_MAX_PX;
+    const introDuration = Math.max(0.2, firstTargetSeconds);
+    const introLateralExcursion = this.resolveBallLateralExcursion(layout, thirdStringY, targetY, introDuration);
+
+    return {
+      x: layout.hitLineX + Phaser.Math.Linear(introLateralExcursion, 0, clampedProgress),
+      y: startY + (targetY - startY) * clampedProgress * clampedProgress
+    };
+  }
+
+  private findTargetIndexAtOrAfterSongSeconds(songSeconds: number): number {
+    if (this.targetOnsetSeconds.length === 0) return -1;
+
+    let low = 0;
+    let high = this.targetOnsetSeconds.length - 1;
+    let result = -1;
+    while (low <= high) {
+      const mid = low + Math.floor((high - low) / 2);
+      if (this.targetOnsetSeconds[mid] >= songSeconds) {
+        result = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return result;
+  }
+
+  private getStringCenterY(layout: Layout, stringNumber: number): number {
+    const laneIndex = Phaser.Math.Clamp(Math.round(stringNumber) - 1, 0, 5);
+    return layout.top + laneIndex * layout.laneSpacing;
+  }
+
+  private resolveBallArcHeight(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
+    const baseAmplitude = Phaser.Math.Clamp(
       layout.laneSpacing * BALL_BOUNCE_AMPLITUDE_FACTOR,
       BALL_BOUNCE_AMPLITUDE_MIN_PX,
       BALL_BOUNCE_AMPLITUDE_MAX_PX
     );
-    this.ball.y = anchorY - Math.sin(beatPhase * Math.PI) * amplitude;
-    this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
+    const laneDistance = Math.abs(endY - startY) / Math.max(layout.laneSpacing, 1);
+    const laneFactor = Phaser.Math.Clamp(0.9 + laneDistance * 0.2, 0.9, 2.1);
+    const timeFactor = Phaser.Math.Clamp(intervalSeconds / 0.45, 0.4, 1.35);
+    return Phaser.Math.Clamp(
+      baseAmplitude * laneFactor * timeFactor,
+      BALL_BOUNCE_AMPLITUDE_MIN_PX * 0.75,
+      BALL_BOUNCE_AMPLITUDE_MAX_PX
+    );
+  }
+
+  private resolveBallLateralExcursion(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
+    const laneDistance = Math.abs(endY - startY) / Math.max(layout.laneSpacing, 1);
+    const laneFactor = Phaser.Math.Clamp(0.75 + laneDistance * 0.26, 0.75, 2.2);
+    const timeFactor = Phaser.Math.Clamp(intervalSeconds / 0.45, 0.5, 1.45);
+    const baseExcursion = Math.max(layout.laneSpacing * 1.4, 42);
+    const maxExcursion = Math.max(56, (layout.right - layout.hitLineX) * 0.82);
+    return Phaser.Math.Clamp(baseExcursion * laneFactor * timeFactor, 28, maxExcursion);
   }
 
   private updateHud(): void {
@@ -1747,7 +1902,7 @@ export class PlayScene extends Phaser.Scene {
     const now = performance.now();
     const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
 
-    const streak = Math.max(1, currentStreak(this.scoreEvents));
+    const streak = Math.max(1, this.currentComboStreak);
     let status = `x${streak}`;
     if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
       const remainingMs = this.prePlaybackStartAtMs !== undefined ? Math.max(0, this.prePlaybackStartAtMs - now) : 0;
@@ -1763,11 +1918,10 @@ export class PlayScene extends Phaser.Scene {
       }
     }
 
-    const totalScore = this.scoreEvents.reduce((acc, event) => acc + event.points, 0);
     const completed = Math.min(this.runtime.active_target_index, this.targets.length);
 
     this.statusText.setText(status);
-    this.liveScoreText.setText(`${totalScore}  |  ${completed}/${this.targets.length}`);
+    this.liveScoreText.setText(`${this.totalScore}  |  ${completed}/${this.targets.length}`);
     this.updateDebugOverlay();
   }
 
@@ -1792,14 +1946,6 @@ export class PlayScene extends Phaser.Scene {
       pxPerTick: Math.max(0.09, width / 5200),
       noteHeight: Math.max(14, laneSpacing * 0.38)
     };
-  }
-
-  private getBallAnchorY(layout: Layout): number {
-    const activeTarget = this.targets[this.runtime.active_target_index];
-    if (!activeTarget) {
-      return layout.top - Math.max(18, this.scale.height * 0.04);
-    }
-    return layout.top + (activeTarget.string - 1) * layout.laneSpacing;
   }
 
   private createBallTrail(): void {
@@ -1857,14 +2003,14 @@ export class PlayScene extends Phaser.Scene {
 
     const historyCount = this.ballTrailHistory.length;
     const basePoint = historyCount > 0 ? this.ballTrailHistory[0] : undefined;
-    const alphaNear = 0.62;
+    const alphaNear = 0.44;
     const alphaFar = 0.08;
-    const scaleNear = 0.95;
+    const scaleNear = 0.82;
     const scaleFar = 0.45;
     const denom = Math.max(1, this.ballTrail.length - 1);
 
     for (let i = 0; i < this.ballTrail.length; i += 1) {
-      const historyIndex = historyCount - 1 - i * BALL_GHOST_TRAIL_SAMPLE_STEP;
+      const historyIndex = historyCount - 1 - (i + 1) * BALL_GHOST_TRAIL_SAMPLE_STEP;
       const point = historyIndex >= 0 ? this.ballTrailHistory[historyIndex] : basePoint;
       const ghost = this.ballTrail[i];
       if (!point) {
@@ -1877,6 +2023,11 @@ export class PlayScene extends Phaser.Scene {
         .setAlpha(Phaser.Math.Linear(alphaNear, alphaFar, t))
         .setScale(Phaser.Math.Linear(scaleNear, scaleFar, t));
     }
+  }
+
+  private resetBallTrailHistory(): void {
+    this.ballTrailHistory = [];
+    this.lastBallTrailPoint = undefined;
   }
 
   private buildProfileWithSettings(
@@ -2246,6 +2397,28 @@ export class PlayScene extends Phaser.Scene {
     this.fretLabels = [];
   }
 
+  private getOrCreateFretLabel(index: number): Phaser.GameObjects.Text {
+    const existing = this.fretLabels[index];
+    if (existing) return existing;
+
+    const created = this.add
+      .text(0, 0, '', {
+        color: '#0b1020',
+        fontStyle: 'bold'
+      })
+      .setOrigin(0.5)
+      .setDepth(261)
+      .setVisible(false);
+    this.fretLabels.push(created);
+    return created;
+  }
+
+  private hideUnusedFretLabels(startIndex: number): void {
+    for (let i = startIndex; i < this.fretLabels.length; i += 1) {
+      this.fretLabels[i].setVisible(false);
+    }
+  }
+
   private setBallAndTrailVisible(visible: boolean): void {
     this.ball?.setVisible(visible);
     if (!visible) {
@@ -2272,15 +2445,6 @@ export class PlayScene extends Phaser.Scene {
     const now = this.getSongSecondsNow();
     return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
   }
-}
-
-function currentStreak(events: ScoreEvent[]): number {
-  let streak = 0;
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    if (events[i].rating === 'Miss') break;
-    streak += 1;
-  }
-  return streak;
 }
 
 function sanitizeSelection(

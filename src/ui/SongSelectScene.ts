@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Capacitor } from '@capacitor/core';
 import { DIFFICULTY_PRESETS } from '../app/config';
 import {
   loadSessionSettingsPreference,
@@ -8,9 +9,6 @@ import {
 import { createMicNode } from '../audio/micInput';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { STANDARD_TUNING } from '../guitar/tuning';
-import { readNativeSongCatalogEntries } from '../platform/nativeSongCatalog';
-import { importSongNative } from '../platform/nativeSongImport';
-import { deleteNativeSongById, isNativeSongLibraryAvailable } from '../platform/nativeSongLibrary';
 import { RoundedBox } from './RoundedBox';
 
 type Difficulty = 'Easy' | 'Medium' | 'Hard';
@@ -1644,6 +1642,7 @@ export class SongSelectScene extends Phaser.Scene {
 
   private async removeSongFromLibrary(song: SongEntry): Promise<void> {
     if (song.id.startsWith('native-')) {
+      const { deleteNativeSongById } = await import('../platform/nativeSongLibrary');
       const removed = await deleteNativeSongById(song.id);
       if (!removed) {
         throw new Error('Song not found in native library.');
@@ -1684,7 +1683,7 @@ export class SongSelectScene extends Phaser.Scene {
   private resolveImportRoute(): 'native' | 'server' {
     if (this.importSourceMode === 'native') return 'native';
     if (this.importSourceMode === 'server') return 'server';
-    return isNativeSongLibraryAvailable() ? 'native' : 'server';
+    return Capacitor.isNativePlatform() ? 'native' : 'server';
   }
 
   private async importSongFileNative(file: File, onProgress: (stage: string, progress: number) => void): Promise<void> {
@@ -1693,6 +1692,7 @@ export class SongSelectScene extends Phaser.Scene {
       throw new Error('Unsupported format. Please upload MIDI, MP3, or OGG.');
     }
 
+    const { importSongNative } = await import('../platform/nativeSongImport');
     await importSongNative(
       file,
       ({ stage, progress }) => {
@@ -1953,9 +1953,10 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private async readNativeManifestSongs(): Promise<SongManifestEntry[]> {
-    if (!isNativeSongLibraryAvailable()) return [];
+    if (!Capacitor.isNativePlatform()) return [];
 
     try {
+      const { readNativeSongCatalogEntries } = await import('../platform/nativeSongCatalog');
       const nativeEntries = await readNativeSongCatalogEntries();
       return nativeEntries.map((entry) => ({
         id: entry.id,

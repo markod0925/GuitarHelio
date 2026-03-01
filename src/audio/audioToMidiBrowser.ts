@@ -1,5 +1,5 @@
 import { BasicPitch, addPitchBendsToNoteEvents, noteFramesToTime, outputToNotesPoly } from '@spotify/basic-pitch';
-import decodeAudio from 'audio-decode';
+import { decodeAudioBuffer, type DecodedAudioBuffer } from './decodeAudioBuffer';
 import { Midi } from '@tonejs/midi';
 
 export type AudioToMidiBrowserProgress = {
@@ -25,13 +25,6 @@ type ConversionPreset = {
   amplitudeExponent: number;
   volumeBoost: number;
   velocityFloor: number;
-};
-
-type DecodedAudioBuffer = {
-  numberOfChannels: number;
-  sampleRate: number;
-  length: number;
-  getChannelData: (channel: number) => Float32Array;
 };
 
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.ogg']);
@@ -80,7 +73,7 @@ export async function convertAudioBufferToMidiBrowser(
   const basicPitch = await getBasicPitchModel();
 
   reportProgress(onProgress, 'Decoding audio...', 0.16);
-  const decoded = (await decodeAudio(sourceBuffer)) as DecodedAudioBuffer;
+  const decoded = await decodeAudioBuffer(sourceBuffer);
   const sourceSampleRate = Math.max(1, Number(decoded.sampleRate) || BASIC_PITCH_MODEL_SAMPLE_RATE);
   const mono = downmixToMono(decoded);
   const resampled = resampleMonoSignal(mono, sourceSampleRate, BASIC_PITCH_MODEL_SAMPLE_RATE);
