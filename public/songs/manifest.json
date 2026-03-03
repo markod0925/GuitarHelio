@@ -1,20 +1,34 @@
 {
   "songs": [
     {
-      "id": "example",
-      "name": "Example Song",
-      "folder": "example",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.svg"
-    },
-    {
       "id": "star-wars",
       "name": "Star Wars",
       "folder": "star-wars",
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.png"
+    },
+    {
+      "id": "vivaldi-concerto-la-stravaganza-4-2-c-icking-archive",
+      "name": "vivaldi concerto la stravaganza 4 2 (c)icking archive",
+      "folder": "vivaldi_concerto_la_stravaganza_4_2_(c)icking-archive",
+      "midi": "song.mid"
+    },
+    {
+      "id": "i-residui-di-supposta-di-maria",
+      "name": "I residui di supposta di Maria",
+      "folder": "I residui di supposta di Maria",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "un-cane-una-scoreggia-un-gatto-una-cacca",
+      "name": "Un cane una scoreggia un gatto una cacca",
+      "folder": "Un cane una scoreggia un gatto una cacca",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
     }
   ]
 }

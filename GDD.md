@@ -657,6 +657,8 @@ Pressing this button MUST open a modal settings panel with a dimmed background o
 All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
 The song list in start screen MUST be rendered inside an invisible scrollable viewport (mouse wheel + drag/touch scroll) so users can browse and select songs beyond the initially visible rows.
 Song titles in song cards MUST always stay inside their fixed label box; if a title is too long, UI MUST reduce title font size until it fits.
+Each song-card cover thumbnail MUST include a visible white rounded frame/mask overlay that slightly overlaps cover edges to hide hard square corners and edge artifacts.
+When a custom song cover is loaded lazily, the thumbnail image MUST immediately fill its full thumbnail box (no reduced-size first render, no need to enter/exit `PlayScene`).
 Start-screen song cards MUST support long-press (tap/click hold) to open a small `Remove` button anchored to that card.
 If the user taps/clicks anywhere outside that `Remove` button, the remove button MUST close.
 Pressing `Remove` MUST delete the selected song from filesystem and manifest/catalog (both server/web and native library modes), then refresh the song list.
@@ -903,6 +905,7 @@ Minimap requirements:
 
 * render a compact preview of all target notes across the whole song length
 * each minimap note MUST use the same finger color mapping used in gameplay
+* minimap notes whose onset is already passed by the current playhead (`target.tick <= runtime.current_tick`) MUST be rendered in green
 * include timeline progression feedback (playhead/current position)
 * progression MUST remain synchronized with gameplay timeline (`runtime.current_tick`)
 * minimap bounds MUST keep a clear gap from the bottom-right hand reminder widget (no overlap)

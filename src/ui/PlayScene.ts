@@ -1524,15 +1524,10 @@ export class PlayScene extends Phaser.Scene {
       }
     }
 
-    const noteHeight = Math.max(1.4, layout.rowHeight * 0.62);
     for (const target of this.targets) {
-      const startX = layout.innerLeft + (target.tick / layout.totalTicks) * layout.innerWidth;
-      const endX = layout.innerLeft + ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
-      const noteWidth = Math.max(1.6, endX - startX);
-      const rowIndex = Phaser.Math.Clamp(target.string - 1, 0, 5);
-      const y = layout.innerTop + rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
+      const { x, y, width, height, radius } = this.getSongMinimapNoteRect(target, layout);
       this.songMinimapStaticLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, 0.9);
-      this.songMinimapStaticLayer.fillRoundedRect(startX, y, noteWidth, noteHeight, Math.min(2.5, noteHeight / 2));
+      this.songMinimapStaticLayer.fillRoundedRect(x, y, width, height, radius);
     }
   }
 
@@ -1547,11 +1542,40 @@ export class PlayScene extends Phaser.Scene {
     this.songMinimapDynamicLayer.fillStyle(0x22c55e, 0.18);
     this.songMinimapDynamicLayer.fillRect(layout.innerLeft, layout.innerTop, playedWidth, layout.innerHeight);
 
+    for (const target of this.targets) {
+      if (target.tick > clampedTick) continue;
+      const { x, y, width, height, radius } = this.getSongMinimapNoteRect(target, layout);
+      this.songMinimapDynamicLayer.fillStyle(0x22c55e, 0.95);
+      this.songMinimapDynamicLayer.fillRoundedRect(x, y, width, height, radius);
+    }
+
     this.songMinimapDynamicLayer.lineStyle(2, 0xf8fafc, 0.95);
     this.songMinimapDynamicLayer.beginPath();
     this.songMinimapDynamicLayer.moveTo(progressX, layout.innerTop - 1);
     this.songMinimapDynamicLayer.lineTo(progressX, layout.innerTop + layout.innerHeight + 1);
     this.songMinimapDynamicLayer.strokePath();
+  }
+
+  private getSongMinimapNoteRect(target: TargetNote, layout: SongMinimapLayout): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    radius: number;
+  } {
+    const noteHeight = Math.max(1.4, layout.rowHeight * 0.62);
+    const startX = layout.innerLeft + (target.tick / layout.totalTicks) * layout.innerWidth;
+    const endX = layout.innerLeft + ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
+    const noteWidth = Math.max(1.6, endX - startX);
+    const rowIndex = Phaser.Math.Clamp(target.string - 1, 0, 5);
+    const y = layout.innerTop + rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
+    return {
+      x: startX,
+      y,
+      width: noteWidth,
+      height: noteHeight,
+      radius: Math.min(2.5, noteHeight / 2)
+    };
   }
 
   private drawTopStarfield(): void {

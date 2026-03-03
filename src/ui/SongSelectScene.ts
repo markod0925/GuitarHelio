@@ -34,6 +34,7 @@ type SongOption = {
   background: RoundedBox;
   glow: RoundedBox;
   thumbnail: RoundedBox;
+  thumbnailImageSize: number;
   thumbnailImage?: Phaser.GameObjects.Image;
   thumbnailImageMaskGraphics?: Phaser.GameObjects.Graphics;
   thumbnailImageFrame?: RoundedBox;
@@ -446,6 +447,7 @@ export class SongSelectScene extends Phaser.Scene {
         option.thumbnail.setFillStyle(active ? 0x1d4f91 : 0x121a33, 0.85);
         option.thumbnail.setStrokeStyle(1, active ? 0x93c5fd : 0x475569, active ? 0.75 : 0.45);
         option.thumbnailImage?.setAlpha(active ? 1 : 0.88);
+        option.thumbnailImageFrame?.setStrokeStyle(3, 0xffffff, active ? 0.9 : 0.76);
         option.thumbLabel?.setColor(active ? '#dbeafe' : '#94a3b8');
       });
 
@@ -2133,7 +2135,8 @@ export class SongSelectScene extends Phaser.Scene {
 
   private refreshLoadedSongCoverTextures(): void {
     this.songOptions.forEach((option) => {
-      if (!option.thumbnailImage) return;
+      const image = option.thumbnailImage;
+      if (!image) return;
       const hasSongCoverTexture = this.textures.exists(option.song.coverTextureKey);
       const hasDefaultCoverTexture = this.textures.exists(DEFAULT_SONG_COVER_TEXTURE_KEY);
       const key =
@@ -2142,8 +2145,16 @@ export class SongSelectScene extends Phaser.Scene {
             ? DEFAULT_SONG_COVER_TEXTURE_KEY
             : option.song.coverTextureKey
           : option.song.coverTextureKey;
-      if (option.thumbnailImage.texture.key === key) return;
-      option.thumbnailImage.setTexture(key);
+      const needsResize =
+        Math.abs(image.displayWidth - option.thumbnailImageSize) > 0.5 ||
+        Math.abs(image.displayHeight - option.thumbnailImageSize) > 0.5;
+      if (image.texture.key === key && !needsResize) return;
+      if (image.texture.key !== key) image.setTexture(key);
+      image.setDisplaySize(option.thumbnailImageSize, option.thumbnailImageSize);
+      image.setCrop();
+      if (this.songViewportRect) {
+        this.applySongThumbnailViewportCrop(option, this.songViewportRect.top, this.songViewportRect.bottom);
+      }
     });
   }
 
@@ -2212,7 +2223,16 @@ export class SongSelectScene extends Phaser.Scene {
       if (thumbnailImage && thumbnailImageMaskGraphics) {
         thumbnailImage.setMask(thumbnailImageMaskGraphics.createGeometryMask());
       }
-      const thumbnailImageFrame = undefined;
+      const thumbnailImageFrame = new RoundedBox(
+        this,
+        thumbnail.x,
+        thumbnail.y,
+        thumbnailImageSize,
+        thumbnailImageSize,
+        0xffffff,
+        0,
+        thumbnailCornerRadius
+      ).setStrokeStyle(3, 0xffffff, 0.76);
       const thumbLabel = undefined;
 
       const label = this.add
@@ -2250,6 +2270,7 @@ export class SongSelectScene extends Phaser.Scene {
         background,
         glow,
         thumbnail,
+        thumbnailImageSize,
         thumbnailImage,
         thumbnailImageMaskGraphics,
         thumbnailImageFrame,
