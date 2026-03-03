@@ -588,11 +588,12 @@ Suggested finger colors:
 
 * must move with a ballistic trajectory between consecutive TargetNotes (no instant teleport between strings)
 * trajectory must evolve on both axes (`x` + `y`) during flight; impacts happen on-pad only at note timing
+* lateral (`x`) excursion must remain visually discreet and MUST never move the ball beyond the left half of the screen
 * must touch the target pad exactly when the note has to be played
 * after touching a note, it must bounce toward the next note location
 * at song start, before the first impact, the ball must appear already in motion: launch from string 3 at maximum height and fall into the first timed impact
 * bounce amplitude must be configurable via app constants/settings and default to a visibly pronounced jump
-* must render a visible ghost trail behind the ball; the trail must remain clearly readable even on sudden jumps between different strings
+* must render a clearly visible dashed trail behind the ball (instead of ghost circles), readable also on sudden jumps between different strings
 * freezes during WaitingForHit
 * resumes afterward
 * must be hidden when runtime enters `Finished` (no post-song ball rendering)
@@ -633,6 +634,7 @@ Requirements:
 * during pre-roll, song progression/timeline MUST stay frozen at the song start
 * during pre-roll, HUD SHOULD show a clear "get ready" indication with remaining time
 * the first playable note timing MUST be evaluated only after pre-roll playback start
+* any source note with onset time earlier than 3.0 seconds MUST be ignored/removed only for gameplay target generation; full song playback must remain uncut
 
 ---
 
@@ -640,6 +642,7 @@ Requirements:
 
 During `WaitingForHit`, the HUD MUST NOT show `Play MIDI xx`.
 It may show only generic waiting text and optional remaining timeout.
+Gameplay feedback messages such as `Get Ready`, `Waiting`, `Perfect`, `Too Soon`, `Too Late` MUST be rendered as plain text (no box), horizontally centered below the speed slider (between slider and pad area), with a clearly larger font than regular HUD labels.
 
 ---
 

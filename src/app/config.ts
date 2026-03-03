@@ -6,6 +6,7 @@ export const DEFAULT_MIN_CONFIDENCE = 0.7;
 export const TARGET_HIT_GRACE_SECONDS = 0.5;
 export const SCHEDULER_LOOKAHEAD_SECONDS = 0.15;
 export const SCHEDULER_UPDATE_MS = 25;
+export const PLAY_SCENE_NOTE_START_CUTOFF_SECONDS = 3;
 
 // Increase/decrease this to tune how tall the ball jump looks on beat.
 export const BALL_BOUNCE_AMPLITUDE_FACTOR = 0.8;
