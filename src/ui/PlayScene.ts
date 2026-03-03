@@ -106,6 +106,18 @@ type SongMinimapLayout = {
   totalTicks: number;
 };
 
+type AudioSeekDebugInfo = {
+  requestedSongSeconds: number;
+  targetSeconds: number;
+  beforeSeekSeconds: number;
+  afterPlaySeconds?: number;
+  afterRetrySeconds?: number;
+  fallbackToMidi: boolean;
+  seekDisabled: boolean;
+  ok: boolean;
+  atMs: number;
+};
+
 export class PlayScene extends Phaser.Scene {
   private static readonly PAUSE_BUTTON_SIZE = 34;
   private static readonly PAUSE_BUTTON_GAP = 10;
@@ -135,10 +147,15 @@ export class PlayScene extends Phaser.Scene {
   private feedbackText = '';
   private feedbackUntilMs = 0;
   private playbackMode: PlaybackMode = 'midi';
-  private backingTrackAudio?: HTMLAudioElement;
+  private backingTrackBuffer?: AudioBuffer;
+  private backingTrackSource?: AudioBufferSourceNode;
+  private backingTrackGain?: GainNode;
+  private backingTrackSourceStartedAtAudioTime?: number;
+  private backingTrackSourceStartSongSeconds = 0;
+  private backingTrackIsPlaying = false;
+  private backingTrackAudioUrl?: string;
   private pausedBackingAudioSeconds?: number;
   private lastKnownBackingAudioSeconds = 0;
-  private mp3SeekDisabled = false;
   private playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
   private laneLayer?: Phaser.GameObjects.Graphics;
@@ -168,6 +185,10 @@ export class PlayScene extends Phaser.Scene {
   private playbackSpeedKnob?: Phaser.GameObjects.Arc;
   private playbackSpeedLabel?: Phaser.GameObjects.Text;
   private playbackSpeedValueText?: Phaser.GameObjects.Text;
+  private playbackSpeedAdjusting = false;
+  private playbackSpeedDragPointerId?: number;
+  private pendingPlaybackSpeedMultiplier?: number;
+  private playbackWasRunningBeforeSpeedAdjust = false;
   private runtimeTimer?: Phaser.Time.TimerEvent;
   private finishDelayTimer?: Phaser.Time.TimerEvent;
   private finishQueuedAtMs?: number;
@@ -198,6 +219,7 @@ export class PlayScene extends Phaser.Scene {
   private hitDebugSnapshot?: HitDebugSnapshot;
   private lastRuntimeTransition: RuntimeTransition = 'none';
   private lastRuntimeTransitionAtMs = 0;
+  private lastAudioSeekDebug?: AudioSeekDebugInfo;
 
   constructor() {
     super('PlayScene');
@@ -247,10 +269,17 @@ export class PlayScene extends Phaser.Scene {
     this.feedbackUntilMs = 0;
     this.fallbackTimeoutSeconds = undefined;
     this.playbackMode = 'midi';
-    this.mp3SeekDisabled = false;
+    this.backingTrackBuffer = undefined;
+    this.backingTrackSource = undefined;
+    this.backingTrackGain = undefined;
+    this.backingTrackSourceStartedAtAudioTime = undefined;
+    this.backingTrackSourceStartSongSeconds = 0;
+    this.backingTrackIsPlaying = false;
+    this.backingTrackAudioUrl = undefined;
     this.hitDebugSnapshot = undefined;
     this.lastRuntimeTransition = 'none';
     this.lastRuntimeTransitionAtMs = 0;
+    this.lastAudioSeekDebug = undefined;
     this.debugOverlayEnabled = isGameplayDebugOverlayEnabled();
     this.playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
@@ -417,7 +446,13 @@ export class PlayScene extends Phaser.Scene {
     this.playbackMode = 'midi';
     this.pausedBackingAudioSeconds = undefined;
     this.lastKnownBackingAudioSeconds = 0;
-    this.mp3SeekDisabled = false;
+    this.backingTrackBuffer = undefined;
+    this.backingTrackSource = undefined;
+    this.backingTrackGain = undefined;
+    this.backingTrackSourceStartedAtAudioTime = undefined;
+    this.backingTrackSourceStartSongSeconds = 0;
+    this.backingTrackIsPlaying = false;
+    this.backingTrackAudioUrl = undefined;
     this.playbackStarted = false;
     this.pausedSongSeconds = 0;
     this.playbackStartSongSeconds = 0;
@@ -448,15 +483,27 @@ export class PlayScene extends Phaser.Scene {
     }
 
     const startSongSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
-    this.startPlaybackClock(startSongSeconds);
     this.resetBallTrailHistory();
-    this.playbackStarted = true;
     this.prePlaybackStartAtMs = undefined;
 
-    const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, startSongSeconds);
-    if (!startedBackingAudio) {
+    const wantsBackingAudio = isBackingTrackAudioUrl(this.sceneData?.audioUrl ?? '');
+    if (wantsBackingAudio) {
+      const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, startSongSeconds);
+      if (!startedBackingAudio) {
+        this.playbackStarted = false;
+        this.startPlaybackClock(startSongSeconds);
+        this.pausePlaybackClock();
+        this.schedulePlaybackStart(300);
+        this.feedbackText = 'Backing track failed to start. Retrying...';
+        this.feedbackUntilMs = performance.now() + 1200;
+        return;
+      }
+      this.playbackStarted = true;
+    } else {
       this.playbackMode = 'midi';
+      this.startPlaybackClock(startSongSeconds);
       this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx.currentTime);
+      this.playbackStarted = true;
     }
 
     this.feedbackText = 'Go!';
@@ -570,7 +617,7 @@ export class PlayScene extends Phaser.Scene {
     }
 
     if (transition === 'validated_hit' && target) {
-      if (previousState === PlayState.WaitingForHit) {
+      if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
         this.resumeBackingPlayback();
       }
       const signedDeltaMs = this.measureHitSignedDeltaMs(target, previousState);
@@ -592,7 +639,7 @@ export class PlayScene extends Phaser.Scene {
     }
 
     if (transition === 'timeout_miss' && target) {
-      if (previousState === PlayState.WaitingForHit) {
+      if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
         this.resumeBackingPlayback();
       }
       const fallbackDeltaMs = (this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds ?? 0) * 1000;
@@ -1005,12 +1052,20 @@ export class PlayScene extends Phaser.Scene {
     if (this.runtimeTimer) {
       this.runtimeTimer.paused = false;
     }
-    if (this.playbackWasRunningBeforeButtonPause) {
+    if (this.runtime.state === PlayState.WaitingForHit) {
+      this.stopBackingTrackSource();
+      this.playbackStartAudioTime = null;
+      this.playbackStartSongSeconds = this.pausedSongSeconds;
+    } else if (this.playbackWasRunningBeforeButtonPause) {
       this.resumeBackingPlayback();
     }
     this.playbackWasRunningBeforeButtonPause = false;
     this.latestFrames = [];
     this.syncPauseButtonIcon();
+  }
+
+  private isWaitingPausedByButton(): boolean {
+    return this.playbackPausedByButton && this.runtime.state === PlayState.WaitingForHit;
   }
 
   private relayoutPauseOverlay(): void {
@@ -1074,7 +1129,7 @@ export class PlayScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const panelWidth = Math.min(760, width * 0.84);
-    const panelHeight = Math.min(240, height * 0.38);
+    const panelHeight = Math.min(360, height * 0.56);
     const centerX = width / 2;
     const centerY = height * 0.52;
 
@@ -1114,15 +1169,30 @@ export class PlayScene extends Phaser.Scene {
         ? Math.max(0, this.audioCtx.currentTime - this.runtime.waiting_started_at_s)
         : undefined;
     const transitionAgeMs = this.lastRuntimeTransitionAtMs > 0 ? performance.now() - this.lastRuntimeTransitionAtMs : undefined;
+    const clockSongSeconds = this.getSongSecondsFromClock();
+    const runtimeTickSongSeconds = this.tempoMap ? this.tempoMap.tickToSeconds(Math.max(0, this.runtime.current_tick)) : undefined;
+    const backingCurrentSeconds = this.getBackingTrackSongSeconds();
+    const backingDurationSeconds = this.backingTrackBuffer?.duration;
+    const backingDriftMs =
+      songSecondsNow !== undefined && backingCurrentSeconds !== undefined
+        ? (backingCurrentSeconds - songSecondsNow) * 1000
+        : undefined;
+    const seekDebug = this.lastAudioSeekDebug;
+    const seekAgeMs = seekDebug ? performance.now() - seekDebug.atMs : undefined;
 
     const lines = [
       'DEBUG OVERLAY (F3)',
       `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
+      `song id=${this.sceneData?.songId ?? '-'} midi=${formatDebugPath(this.sceneData?.midiUrl)} audio=${formatDebugPath(this.sceneData?.audioUrl)}`,
       active
         ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
         : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
       `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
       `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s bpm=${formatDebugNumber(playbackBpm, 2)} d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
+      `clock song=${formatDebugNumber(clockSongSeconds, 3)}s tickSong=${formatDebugNumber(runtimeTickSongSeconds, 3)}s startSong=${formatDebugNumber(this.playbackStartSongSeconds, 3)}s ctxStart=${formatDebugNumber(this.playbackStartAudioTime, 3)}s`,
+      `resume pausedSong=${formatDebugNumber(this.pausedSongSeconds, 3)}s pausedAudio=${formatDebugNumber(this.pausedBackingAudioSeconds, 3)}s lastAudio=${formatDebugNumber(this.lastKnownBackingAudioSeconds, 3)}s speed=${formatDebugNumber(this.playbackSpeedMultiplier, 2)}x started=${formatDebugBool(this.playbackStarted)}`,
+      `backing cur=${formatDebugNumber(backingCurrentSeconds, 3)}s dur=${formatDebugNumber(backingDurationSeconds, 3)}s playing=${formatDebugBool(this.backingTrackIsPlaying)} sourceSong=${formatDebugNumber(this.backingTrackSourceStartSongSeconds, 3)}s sourceCtx=${formatDebugNumber(this.backingTrackSourceStartedAtAudioTime, 3)}s drift=${formatSignedMs(backingDriftMs)}`,
+      `seek req=${formatDebugNumber(seekDebug?.requestedSongSeconds, 3)}s target=${formatDebugNumber(seekDebug?.targetSeconds, 3)}s before=${formatDebugNumber(seekDebug?.beforeSeekSeconds, 3)}s after=${formatDebugNumber(seekDebug?.afterPlaySeconds, 3)}s retry=${formatDebugNumber(seekDebug?.afterRetrySeconds, 3)}s fallbackMidi=${seekDebug ? formatDebugBool(seekDebug.fallbackToMidi) : '-'} ok=${seekDebug ? formatDebugBool(seekDebug.ok) : '-'} age=${seekAgeMs !== undefined ? `${Math.round(seekAgeMs)}ms` : '-'}`,
       `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
       `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
       `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
@@ -1387,11 +1457,14 @@ export class PlayScene extends Phaser.Scene {
       .setDepth(294);
     this.input.setDraggable(this.playbackSpeedKnob);
     this.playbackSpeedKnob.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number) => {
-      this.applyPlaybackSpeedFromSliderX(dragX);
+      this.applyPlaybackSpeedFromSliderX(dragX, true);
     });
     this.playbackSpeedKnob.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.applyPlaybackSpeedFromSliderX(pointer.x);
+      this.beginPlaybackSpeedAdjustment(pointer.id);
+      this.applyPlaybackSpeedFromSliderX(pointer.x, true);
     });
+    this.input.on('pointerup', this.handlePlaybackSpeedPointerUp, this);
+    this.input.on('pointerupoutside', this.handlePlaybackSpeedPointerUp, this);
 
     this.layoutPlaybackSpeedSlider();
     this.updatePlaybackSpeedSliderVisuals();
@@ -1436,13 +1509,67 @@ export class PlayScene extends Phaser.Scene {
     this.updatePlaybackSpeedSliderVisuals();
   }
 
-  private applyPlaybackSpeedFromSliderX(pointerX: number): void {
+  private applyPlaybackSpeedFromSliderX(pointerX: number, previewOnly = false): void {
+    if (this.isWaitingPausedByButton()) return;
     if (!this.playbackSpeedTrack) return;
     const left = this.playbackSpeedTrack.x - this.playbackSpeedTrack.displayWidth / 2;
     const ratio = Phaser.Math.Clamp((pointerX - left) / this.playbackSpeedTrack.displayWidth, 0, 1);
     const speed =
       PlayScene.PLAYBACK_SPEED_MIN + ratio * (PlayScene.PLAYBACK_SPEED_MAX - PlayScene.PLAYBACK_SPEED_MIN);
+    if (previewOnly) {
+      this.setPendingPlaybackSpeed(speed);
+      return;
+    }
     this.setPlaybackSpeed(speed);
+  }
+
+  private beginPlaybackSpeedAdjustment(pointerId: number): void {
+    this.playbackSpeedAdjusting = true;
+    this.playbackSpeedDragPointerId = pointerId;
+    this.pendingPlaybackSpeedMultiplier = this.playbackSpeedMultiplier;
+    this.playbackWasRunningBeforeSpeedAdjust =
+      this.playbackMode === 'audio' &&
+      this.playbackStarted &&
+      this.runtime.state === PlayState.Playing &&
+      !this.pauseOverlay &&
+      !this.playbackPausedByButton;
+    if (!this.playbackWasRunningBeforeSpeedAdjust) return;
+    if (this.runtimeTimer) {
+      this.runtimeTimer.paused = true;
+    }
+    this.pausePlaybackClock();
+    this.pauseBackingPlayback();
+  }
+
+  private handlePlaybackSpeedPointerUp(pointer: Phaser.Input.Pointer): void {
+    if (!this.playbackSpeedAdjusting) return;
+    if (this.playbackSpeedDragPointerId !== undefined && pointer.id !== this.playbackSpeedDragPointerId) return;
+    this.playbackSpeedAdjusting = false;
+    this.playbackSpeedDragPointerId = undefined;
+    const pendingSpeed = this.pendingPlaybackSpeedMultiplier;
+    this.pendingPlaybackSpeedMultiplier = undefined;
+    if (pendingSpeed !== undefined) {
+      this.setPlaybackSpeed(pendingSpeed);
+    } else {
+      this.updatePlaybackSpeedSliderVisuals();
+    }
+    if (!this.playbackWasRunningBeforeSpeedAdjust) return;
+    this.playbackWasRunningBeforeSpeedAdjust = false;
+    if (this.runtimeTimer) {
+      this.runtimeTimer.paused = false;
+    }
+    if (this.playbackMode === 'audio' && this.playbackStarted && this.runtime.state === PlayState.Playing) {
+      this.resumeBackingPlayback();
+    }
+  }
+
+  private setPendingPlaybackSpeed(speedMultiplier: number): void {
+    this.pendingPlaybackSpeedMultiplier = Phaser.Math.Clamp(
+      speedMultiplier,
+      PlayScene.PLAYBACK_SPEED_MIN,
+      PlayScene.PLAYBACK_SPEED_MAX
+    );
+    this.updatePlaybackSpeedSliderVisuals();
   }
 
   private setPlaybackSpeed(speedMultiplier: number): void {
@@ -1465,8 +1592,13 @@ export class PlayScene extends Phaser.Scene {
       this.pausedSongSeconds = nowSongSeconds;
     }
 
-    if (this.backingTrackAudio) {
-      this.backingTrackAudio.playbackRate = safeSpeed;
+    if (this.playbackMode === 'audio' && this.backingTrackBuffer) {
+      if (this.playbackStarted && this.backingTrackIsPlaying) {
+        // Rebuild source node so playback rate and offset stay coherent.
+        void this.playBackingTrackAudioFrom(nowSongSeconds);
+      } else {
+        this.backingTrackSourceStartSongSeconds = nowSongSeconds;
+      }
     }
 
     this.feedbackText = `Speed ${Math.round(safeSpeed * 100)}%`;
@@ -1478,13 +1610,14 @@ export class PlayScene extends Phaser.Scene {
   private updatePlaybackSpeedSliderVisuals(): void {
     if (!this.playbackSpeedTrack || !this.playbackSpeedKnob || !this.playbackSpeedValueText) return;
 
+    const visualSpeed = this.pendingPlaybackSpeedMultiplier ?? this.playbackSpeedMultiplier;
     const ratio =
-      (this.playbackSpeedMultiplier - PlayScene.PLAYBACK_SPEED_MIN) /
+      (visualSpeed - PlayScene.PLAYBACK_SPEED_MIN) /
       (PlayScene.PLAYBACK_SPEED_MAX - PlayScene.PLAYBACK_SPEED_MIN);
     const clampedRatio = Phaser.Math.Clamp(ratio, 0, 1);
     const left = this.playbackSpeedTrack.x - this.playbackSpeedTrack.displayWidth / 2;
     this.playbackSpeedKnob.setPosition(left + this.playbackSpeedTrack.displayWidth * clampedRatio, this.playbackSpeedTrack.y);
-    this.playbackSpeedValueText.setText(`${Math.round(this.playbackSpeedMultiplier * 100)}%`);
+    this.playbackSpeedValueText.setText(`${Math.round(visualSpeed * 100)}%`);
   }
 
   private setPauseButtonIconMode(showPlay: boolean): void {
@@ -1643,6 +1776,13 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private async playDebugTargetNote(): Promise<void> {
+    if (this.isWaitingPausedByButton()) {
+      this.feedbackText = 'Resume with Play before debug input';
+      this.feedbackUntilMs = performance.now() + 900;
+      this.updateHud();
+      this.updateDebugOverlay();
+      return;
+    }
     const target = this.targets[this.runtime.active_target_index];
     if (!target) {
       this.feedbackText = 'No target to play';
@@ -1686,6 +1826,13 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private consumeDebugHit(): void {
+    if (this.isWaitingPausedByButton()) {
+      this.feedbackText = 'Resume with Play before debug input';
+      this.feedbackUntilMs = performance.now() + 900;
+      this.updateHud();
+      this.updateDebugOverlay();
+      return;
+    }
     if (!this.audioCtx || !this.tempoMap) return;
     if (!this.playbackStarted) {
       this.feedbackText = 'Playback not started yet';
@@ -2201,6 +2348,12 @@ export class PlayScene extends Phaser.Scene {
     this.playbackSpeedTrack = undefined;
     this.playbackSpeedKnob?.destroy();
     this.playbackSpeedKnob = undefined;
+    this.input.off('pointerup', this.handlePlaybackSpeedPointerUp, this);
+    this.input.off('pointerupoutside', this.handlePlaybackSpeedPointerUp, this);
+    this.playbackSpeedAdjusting = false;
+    this.playbackSpeedDragPointerId = undefined;
+    this.pendingPlaybackSpeedMultiplier = undefined;
+    this.playbackWasRunningBeforeSpeedAdjust = false;
     this.playbackSpeedLabel?.destroy();
     this.playbackSpeedLabel = undefined;
     this.playbackSpeedValueText?.destroy();
@@ -2235,7 +2388,6 @@ export class PlayScene extends Phaser.Scene {
     this.debugOverlayPanel = undefined;
     this.debugOverlayText = undefined;
     this.hitDebugSnapshot = undefined;
-    this.mp3SeekDisabled = false;
 
     this.clearFretLabels();
 
@@ -2274,20 +2426,33 @@ export class PlayScene extends Phaser.Scene {
     if (!audioUrl || !isBackingTrackAudioUrl(audioUrl)) {
       return false;
     }
+    if (!this.audioCtx) return false;
 
-    const audio = new Audio(audioUrl);
-    audio.preload = 'auto';
-    audio.loop = false;
-    this.backingTrackAudio = audio;
     this.playbackMode = 'audio';
     this.lastKnownBackingAudioSeconds = 0;
-    this.mp3SeekDisabled = false;
-    const played = await this.playBackingTrackAudioFrom(startSongSeconds);
-    if (played) return true;
+    this.pausedBackingAudioSeconds = undefined;
 
-    this.releaseBackingTrackAudio();
-    this.playbackMode = 'midi';
-    return false;
+    try {
+      if (!this.backingTrackBuffer || this.backingTrackAudioUrl !== audioUrl) {
+        this.backingTrackBuffer = await this.loadBackingTrackBuffer(audioUrl);
+        this.backingTrackAudioUrl = audioUrl;
+      }
+      this.ensureBackingTrackGainNode();
+      return await this.playBackingTrackAudioFrom(startSongSeconds);
+    } catch (error) {
+      this.lastAudioSeekDebug = {
+        requestedSongSeconds: startSongSeconds,
+        targetSeconds: startSongSeconds,
+        beforeSeekSeconds: 0,
+        afterPlaySeconds: undefined,
+        fallbackToMidi: false,
+        seekDisabled: false,
+        ok: false,
+        atMs: performance.now()
+      };
+      console.warn('Backing track load failed', { audioUrl, error });
+      return false;
+    }
   }
 
   private pauseBackingPlayback(): void {
@@ -2296,12 +2461,12 @@ export class PlayScene extends Phaser.Scene {
       const pausedAudioSeconds = resolveSongSecondsForRuntime(
         this.getSongSecondsFromClock(),
         this.pausedSongSeconds,
-        this.backingTrackAudio?.currentTime
+        this.getBackingTrackSongSeconds()
       );
       this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds);
       this.pausedBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds, this.pausedSongSeconds);
       this.pausedSongSeconds = this.pausedBackingAudioSeconds;
-      this.backingTrackAudio?.pause();
+      this.stopBackingTrackSource();
       return;
     }
     this.scrubPlayer?.pause(this.runtime.current_tick);
@@ -2319,84 +2484,104 @@ export class PlayScene extends Phaser.Scene {
     this.startPlaybackClock(resumeSeconds);
 
     if (this.playbackMode === 'audio') {
-      void this.resumeBackingTrackAudioOrFallback(resumeSeconds);
+      void this.resumeBackingTrackAudio(resumeSeconds);
       return;
     }
     this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
   }
 
   private stopBackingPlayback(): void {
-    this.backingTrackAudio?.pause();
+    this.stopBackingTrackSource();
     this.releaseBackingTrackAudio();
     this.scrubPlayer?.stop();
   }
 
-  private async resumeBackingTrackAudioOrFallback(songSeconds: number): Promise<void> {
+  private async resumeBackingTrackAudio(songSeconds: number): Promise<void> {
     const resumed = await this.playBackingTrackAudioFrom(songSeconds);
     if (resumed) return;
 
-    this.playbackMode = 'midi';
-    this.releaseBackingTrackAudio();
-    this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
-    this.feedbackText = 'Backing track unavailable. Switched to MIDI.';
+    this.feedbackText = 'Backing track unavailable.';
     this.feedbackUntilMs = performance.now() + 1200;
   }
 
   private async playBackingTrackAudioFrom(songSeconds: number): Promise<boolean> {
-    if (!this.backingTrackAudio) return false;
+    if (!this.audioCtx || !this.backingTrackBuffer) return false;
     const safeSeconds = Math.max(0, songSeconds);
-    const audio = this.backingTrackAudio;
-    audio.playbackRate = this.playbackSpeedMultiplier;
-    const beforeSeekSeconds = audio.currentTime;
-
-    await this.ensureAudioMetadataLoaded(audio);
-    const targetSeconds = this.clampAudioSeekSeconds(audio, safeSeconds);
-    if (!this.mp3SeekDisabled) {
-      try {
-        audio.currentTime = targetSeconds;
-        if (Math.abs(audio.currentTime - targetSeconds) > 0.25) {
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 0);
-          });
-          audio.currentTime = targetSeconds;
-        }
-      } catch {
-        // Ignore seek failures, we still try to play from current position.
-      }
-    }
+    const targetSeconds = this.clampAudioSeekSeconds(safeSeconds);
+    const beforeSeekSeconds = sanitizeSongSeconds(
+      this.getBackingTrackSongSeconds() ?? this.pausedSongSeconds,
+      this.pausedSongSeconds
+    );
+    this.stopBackingTrackSource();
+    this.ensureBackingTrackGainNode();
 
     try {
-      await audio.play();
-      if (targetSeconds > 0.35 && audio.currentTime + 0.35 < targetSeconds) {
-        this.mp3SeekDisabled = true;
-        const rollbackSeconds = sanitizeSongSeconds(beforeSeekSeconds, audio.currentTime);
-        try {
-          audio.currentTime = rollbackSeconds;
-          await audio.play();
-        } catch {
-          // Keep best-effort current state.
-        }
-      }
-      const resolvedSeconds = sanitizeSongSeconds(audio.currentTime, beforeSeekSeconds);
-      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolvedSeconds, targetSeconds);
-      this.syncRuntimeToBackingTrackPosition(resolvedSeconds);
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = this.backingTrackBuffer;
+      source.playbackRate.value = this.playbackSpeedMultiplier;
+      source.connect(this.backingTrackGain!);
+      const startAtAudioTime = this.audioCtx.currentTime + 0.005;
+      source.onended = () => {
+        if (this.backingTrackSource !== source) return;
+        this.backingTrackSource = undefined;
+        this.backingTrackSourceStartedAtAudioTime = undefined;
+        this.backingTrackSourceStartSongSeconds = this.backingTrackBuffer?.duration ?? targetSeconds;
+        this.backingTrackIsPlaying = false;
+      };
+      source.start(startAtAudioTime, targetSeconds);
+      this.backingTrackSource = source;
+      this.backingTrackSourceStartedAtAudioTime = startAtAudioTime;
+      this.backingTrackSourceStartSongSeconds = targetSeconds;
+      this.backingTrackIsPlaying = true;
+
+      this.lastAudioSeekDebug = {
+        requestedSongSeconds: safeSeconds,
+        targetSeconds,
+        beforeSeekSeconds,
+        afterPlaySeconds: targetSeconds,
+        afterRetrySeconds: undefined,
+        fallbackToMidi: false,
+        seekDisabled: false,
+        ok: true,
+        atMs: performance.now()
+      };
+      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, targetSeconds);
+      this.syncRuntimeToBackingTrackPosition(targetSeconds);
       this.pausedBackingAudioSeconds = undefined;
       return true;
     } catch (error) {
+      this.lastAudioSeekDebug = {
+        requestedSongSeconds: safeSeconds,
+        targetSeconds,
+        beforeSeekSeconds,
+        afterPlaySeconds: undefined,
+        fallbackToMidi: false,
+        seekDisabled: false,
+        ok: false,
+        atMs: performance.now()
+      };
       console.warn('Backing track play failed', { audioUrl: this.sceneData?.audioUrl, error });
       return false;
     }
   }
 
   private releaseBackingTrackAudio(): void {
-    if (!this.backingTrackAudio) return;
-    this.backingTrackAudio.pause();
-    this.backingTrackAudio.removeAttribute('src');
-    this.backingTrackAudio.load();
-    this.backingTrackAudio = undefined;
+    this.stopBackingTrackSource();
+    this.backingTrackBuffer = undefined;
+    this.backingTrackAudioUrl = undefined;
+    if (this.backingTrackGain) {
+      try {
+        this.backingTrackGain.disconnect();
+      } catch {
+        // Ignore best-effort disconnect errors.
+      }
+    }
+    this.backingTrackGain = undefined;
+    this.backingTrackSourceStartedAtAudioTime = undefined;
+    this.backingTrackSourceStartSongSeconds = 0;
+    this.backingTrackIsPlaying = false;
     this.pausedBackingAudioSeconds = undefined;
     this.lastKnownBackingAudioSeconds = 0;
-    this.mp3SeekDisabled = false;
   }
 
   private syncRuntimeToBackingTrackPosition(songSeconds: number): void {
@@ -2410,36 +2595,64 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private clampAudioSeekSeconds(audio: HTMLAudioElement, songSeconds: number): number {
-    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return songSeconds;
-    return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, audio.duration - 0.02));
+  private stopBackingTrackSource(): void {
+    if (!this.backingTrackSource) return;
+    this.backingTrackSource.onended = null;
+    try {
+      this.backingTrackSource.stop();
+    } catch {
+      // Ignore stop errors for already-ended sources.
+    }
+    try {
+      this.backingTrackSource.disconnect();
+    } catch {
+      // Ignore best-effort disconnect errors.
+    }
+    this.backingTrackSource = undefined;
+    this.backingTrackSourceStartedAtAudioTime = undefined;
+    this.backingTrackIsPlaying = false;
   }
 
-  private async ensureAudioMetadataLoaded(audio: HTMLAudioElement): Promise<void> {
-    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return;
-    await new Promise<void>((resolve) => {
-      let done = false;
-      const cleanup = (): void => {
-        audio.removeEventListener('loadedmetadata', onReady);
-        audio.removeEventListener('loadeddata', onReady);
-        audio.removeEventListener('canplay', onReady);
-      };
-      const onReady = (): void => {
-        if (done) return;
-        done = true;
-        cleanup();
-        resolve();
-      };
-      audio.addEventListener('loadedmetadata', onReady, { once: true });
-      audio.addEventListener('loadeddata', onReady, { once: true });
-      audio.addEventListener('canplay', onReady, { once: true });
-      window.setTimeout(onReady, 700);
-      try {
-        audio.load();
-      } catch {
-        onReady();
-      }
-    });
+  private ensureBackingTrackGainNode(): void {
+    if (!this.audioCtx) return;
+    if (this.backingTrackGain) return;
+    const gain = this.audioCtx.createGain();
+    gain.gain.value = 1;
+    gain.connect(this.audioCtx.destination);
+    this.backingTrackGain = gain;
+  }
+
+  private getBackingTrackSongSeconds(): number | undefined {
+    const buffer = this.backingTrackBuffer;
+    if (!buffer) return undefined;
+    if (!this.backingTrackIsPlaying || !this.audioCtx || this.backingTrackSourceStartedAtAudioTime === undefined) {
+      return Phaser.Math.Clamp(this.backingTrackSourceStartSongSeconds, 0, Math.max(0, buffer.duration));
+    }
+    const elapsed = Math.max(0, this.audioCtx.currentTime - this.backingTrackSourceStartedAtAudioTime);
+    const position = this.backingTrackSourceStartSongSeconds + elapsed * this.playbackSpeedMultiplier;
+    return Phaser.Math.Clamp(position, 0, Math.max(0, buffer.duration));
+  }
+
+  private async loadBackingTrackBuffer(audioUrl: string): Promise<AudioBuffer> {
+    if (!this.audioCtx) {
+      throw new Error('Audio context unavailable while loading backing track.');
+    }
+    const response = await fetch(audioUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch backing track (${response.status} ${response.statusText})`);
+    }
+    const encoded = await response.arrayBuffer();
+    if (encoded.byteLength === 0) {
+      throw new Error('Backing track file is empty.');
+    }
+    return await this.audioCtx.decodeAudioData(encoded.slice(0));
+  }
+
+  private clampAudioSeekSeconds(songSeconds: number): number {
+    if (!this.backingTrackBuffer || !Number.isFinite(this.backingTrackBuffer.duration) || this.backingTrackBuffer.duration <= 0) {
+      return songSeconds;
+    }
+    return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, this.backingTrackBuffer.duration - 0.02));
   }
 
   private startPlaybackClock(songSeconds: number): void {
@@ -2468,11 +2681,11 @@ export class PlayScene extends Phaser.Scene {
 
   private getSongSecondsNow(): number {
     const expectedClockSongSeconds = this.getSongSecondsFromClock();
-    if (this.playbackMode === 'audio' && this.backingTrackAudio) {
+    if (this.playbackMode === 'audio' && this.backingTrackBuffer) {
       const resolved = resolveSongSecondsForRuntime(
         expectedClockSongSeconds,
         this.pausedSongSeconds,
-        this.backingTrackAudio.currentTime
+        this.getBackingTrackSongSeconds()
       );
       this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolved);
       return resolved;
@@ -2669,6 +2882,24 @@ function formatSignedMs(value: number | undefined): string {
   if (value === undefined || Number.isNaN(value)) return '-';
   const rounded = Math.round(value);
   return `${rounded >= 0 ? '+' : ''}${rounded}ms`;
+}
+
+function formatDebugPath(value: string | undefined): string {
+  if (!value) return '-';
+  const trimmed = value.trim();
+  if (!trimmed) return '-';
+  if (trimmed.startsWith('data:')) return '[data-url]';
+  const withoutQuery = trimmed.split('?')[0].split('#')[0];
+  const parts = withoutQuery.split('/').filter((part) => part.length > 0);
+  if (parts.length === 0) return withoutQuery;
+  const tail = parts.slice(-3).map((part) => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      return part;
+    }
+  });
+  return `.../${tail.join('/')}`;
 }
 
 function normalizeTopFeedback(rawFeedbackText: string): string {
