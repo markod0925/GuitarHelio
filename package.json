@@ -27,6 +27,7 @@
   "dependencies": {
     "@capacitor/core": "^8.1.0",
     "@capacitor/filesystem": "^8.1.2",
+    "@fontsource/montserrat": "^5.2.8",
     "@spotify/basic-pitch": "^1.0.1",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-node": "^4.22.0",

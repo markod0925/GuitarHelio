@@ -84,15 +84,7 @@ type AssetExistenceCacheEntry = {
 
 type DifficultyDropdown = {
   trigger: RoundedBox;
-  triggerLabel: Phaser.GameObjects.Text;
-  chevron: Phaser.GameObjects.Text;
-  blocker: RoundedBox;
-  menuContainer: Phaser.GameObjects.Container;
-  options: Array<{
-    difficulty: Difficulty;
-    background: RoundedBox;
-    label: Phaser.GameObjects.Text;
-  }>;
+  label: Phaser.GameObjects.Text;
 };
 
 type ToggleOption = {
@@ -193,7 +185,6 @@ export class SongSelectScene extends Phaser.Scene {
   private selectedFingers = new Set<number>();
   private selectedFrets = new Set<number>();
   private settingsOpen = false;
-  private difficultyOpen = false;
   private tunerTargetString = 6;
   private tunerActive = false;
   private tunerCtx?: AudioContext;
@@ -229,7 +220,7 @@ export class SongSelectScene extends Phaser.Scene {
     const loadingSongsLabel = this.add
       .text(width * 0.27, height * 0.24, 'Loading songs...', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0.5);
@@ -249,7 +240,7 @@ export class SongSelectScene extends Phaser.Scene {
       this.add
         .text(width / 2, fallbackTitleY, 'GuitarHelio', {
           color: '#dbeafe',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${titleSize}px`
         })
@@ -280,7 +271,7 @@ export class SongSelectScene extends Phaser.Scene {
     const settingsLabel = this.add
       .text(settingsButton.x + (settingsIcon ? sideButtonWidth * 0.04 : 0), settingsButtonY, 'Settings', {
         color: '#f1f5f9',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(17, labelSize + 2)}px`
       })
@@ -300,7 +291,7 @@ export class SongSelectScene extends Phaser.Scene {
     const tunerLabel = this.add
       .text(tunerButton.x + (tunerIcon ? sideButtonWidth * 0.04 : 0), tunerButtonY, 'Tuner', {
         color: '#f1f5f9',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(17, labelSize + 2)}px`
       })
@@ -309,7 +300,7 @@ export class SongSelectScene extends Phaser.Scene {
     const tunerSummary = this.add
       .text(tunerButton.x, tunerButtonY + 38, '', {
         color: '#a5b4fc',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5)
@@ -317,7 +308,7 @@ export class SongSelectScene extends Phaser.Scene {
     const settingsSummary = this.add
       .text(settingsButton.x, settingsButtonY + 39, '', {
         color: '#a5b4fc',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5);
@@ -328,7 +319,7 @@ export class SongSelectScene extends Phaser.Scene {
     const importLabel = this.add
       .text(importButton.x, importButtonY, 'Import MIDI/MP3/OGG', {
         color: '#f1f5f9',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(16, labelSize + 1)}px`
       })
@@ -337,7 +328,7 @@ export class SongSelectScene extends Phaser.Scene {
     const importSummary = this.add
       .text(importButton.x, importButtonY + 39, '', {
         color: '#a5b4fc',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5);
@@ -358,7 +349,7 @@ export class SongSelectScene extends Phaser.Scene {
       ? this.add
           .text(importSourceDebugCenterX, importSourceDebugToggleY - 24, 'Import Source (debug)', {
             color: '#94a3b8',
-            fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+            fontFamily: 'Montserrat, sans-serif',
             fontSize: `${Math.max(11, labelSize - 4)}px`
           })
           .setOrigin(0.5)
@@ -386,10 +377,11 @@ export class SongSelectScene extends Phaser.Scene {
     const hint = this.add
       .text(width / 2, height * 0.84, '', {
         color: '#fca5a5',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(13, Math.floor(width * 0.015))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setVisible(false);
 
     const startScale = Math.SQRT2;
     const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
@@ -412,7 +404,7 @@ export class SongSelectScene extends Phaser.Scene {
     const startLabel = this.add
       .text(width / 2 + (playIcon ? startButtonWidth * 0.06 : 0), startY, 'Start Session', {
         color: '#fff7ed',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(28, labelSize + 10)}px`
       })
@@ -426,20 +418,10 @@ export class SongSelectScene extends Phaser.Scene {
     const settingsOverlay = this.createSettingsOverlay(width, height, labelSize);
     this.tunerPanel = this.createTunerOverlay(width, height, labelSize);
 
-    const closeDifficulty = (): void => {
-      this.difficultyOpen = false;
-      difficultyDropdown.menuContainer.setVisible(true);
-      difficultyDropdown.blocker.setVisible(false);
-      difficultyDropdown.blocker.disableInteractive();
-    };
-
-    const openDifficulty = (): void => {
-      this.difficultyOpen = false;
-      difficultyDropdown.menuContainer.setVisible(true);
-    };
-
-    const toggleDifficulty = (): void => {
-      openDifficulty();
+    const cycleDifficulty = (): void => {
+      if (this.settingsOpen || this.importInProgress) return;
+      this.selectedDifficulty = nextDifficulty(this.selectedDifficulty);
+      this.persistSessionSettingsPreference();
       refreshSelections();
     };
 
@@ -447,6 +429,12 @@ export class SongSelectScene extends Phaser.Scene {
       const settingsValid = this.selectedStrings.size > 0 && this.selectedFingers.size > 0 && this.selectedFrets.size > 0;
       const hasPlayableSongs = songs.length > 0;
       const canStartSession = settingsValid && hasPlayableSongs && !this.importInProgress && !isCatalogLoading;
+      const difficultyColors: Record<Difficulty, { fill: number; stroke: number }> = {
+        Easy: { fill: 0x166534, stroke: 0x4ade80 },
+        Medium: { fill: 0x1a2a53, stroke: 0x3b82f6 },
+        Hard: { fill: 0x7f1d1d, stroke: 0xfb7185 }
+      };
+      const difficultyColor = difficultyColors[this.selectedDifficulty];
 
       this.songOptions.forEach((option, index) => {
         const active = index === this.selectedSongIndex;
@@ -461,17 +449,10 @@ export class SongSelectScene extends Phaser.Scene {
         option.thumbLabel?.setColor(active ? '#dbeafe' : '#94a3b8');
       });
 
-      difficultyDropdown.trigger.setFillStyle(0x1a2a53, 0.72);
-      difficultyDropdown.trigger.setStrokeStyle(2, 0x3b82f6, 0.35);
-      difficultyDropdown.chevron.setText('');
-      difficultyDropdown.chevron.setColor('#94a3b8');
-
-      difficultyDropdown.options.forEach((option) => {
-        const active = option.difficulty === this.selectedDifficulty;
-        option.background.setFillStyle(active ? 0x7c92b6 : 0x1e2f58, active ? 0.95 : 0.65);
-        option.background.setStrokeStyle(1, active ? 0xdbeafe : 0x334155, active ? 0.85 : 0.5);
-        option.label.setColor(active ? '#f8fafc' : '#94a3b8');
-      });
+      difficultyDropdown.trigger.setFillStyle(difficultyColor.fill, 0.82);
+      difficultyDropdown.trigger.setStrokeStyle(2, difficultyColor.stroke, 0.62);
+      difficultyDropdown.label.setText(this.selectedDifficulty);
+      difficultyDropdown.label.setColor('#f8fafc');
 
       settingsButton.setFillStyle(this.settingsOpen ? 0x27457c : 0x1a2a53, this.settingsOpen ? 0.9 : 0.74);
       settingsButton.setStrokeStyle(2, this.settingsOpen ? 0x60a5fa : settingsValid ? 0x3b82f6 : 0xfb7185, 0.52);
@@ -615,7 +596,6 @@ export class SongSelectScene extends Phaser.Scene {
     const openSettings = (): void => {
       if (this.importInProgress) return;
       this.hideSongRemovePrompt();
-      closeDifficulty();
       closeTuner();
       this.settingsOpen = true;
       settingsOverlay.container.setVisible(true);
@@ -632,7 +612,6 @@ export class SongSelectScene extends Phaser.Scene {
       if (this.importInProgress) return;
       if (this.settingsOpen) return;
       this.hideSongRemovePrompt();
-      closeDifficulty();
       this.tunerOpen = true;
       this.tunerPanel?.container.setVisible(true);
       refreshSelections();
@@ -658,7 +637,6 @@ export class SongSelectScene extends Phaser.Scene {
       this.hideSongRemovePrompt();
       if (this.settingsOpen) closeSettings();
       if (this.tunerOpen) closeTuner();
-      closeDifficulty();
       importInput.value = '';
       importInput.click();
       refreshSelections();
@@ -669,11 +647,6 @@ export class SongSelectScene extends Phaser.Scene {
       this.hideSongRemovePrompt();
       if (this.settingsOpen) return;
       if (isCatalogLoading) {
-        refreshSelections();
-        return;
-      }
-      if (this.difficultyOpen) {
-        closeDifficulty();
         refreshSelections();
         return;
       }
@@ -805,22 +778,8 @@ export class SongSelectScene extends Phaser.Scene {
       option.background.on('pointerdown', applyImportSourceMode);
       option.label.on('pointerdown', applyImportSourceMode);
     });
-    difficultyDropdown.trigger.on('pointerdown', toggleDifficulty);
-    difficultyDropdown.chevron.on('pointerdown', toggleDifficulty);
-    difficultyDropdown.blocker.on('pointerdown', () => {
-      closeDifficulty();
-      refreshSelections();
-    });
-    difficultyDropdown.options.forEach((option) => {
-      const applyDifficulty = (): void => {
-        this.selectedDifficulty = option.difficulty;
-        this.persistSessionSettingsPreference();
-        closeDifficulty();
-        refreshSelections();
-      };
-      option.background.on('pointerdown', applyDifficulty);
-      option.label.on('pointerdown', applyDifficulty);
-    });
+    difficultyDropdown.trigger.on('pointerdown', cycleDifficulty);
+    difficultyDropdown.label.on('pointerdown', cycleDifficulty);
     const toggleTunerState = (): void => {
       if (this.tunerActive) {
         void this.stopTuner(true).then(() => refreshSelections());
@@ -933,9 +892,6 @@ export class SongSelectScene extends Phaser.Scene {
         closeSettings();
       } else if (this.tunerOpen) {
         closeTuner();
-      } else if (this.difficultyOpen) {
-        closeDifficulty();
-        refreshSelections();
       } else {
         openSettings();
       }
@@ -945,7 +901,6 @@ export class SongSelectScene extends Phaser.Scene {
       this.songOptions.forEach((option, index) => {
         const selectSong = (): void => {
           if (this.settingsOpen || songs.length === 0) return;
-          if (this.difficultyOpen) closeDifficulty();
           this.hideSongRemovePrompt();
           this.selectedSongIndex = index;
           refreshSelections();
@@ -1234,7 +1189,7 @@ export class SongSelectScene extends Phaser.Scene {
     const title = this.add
       .text(panelX, panelY - panelHeight * 0.41, 'Session Settings', {
         color: '#e2e8f0',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(20, labelSize + 6)}px`
       })
@@ -1244,7 +1199,7 @@ export class SongSelectScene extends Phaser.Scene {
     const stringsTitle = this.add
       .text(panelX - panelWidth * 0.42, stringsTitleY, 'Strings', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0, 0.5);
@@ -1262,7 +1217,7 @@ export class SongSelectScene extends Phaser.Scene {
     const fingersTitle = this.add
       .text(panelX - panelWidth * 0.42, fingersTitleY, 'Fingers (1-4)', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0, 0.5);
@@ -1280,7 +1235,7 @@ export class SongSelectScene extends Phaser.Scene {
     const fretsTitle = this.add
       .text(panelX - panelWidth * 0.42, fretsTitleY, 'Frets (0-21)', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0, 0.5);
@@ -1310,7 +1265,7 @@ export class SongSelectScene extends Phaser.Scene {
     const doneLabel = this.add
       .text(doneButton.x, doneButton.y, 'Done', {
         color: '#eff6ff',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, labelSize + 2)}px`
       })
@@ -1352,7 +1307,7 @@ export class SongSelectScene extends Phaser.Scene {
     const title = this.add
       .text(panelX, panelY - panelHeight * 0.4, 'Tuner', {
         color: '#e2e8f0',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(20, labelSize + 3)}px`
       })
@@ -1361,7 +1316,7 @@ export class SongSelectScene extends Phaser.Scene {
     const targetLabel = this.add
       .text(panelX, panelY - panelHeight * 0.26, '', {
         color: '#bae6fd',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize - 1)}px`
       })
       .setOrigin(0.5);
@@ -1386,7 +1341,7 @@ export class SongSelectScene extends Phaser.Scene {
     const detectedLabel = this.add
       .text(panelX, panelY + panelHeight * 0.22, 'Detected: --', {
         color: '#cbd5e1',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(13, labelSize - 2)}px`
       })
       .setOrigin(0.5);
@@ -1405,7 +1360,7 @@ export class SongSelectScene extends Phaser.Scene {
     const startLabel = this.add
       .text(startButton.x, startButton.y, 'Start Tuner', {
         color: '#eff6ff',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(13, labelSize - 2)}px`
       })
@@ -1478,7 +1433,7 @@ export class SongSelectScene extends Phaser.Scene {
     const title = this.add
       .text(panelX, panelY - panelHeight * 0.3, 'Import Song', {
         color: '#e2e8f0',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(20, labelSize + 3)}px`
       })
@@ -1487,7 +1442,7 @@ export class SongSelectScene extends Phaser.Scene {
     const stageLabel = this.add
       .text(panelX, panelY - panelHeight * 0.05, 'Preparing import...', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize - 1)}px`
       })
       .setOrigin(0.5);
@@ -1511,7 +1466,7 @@ export class SongSelectScene extends Phaser.Scene {
     const percentLabel = this.add
       .text(panelX, panelY + panelHeight * 0.27, '0%', {
         color: '#fde68a',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(14, labelSize - 1)}px`
       })
@@ -1520,7 +1475,7 @@ export class SongSelectScene extends Phaser.Scene {
     const tip = this.add
       .text(panelX, panelY + panelHeight * 0.39, 'Keep this window open during import.', {
         color: '#94a3b8',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5);
@@ -1616,7 +1571,7 @@ export class SongSelectScene extends Phaser.Scene {
     const label = this.add
       .text(x, y, 'Remove', {
         color: '#ffe4e6',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.012))}px`
       })
@@ -2263,7 +2218,7 @@ export class SongSelectScene extends Phaser.Scene {
       const label = this.add
         .text(x - buttonWidth * 0.02, labelY, song.name, {
           color: '#cbd5e1',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(17, labelSize + 2)}px`,
           wordWrap: { width: buttonWidth * 0.38, useAdvancedWrap: true }
@@ -2279,7 +2234,7 @@ export class SongSelectScene extends Phaser.Scene {
           `${song.usesMidiFallback ? 'MIDI • ' : ''}Best: ${song.highScore}`,
           {
           color: '#64748b',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontSize: `${Math.max(12, labelSize - 2)}px`
           }
         )
@@ -2320,67 +2275,39 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private createDifficultyDropdown(width: number, height: number, labelSize: number): DifficultyDropdown {
-    const difficulties: Difficulty[] = ['Easy', 'Medium', 'Hard'];
-    const optionCount = difficulties.length;
     const triggerX = width * 0.79;
     const triggerY = height * 0.27;
-    const buttonWidth = Math.min(348, width * 0.34);
-    const buttonHeight = Math.min(62, height * 0.1);
-    const optionHeight = buttonHeight * 0.76;
-    const optionGap = 8;
-    const innerPadding = 10;
-    const optionWidth = (buttonWidth - innerPadding * 2 - optionGap * (optionCount - 1)) / optionCount;
+    const fontSize = Math.max(15, labelSize + 1);
+    const measurementLabel = this.add
+      .text(triggerX, triggerY, 'Medium', {
+        color: '#f8fafc',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${fontSize}px`
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+    const horizontalPadding = Math.max(34, Math.floor(labelSize * 1.8));
+    const buttonWidth = Math.ceil(measurementLabel.width + horizontalPadding);
+    const buttonHeight = Math.min(54, Math.max(42, height * 0.08));
 
     const trigger = new RoundedBox(this, triggerX, triggerY, buttonWidth, buttonHeight, 0x1a2a53, 0.72)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true })
       .setDepth(90);
-    const triggerLabel = this.add
-      .text(triggerX, triggerY - buttonHeight * 0.72, '', {
-        color: '#bfdbfe',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+    const label = measurementLabel
+      .setText(this.selectedDifficulty)
+      .setStyle({
+        color: '#f8fafc',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(13, labelSize - 1)}px`
+        fontSize: `${fontSize}px`
       })
       .setOrigin(0.5)
-      .setVisible(false)
-      .setDepth(91);
-    const chevron = this.add
-      .text(triggerX + buttonWidth * 0.34, triggerY, '', {
-        color: '#94a3b8',
-        fontSize: `${Math.max(14, labelSize - 1)}px`
-      })
-      .setOrigin(0.5)
+      .setVisible(true)
       .setInteractive({ useHandCursor: true })
       .setDepth(91);
-
-    const blocker = new RoundedBox(this, width / 2, height / 2, width, height, 0x000000, 0.001, 0)
-      .setVisible(false)
-      .setDepth(92);
-
-    const optionItems: Array<{ difficulty: Difficulty; background: RoundedBox; label: Phaser.GameObjects.Text }> = [];
-    const optionObjects: Phaser.GameObjects.GameObject[] = [];
-    difficulties.forEach((difficulty, index) => {
-      const x = triggerX - buttonWidth * 0.5 + innerPadding + optionWidth * 0.5 + index * (optionWidth + optionGap);
-      const y = triggerY;
-      const background = new RoundedBox(this, x, y, optionWidth, optionHeight, 0x1e2f58, 0.66)
-        .setStrokeStyle(1, 0x334155, 0.5)
-        .setInteractive({ useHandCursor: true });
-      const label = this.add
-        .text(x, y, difficulty, {
-          color: '#cbd5e1',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
-          fontStyle: 'bold',
-          fontSize: `${Math.max(13, labelSize - 1)}px`
-        })
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true });
-      optionItems.push({ difficulty, background, label });
-      optionObjects.push(background, label);
-    });
-
-    const menuContainer = this.add.container(0, 0, optionObjects).setDepth(93).setVisible(true);
-    return { trigger, triggerLabel, chevron, blocker, menuContainer, options: optionItems };
+    return { trigger, label };
   }
 
   private fitSongTitleText(
@@ -2428,7 +2355,7 @@ export class SongSelectScene extends Phaser.Scene {
       const label = this.add
         .text(x, centerY, option.label, {
           color: '#94a3b8',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(11, labelSize - 5)}px`
         })
@@ -2462,7 +2389,7 @@ export class SongSelectScene extends Phaser.Scene {
       const label = this.add
         .text(x, centerY, `${value}`, {
           color: '#cbd5e1',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(14, labelSize - 1)}px`
         })
@@ -2493,7 +2420,7 @@ export class SongSelectScene extends Phaser.Scene {
       const label = this.add
         .text(x, centerY, `${value}`, {
           color: '#cbd5e1',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(14, labelSize - 1)}px`
         })
@@ -2530,7 +2457,7 @@ export class SongSelectScene extends Phaser.Scene {
       const label = this.add
         .text(x, y, `${value}`, {
           color: '#cbd5e1',
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: `${Math.max(12, labelSize - 3)}px`
         })

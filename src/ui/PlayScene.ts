@@ -265,14 +265,14 @@ export class PlayScene extends Phaser.Scene {
 
     this.statusText = this.add.text(0, 0, '', {
       color: '#dbeafe',
-      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontFamily: 'Montserrat, sans-serif',
       fontStyle: 'bold',
       fontSize: `${Math.max(14, Math.floor(this.scale.width * 0.016))}px`
     });
     this.feedbackMessageText = this.add
       .text(0, 0, '', {
         color: '#f8fafc',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(30, Math.floor(this.scale.width * 0.047))}px`,
         align: 'center'
@@ -283,7 +283,7 @@ export class PlayScene extends Phaser.Scene {
       .setVisible(false);
     this.liveScoreText = this.add.text(0, 0, '', {
       color: '#e2e8f0',
-      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontFamily: 'Montserrat, sans-serif',
       fontStyle: 'bold',
       fontSize: `${Math.max(13, Math.floor(this.scale.width * 0.015))}px`
     }).setOrigin(1, 0);
@@ -302,7 +302,7 @@ export class PlayScene extends Phaser.Scene {
     this.debugButtonLabel = this.add
       .text(0, 0, 'Debug Note', {
         color: '#eff6ff',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(13, Math.floor(this.scale.width * 0.014))}px`
       })
@@ -671,13 +671,13 @@ export class PlayScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x60a5fa, 0.58);
     const title = this.add.text(width / 2, height * 0.26, 'Session Complete', {
       color: '#f8fafc',
-      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontFamily: 'Montserrat, sans-serif',
       fontStyle: 'bold',
       fontSize: `${Math.max(24, Math.floor(width * 0.035))}px`
     }).setOrigin(0.5);
     const summaryText = this.add.text(width / 2, height * 0.34, `${formatSummary(summary)}\nBest Score: ${bestScore}`, {
       color: '#e2e8f0',
-      fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+      fontFamily: 'Montserrat, sans-serif',
       align: 'left',
       fontSize: `${Math.max(16, Math.floor(width * 0.02))}px`
     }).setOrigin(0.5, 0);
@@ -693,7 +693,7 @@ export class PlayScene extends Phaser.Scene {
     const restartLabel = this.add
       .text(width / 2, restartButtonY, 'Restart', {
         color: '#fff7ed',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
@@ -705,7 +705,7 @@ export class PlayScene extends Phaser.Scene {
     const backLabel = this.add
       .text(width / 2, backButtonY, 'Back to Start', {
         color: '#e2e8f0',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
@@ -763,7 +763,7 @@ export class PlayScene extends Phaser.Scene {
       const baseStar = this.add
         .text(x, centerY, '☆', {
           color: baseColor,
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: starFontSize
         })
@@ -775,7 +775,7 @@ export class PlayScene extends Phaser.Scene {
       const fillStar = this.add
         .text(x, centerY, '★', {
           color: activeColor,
-          fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+          fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
           fontSize: starFontSize
         })
@@ -864,7 +864,7 @@ export class PlayScene extends Phaser.Scene {
     const title = this.add
       .text(centerX, centerY - panelHeight * 0.33, 'Pause Menu', {
         color: '#f8fafc',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(22, Math.floor(width * 0.03))}px`
       })
@@ -880,7 +880,7 @@ export class PlayScene extends Phaser.Scene {
     const continueLabel = this.add
       .text(centerX, continueButtonY, 'Continue', {
         color: '#eff6ff',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
@@ -893,7 +893,7 @@ export class PlayScene extends Phaser.Scene {
     const resetLabel = this.add
       .text(centerX, resetButtonY, 'Reset', {
         color: '#fff7ed',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
@@ -906,7 +906,7 @@ export class PlayScene extends Phaser.Scene {
     const backLabel = this.add
       .text(centerX, backButtonY, 'Back to Start', {
         color: '#e2e8f0',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
       })
@@ -1055,7 +1055,7 @@ export class PlayScene extends Phaser.Scene {
     this.debugOverlayText = this.add
       .text(0, 0, '', {
         color: '#dbeafe',
-        fontFamily: 'Courier New, monospace',
+        fontFamily: 'Montserrat, sans-serif',
         fontSize: '12px',
         lineSpacing: 3
       })
@@ -1357,7 +1357,7 @@ export class PlayScene extends Phaser.Scene {
     this.playbackSpeedLabel = this.add
       .text(0, 0, 'Speed', {
         color: '#cbd5e1',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.0125))}px`
       })
@@ -1366,7 +1366,7 @@ export class PlayScene extends Phaser.Scene {
     this.playbackSpeedValueText = this.add
       .text(0, 0, '100%', {
         color: '#f8fafc',
-        fontFamily: 'Trebuchet MS, Verdana, sans-serif',
+        fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.0125))}px`
       })

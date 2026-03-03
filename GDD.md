@@ -648,9 +648,11 @@ Gameplay feedback messages such as `Get Ready`, `Waiting`, `Perfect`, `Too Soon`
 
 ## 11.7 Start screen settings menu
 
-The difficulty selector in start screen MUST be a segmented control (`Easy`, `Medium`, `Hard`) styled as a pill group.
+The difficulty selector in start screen MUST be a single cycle button that rotates difficulty on each tap/click in this order: `Easy` -> `Medium` -> `Hard` -> `Easy`.
+The difficulty cycle button MUST be color-coded by current value: `Easy` with green background, `Medium` with blue background, `Hard` with red background.
 The default selected difficulty on start screen MUST be `Medium`.
 The start screen MUST provide a `Settings` button under the difficulty selector.
+The transient status label above `Start Session` MUST stay hidden.
 Pressing this button MUST open a modal settings panel with a dimmed background overlay.
 All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
 The song list in start screen MUST be rendered inside an invisible scrollable viewport (mouse wheel + drag/touch scroll) so users can browse and select songs beyond the initially visible rows.
@@ -739,6 +741,8 @@ The app visual style (start screen, gameplay scene, modal overlays) MUST follow 
 * glass-like panels/cards with translucent dark-blue fill and soft cyan/blue borders
 * emphasized primary CTA (`Start Session`) in warm orange gradient look with glow
 * typography with bold, high-contrast labels readable on dark background
+* typography MUST use `Montserrat` project-wide
+* `Montserrat` font assets MUST be bundled locally in the app package; runtime MUST NOT depend on external font CDN/network fetch
 * gameplay overlays (pause/results) styled consistently with the same panel language
 
 Start-screen layout constraints:
