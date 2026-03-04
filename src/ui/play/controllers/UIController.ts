@@ -19,9 +19,10 @@ import {
   computeEndScreenStars as computeOverlayEndScreenStars,
   resolveTopFeedbackMessage as resolveOverlayTopFeedbackMessage
 } from '../../UIOverlays';
+import type { PlaySceneContext } from './PlaySceneContext';
 
 export class UIController {
-  constructor(private readonly scene: any) {}
+  constructor(private readonly scene: PlaySceneContext) {}
 
   finishSong(): void {
     finishSongImpl.call(this.scene);
@@ -117,7 +118,7 @@ export class UIController {
   }
 }
 
-function finishSongImpl(this: any): void {
+function finishSongImpl(this: PlaySceneContext): void {
   if (this.resultsOverlay?.active) return;
   this.runtime.state = PlayState.Finished;
   this.runtime.waiting_started_at_s = undefined;
@@ -233,12 +234,12 @@ function finishSongImpl(this: any): void {
   ]);
 }
 
-function computeEndScreenStarsImpl(this: any, summary: ReturnType<typeof summarizeScores>): number {
+function computeEndScreenStarsImpl(this: PlaySceneContext, summary: ReturnType<typeof summarizeScores>): number {
   return computeOverlayEndScreenStars(this.targets.length, summary);
 }
 
 function createEndScreenStarsImpl(
-  this: any,
+  this: PlaySceneContext,
   centerX: number,
   centerY: number,
   earnedStars: number,
@@ -298,7 +299,7 @@ function createEndScreenStarsImpl(
   return objects;
 }
 
-function attachBackHandlersImpl(this: any): void {
+function attachBackHandlersImpl(this: PlaySceneContext): void {
   this.input.keyboard?.on('keydown-ESC', this.onBackRequested, this);
 
   this.pauseMenuBackListener = (event: Event): void => {
@@ -317,7 +318,7 @@ function attachBackHandlersImpl(this: any): void {
   window.history.pushState({ gh_play_scene: true }, '', window.location.href);
 }
 
-function onBackRequestedImpl(this: any): void {
+function onBackRequestedImpl(this: PlaySceneContext): void {
   if (this.runtime.state === PlayState.Finished) return;
   if (this.pauseOverlay) {
     this.closePauseMenu();
@@ -326,7 +327,7 @@ function onBackRequestedImpl(this: any): void {
   this.openPauseMenu();
 }
 
-function openPauseMenuImpl(this: any): void {
+function openPauseMenuImpl(this: PlaySceneContext): void {
   if (this.pauseOverlay) return;
   this.playbackWasRunningBeforePauseMenu =
     this.runtime.state === PlayState.Playing && this.playbackStarted && !this.playbackPausedByButton;
@@ -428,7 +429,7 @@ function openPauseMenuImpl(this: any): void {
   this.syncPauseButtonIcon();
 }
 
-function closePauseMenuImpl(this: any): void {
+function closePauseMenuImpl(this: PlaySceneContext): void {
   if (!this.pauseOverlay) return;
 
   this.pauseOverlay.destroy(true);
@@ -449,7 +450,7 @@ function closePauseMenuImpl(this: any): void {
   this.syncPauseButtonIcon();
 }
 
-function toggleGameplayPauseFromButtonImpl(this: any): void {
+function toggleGameplayPauseFromButtonImpl(this: PlaySceneContext): void {
   if (this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
   if (this.playbackPausedByButton) {
     this.resumeGameplayFromButtonPause();
@@ -458,7 +459,7 @@ function toggleGameplayPauseFromButtonImpl(this: any): void {
   this.pauseGameplayFromButton();
 }
 
-function pauseGameplayFromButtonImpl(this: any): void {
+function pauseGameplayFromButtonImpl(this: PlaySceneContext): void {
   if (this.playbackPausedByButton) return;
   this.playbackPausedByButton = true;
   this.playbackWasRunningBeforeButtonPause = this.runtime.state === PlayState.Playing && this.playbackStarted;
@@ -476,7 +477,7 @@ function pauseGameplayFromButtonImpl(this: any): void {
   this.syncPauseButtonIcon();
 }
 
-function resumeGameplayFromButtonPauseImpl(this: any): void {
+function resumeGameplayFromButtonPauseImpl(this: PlaySceneContext): void {
   if (!this.playbackPausedByButton) return;
   this.playbackPausedByButton = false;
 
@@ -506,34 +507,34 @@ function resumeGameplayFromButtonPauseImpl(this: any): void {
   this.syncPauseButtonIcon();
 }
 
-function isWaitingPausedByButtonImpl(this: any): boolean {
+function isWaitingPausedByButtonImpl(this: PlaySceneContext): boolean {
   return this.playbackPausedByButton && this.runtime.state === PlayState.WaitingForHit;
 }
 
-function relayoutPauseOverlayImpl(this: any): void {
+function relayoutPauseOverlayImpl(this: PlaySceneContext): void {
   if (!this.pauseOverlay) return;
   this.pauseOverlay.destroy(true);
   this.pauseOverlay = undefined;
   this.openPauseMenu();
 }
 
-function resetSessionImpl(this: any): void {
+function resetSessionImpl(this: PlaySceneContext): void {
   const data = this.sceneData;
   if (!data) return;
   this.scene.restart(data);
 }
 
-function goBackToStartImpl(this: any): void {
+function goBackToStartImpl(this: PlaySceneContext): void {
   this.scene.start('SongSelectScene');
 }
 
-function resolveSongScoreKeyImpl(this: any): string {
+function resolveSongScoreKeyImpl(this: PlaySceneContext): string {
   const explicitSongId = this.sceneData?.songId?.trim();
   if (explicitSongId) return explicitSongId;
   return this.sceneData?.midiUrl?.trim() ?? '';
 }
 
-function persistNativeSongHighScoreImpl(this: any, songScoreKey: string, bestScore: number): void {
+function persistNativeSongHighScoreImpl(this: PlaySceneContext, songScoreKey: string, bestScore: number): void {
   if (!Capacitor.isNativePlatform()) return;
 
   void import('../../../platform/nativeSongLibrary')
@@ -543,7 +544,7 @@ function persistNativeSongHighScoreImpl(this: any, songScoreKey: string, bestSco
     });
 }
 
-function createDebugOverlayImpl(this: any): void {
+function createDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayEnabled || this.debugOverlayContainer) return;
 
   this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.78)
@@ -566,7 +567,7 @@ function createDebugOverlayImpl(this: any): void {
   this.relayoutDebugOverlay();
 }
 
-function relayoutDebugOverlayImpl(this: any): void {
+function relayoutDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayPanel || !this.debugOverlayText) return;
 
   const { width, height } = this.scale;
@@ -582,7 +583,7 @@ function relayoutDebugOverlayImpl(this: any): void {
     .setFontSize(`${Math.max(11, Math.floor(width * 0.0115))}px`);
 }
 
-function toggleDebugOverlayImpl(this: any): void {
+function toggleDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayContainer) return;
   const nextVisible = !this.debugOverlayContainer.visible;
   this.debugOverlayContainer.setVisible(nextVisible);
@@ -591,7 +592,7 @@ function toggleDebugOverlayImpl(this: any): void {
   this.updateHud();
 }
 
-function updateDebugOverlayImpl(this: any): void {
+function updateDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayEnabled || !this.debugOverlayText || !this.debugOverlayContainer || !this.debugOverlayContainer.visible) {
     return;
   }
@@ -643,7 +644,7 @@ function updateDebugOverlayImpl(this: any): void {
   this.debugOverlayText.setText(lines.join('\n'));
 }
 
-function updateHudImpl(this: any): void {
+function updateHudImpl(this: PlaySceneContext): void {
   if (!this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
 
   const now = performance.now();
@@ -663,7 +664,7 @@ function updateHudImpl(this: any): void {
   this.updateDebugOverlay();
 }
 
-function resolveTopFeedbackMessageImpl(this: any, now: number): string {
+function resolveTopFeedbackMessageImpl(this: PlaySceneContext, now: number): string {
   return resolveOverlayTopFeedbackMessage({
     runtimeState: this.runtime.state,
     timeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,

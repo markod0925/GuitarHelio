@@ -18,9 +18,11 @@ import {
 } from '../../AudioController';
 import { isBackingTrackAudioUrl } from '../../playSceneDebug';
 import { PlayState, type SourceNote } from '../../../types/models';
+import type { PlaySceneContext } from './PlaySceneContext';
+type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class PlaybackController {
-  constructor(private readonly scene: any) {}
+  constructor(private readonly scene: PlaySceneContext) {}
 
   async setupAudioStack(sourceNotes: SourceNote[]): Promise<void> {
     return await setupAudioStackImpl.call(this.scene, sourceNotes);
@@ -115,7 +117,7 @@ export class PlaybackController {
   }
 }
 
-async function setupAudioStackImpl(this: any, sourceNotes: SourceNote[]): Promise<void> {
+async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNote[]): Promise<void> {
   const audioCtx = new AudioContext();
   this.audioCtx = audioCtx;
   let synth: JzzTinySynth;
@@ -172,9 +174,11 @@ async function setupAudioStackImpl(this: any, sourceNotes: SourceNote[]): Promis
   this.prePlaybackStartAtMs = undefined;
 }
 
-function schedulePlaybackStartImpl(this: any, delayMs: number = this.constructor.PRE_PLAYBACK_DELAY_MS): void {
+function schedulePlaybackStartImpl(this: PlaySceneContext, delayMs?: number): void {
+  const sceneClass = this.constructor as PlaySceneStatics;
+  const resolvedDelayMs = delayMs ?? sceneClass.PRE_PLAYBACK_DELAY_MS;
   if (this.runtime.state === PlayState.Finished || this.playbackStarted) return;
-  const clampedDelayMs = Math.max(0, delayMs);
+  const clampedDelayMs = Math.max(0, resolvedDelayMs);
   this.prePlaybackStartAtMs = performance.now() + clampedDelayMs;
   this.playbackIntroTimer?.remove(false);
   this.playbackIntroTimer = this.time.delayedCall(clampedDelayMs, () => {
@@ -188,7 +192,7 @@ function schedulePlaybackStartImpl(this: any, delayMs: number = this.constructor
   });
 }
 
-async function beginSessionPlaybackImpl(this: any): Promise<void> {
+async function beginSessionPlaybackImpl(this: PlaySceneContext): Promise<void> {
   if (!this.audioCtx || this.playbackStarted) return;
   if (this.audioCtx.state !== 'running') {
     await this.audioCtx.resume();
@@ -222,7 +226,7 @@ async function beginSessionPlaybackImpl(this: any): Promise<void> {
   this.feedbackUntilMs = performance.now() + 900;
 }
 
-async function startBackingTrackAudioImpl(this: any, audioUrl: string | undefined, startSongSeconds: number): Promise<boolean> {
+async function startBackingTrackAudioImpl(this: PlaySceneContext, audioUrl: string | undefined, startSongSeconds: number): Promise<boolean> {
   if (!audioUrl || !isBackingTrackAudioUrl(audioUrl)) {
     return false;
   }
@@ -255,7 +259,7 @@ async function startBackingTrackAudioImpl(this: any, audioUrl: string | undefine
   }
 }
 
-function pauseBackingPlaybackImpl(this: any): void {
+function pauseBackingPlaybackImpl(this: PlaySceneContext): void {
   if (!this.playbackStarted) return;
   if (this.playbackMode === 'audio') {
     const pausedAudioSeconds = resolveSongSecondsForRuntime(
@@ -272,7 +276,7 @@ function pauseBackingPlaybackImpl(this: any): void {
   this.scrubPlayer?.pause(this.runtime.current_tick);
 }
 
-function resumeBackingPlaybackImpl(this: any): void {
+function resumeBackingPlaybackImpl(this: PlaySceneContext): void {
   if (!this.playbackStarted) return;
   const runtimeResumeSeconds = resolveResumeSongSeconds(this.runtime.current_tick, this.pausedSongSeconds, this.tempoMap);
   let resumeSeconds = runtimeResumeSeconds;
@@ -290,13 +294,13 @@ function resumeBackingPlaybackImpl(this: any): void {
   this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
 }
 
-function stopBackingPlaybackImpl(this: any): void {
+function stopBackingPlaybackImpl(this: PlaySceneContext): void {
   this.stopBackingTrackSource();
   this.releaseBackingTrackAudio();
   this.scrubPlayer?.stop();
 }
 
-async function resumeBackingTrackAudioImpl(this: any, songSeconds: number): Promise<void> {
+async function resumeBackingTrackAudioImpl(this: PlaySceneContext, songSeconds: number): Promise<void> {
   const resumed = await this.playBackingTrackAudioFrom(songSeconds);
   if (resumed) return;
 
@@ -304,7 +308,7 @@ async function resumeBackingTrackAudioImpl(this: any, songSeconds: number): Prom
   this.feedbackUntilMs = performance.now() + 1200;
 }
 
-async function playBackingTrackAudioFromImpl(this: any, songSeconds: number): Promise<boolean> {
+async function playBackingTrackAudioFromImpl(this: PlaySceneContext, songSeconds: number): Promise<boolean> {
   if (!this.audioCtx || !this.backingTrackBuffer) return false;
   const safeSeconds = Math.max(0, songSeconds);
   const targetSeconds = this.clampAudioSeekSeconds(safeSeconds);
@@ -365,7 +369,7 @@ async function playBackingTrackAudioFromImpl(this: any, songSeconds: number): Pr
   }
 }
 
-function releaseBackingTrackAudioImpl(this: any): void {
+function releaseBackingTrackAudioImpl(this: PlaySceneContext): void {
   this.stopBackingTrackSource();
   this.backingTrackBuffer = undefined;
   this.backingTrackAudioUrl = undefined;
@@ -384,7 +388,7 @@ function releaseBackingTrackAudioImpl(this: any): void {
   this.lastKnownBackingAudioSeconds = 0;
 }
 
-function syncRuntimeToBackingTrackPositionImpl(this: any, songSeconds: number): void {
+function syncRuntimeToBackingTrackPositionImpl(this: PlaySceneContext, songSeconds: number): void {
   const safeSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
   this.startPlaybackClock(safeSeconds);
   if (this.tempoMap) {
@@ -392,7 +396,7 @@ function syncRuntimeToBackingTrackPositionImpl(this: any, songSeconds: number): 
   }
 }
 
-function stopBackingTrackSourceImpl(this: any): void {
+function stopBackingTrackSourceImpl(this: PlaySceneContext): void {
   if (!this.backingTrackSource) return;
   this.backingTrackSource.onended = null;
   try {
@@ -410,7 +414,7 @@ function stopBackingTrackSourceImpl(this: any): void {
   this.backingTrackIsPlaying = false;
 }
 
-function ensureBackingTrackGainNodeImpl(this: any): void {
+function ensureBackingTrackGainNodeImpl(this: PlaySceneContext): void {
   if (!this.audioCtx) return;
   if (this.backingTrackGain) return;
   const gain = this.audioCtx.createGain();
@@ -419,7 +423,7 @@ function ensureBackingTrackGainNodeImpl(this: any): void {
   this.backingTrackGain = gain;
 }
 
-function getBackingTrackSongSecondsImpl(this: any): number | undefined {
+function getBackingTrackSongSecondsImpl(this: PlaySceneContext): number | undefined {
   const buffer = this.backingTrackBuffer;
   if (!buffer) return undefined;
   if (!this.backingTrackIsPlaying || !this.audioCtx || this.backingTrackSourceStartedAtAudioTime === undefined) {
@@ -430,7 +434,7 @@ function getBackingTrackSongSecondsImpl(this: any): number | undefined {
   return Phaser.Math.Clamp(position, 0, Math.max(0, buffer.duration));
 }
 
-async function loadBackingTrackBufferImpl(this: any, audioUrl: string): Promise<AudioBuffer> {
+async function loadBackingTrackBufferImpl(this: PlaySceneContext, audioUrl: string): Promise<AudioBuffer> {
   if (!this.audioCtx) {
     throw new Error('Audio context unavailable while loading backing track.');
   }
@@ -445,14 +449,14 @@ async function loadBackingTrackBufferImpl(this: any, audioUrl: string): Promise<
   return await this.audioCtx.decodeAudioData(encoded.slice(0));
 }
 
-function clampAudioSeekSecondsImpl(this: any, songSeconds: number): number {
+function clampAudioSeekSecondsImpl(this: PlaySceneContext, songSeconds: number): number {
   if (!this.backingTrackBuffer || !Number.isFinite(this.backingTrackBuffer.duration) || this.backingTrackBuffer.duration <= 0) {
     return songSeconds;
   }
   return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, this.backingTrackBuffer.duration - 0.02));
 }
 
-function createPlaybackClockStateImpl(this: any): PlaybackClockState {
+function createPlaybackClockStateImpl(this: PlaySceneContext): PlaybackClockState {
   return {
     playbackStartSongSeconds: this.playbackStartSongSeconds,
     pausedSongSeconds: this.pausedSongSeconds,
@@ -460,19 +464,19 @@ function createPlaybackClockStateImpl(this: any): PlaybackClockState {
   };
 }
 
-function applyPlaybackClockStateImpl(this: any, state: PlaybackClockState): void {
+function applyPlaybackClockStateImpl(this: PlaySceneContext, state: PlaybackClockState): void {
   this.playbackStartSongSeconds = state.playbackStartSongSeconds;
   this.pausedSongSeconds = state.pausedSongSeconds;
   this.playbackStartAudioTime = state.playbackStartAudioTime;
 }
 
-function startPlaybackClockImpl(this: any, songSeconds: number): void {
+function startPlaybackClockImpl(this: PlaySceneContext, songSeconds: number): void {
   const clockState = this.createPlaybackClockState();
   startPlaybackClockState(clockState, this.audioCtx, songSeconds);
   this.applyPlaybackClockState(clockState);
 }
 
-function pausePlaybackClockImpl(this: any): void {
+function pausePlaybackClockImpl(this: PlaySceneContext): void {
   const clockState = this.createPlaybackClockState();
   const pausedCurrentTick = pausePlaybackClockState(
     clockState,
@@ -485,7 +489,7 @@ function pausePlaybackClockImpl(this: any): void {
   this.runtime.current_tick = pausedCurrentTick;
 }
 
-function getSongSecondsNowImpl(this: any): number {
+function getSongSecondsNowImpl(this: PlaySceneContext): number {
   const expectedClockSongSeconds = this.getSongSecondsFromClock();
   if (this.playbackMode === 'audio' && this.backingTrackBuffer) {
     const resolved = resolveSongSecondsForRuntime(
@@ -499,7 +503,7 @@ function getSongSecondsNowImpl(this: any): number {
   return expectedClockSongSeconds;
 }
 
-function getSongSecondsFromClockImpl(this: any): number {
+function getSongSecondsFromClockImpl(this: PlaySceneContext): number {
   return getSongSecondsFromClockValue(
     this.createPlaybackClockState(),
     this.audioCtx,
@@ -507,7 +511,7 @@ function getSongSecondsFromClockImpl(this: any): number {
   );
 }
 
-function getCurrentPlaybackBpmImpl(this: any, songSeconds: number | undefined): number | undefined {
+function getCurrentPlaybackBpmImpl(this: PlaySceneContext, songSeconds: number | undefined): number | undefined {
   if (!this.tempoMap || songSeconds === undefined || !Number.isFinite(songSeconds)) return undefined;
   const segments = this.tempoMap.segments;
   if (segments.length === 0) return undefined;

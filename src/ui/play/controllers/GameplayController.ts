@@ -4,12 +4,14 @@ import {
   TARGET_HIT_GRACE_SECONDS
 } from '../../../app/config';
 import { rateHit } from '../../../game/scoring';
-import { updateRuntimeState, type RuntimeTransition } from '../../../game/stateMachine';
+import { updateRuntimeState, type RuntimeTransition, type RuntimeUpdate } from '../../../game/stateMachine';
 import { PlayState, type ScoreEvent, type TargetNote } from '../../../types/models';
 import { analyzeHeldHit } from '../../playSceneDebug';
+import type { PlaySceneContext } from './PlaySceneContext';
+type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class GameplayController {
-  constructor(private readonly scene: any) {}
+  constructor(private readonly scene: PlaySceneContext) {}
 
   tickRuntime(): void {
     tickRuntimeImpl.call(this.scene);
@@ -48,7 +50,7 @@ export class GameplayController {
   }
 }
 
-function getRuntimeUpdateScratch(scene: any): any {
+function getRuntimeUpdateScratch(scene: PlaySceneContext): RuntimeUpdate {
   if (scene.runtimeUpdateScratch) return scene.runtimeUpdateScratch;
   scene.runtimeUpdateScratch = {
     state: scene.runtime,
@@ -57,7 +59,7 @@ function getRuntimeUpdateScratch(scene: any): any {
   return scene.runtimeUpdateScratch;
 }
 
-function tickRuntimeImpl(this: any): void {
+function tickRuntimeImpl(this: PlaySceneContext): void {
   if (!this.audioCtx || !this.tempoMap || this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
   if (!this.playbackStarted) {
     this.drawTopStarfield();
@@ -156,7 +158,7 @@ function tickRuntimeImpl(this: any): void {
   }
 }
 
-function handleTransitionImpl(this: any, transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
+function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
   if (transition === 'entered_waiting') {
     this.pausePlaybackClock();
     this.pauseBackingPlayback();
@@ -203,7 +205,7 @@ function handleTransitionImpl(this: any, transition: RuntimeTransition, target: 
   }
 }
 
-function recordScoreEventImpl(this: any, event: ScoreEvent): void {
+function recordScoreEventImpl(this: PlaySceneContext, event: ScoreEvent): void {
   this.scoreEvents.push(event);
   this.totalScore += event.points;
   if (event.rating === 'Miss') {
@@ -213,7 +215,7 @@ function recordScoreEventImpl(this: any, event: ScoreEvent): void {
   this.currentComboStreak += 1;
 }
 
-function consumeDebugHitImpl(this: any): void {
+function consumeDebugHitImpl(this: PlaySceneContext): void {
   if (this.isWaitingPausedByButton()) {
     this.feedbackText = 'Resume with Play before debug input';
     this.feedbackUntilMs = performance.now() + 900;
@@ -258,13 +260,14 @@ function consumeDebugHitImpl(this: any): void {
   }
 }
 
-function queueFinishSongImpl(this: any): void {
+function queueFinishSongImpl(this: PlaySceneContext): void {
+  const sceneClass = this.constructor as PlaySceneStatics;
   if (this.resultsOverlay?.active) return;
   const now = performance.now();
   if (this.finishQueuedAtMs === undefined) {
-    this.finishQueuedAtMs = now + this.constructor.POST_SONG_END_SCREEN_DELAY_MS;
+    this.finishQueuedAtMs = now + sceneClass.POST_SONG_END_SCREEN_DELAY_MS;
     if (!this.finishDelayTimer) {
-      this.finishDelayTimer = this.time.delayedCall(this.constructor.POST_SONG_END_SCREEN_DELAY_MS, () => {
+      this.finishDelayTimer = this.time.delayedCall(sceneClass.POST_SONG_END_SCREEN_DELAY_MS, () => {
         this.finishDelayTimer = undefined;
         this.finishQueuedAtMs = undefined;
         if (!this.scene.isActive()) return;
@@ -283,13 +286,13 @@ function queueFinishSongImpl(this: any): void {
   }
 }
 
-function clearFinishSongQueueImpl(this: any): void {
+function clearFinishSongQueueImpl(this: PlaySceneContext): void {
   this.finishDelayTimer?.remove(false);
   this.finishDelayTimer = undefined;
   this.finishQueuedAtMs = undefined;
 }
 
-function measureHitDeltaMsImpl(this: any, target: TargetNote, previousState: PlayState): number {
+function measureHitDeltaMsImpl(this: PlaySceneContext, target: TargetNote, previousState: PlayState): number {
   if (previousState === PlayState.Playing && this.tempoMap) {
     const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
     return Math.abs(this.getSongSecondsNow() - targetSeconds) * 1000;
@@ -297,13 +300,13 @@ function measureHitDeltaMsImpl(this: any, target: TargetNote, previousState: Pla
   return this.waitingStartMs === null ? 0 : performance.now() - this.waitingStartMs;
 }
 
-function measureHitSignedDeltaMsImpl(this: any, target: TargetNote, previousState: PlayState): number | undefined {
+function measureHitSignedDeltaMsImpl(this: PlaySceneContext, target: TargetNote, previousState: PlayState): number | undefined {
   if (previousState !== PlayState.Playing || !this.tempoMap) return undefined;
   const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
   return (this.getSongSecondsNow() - targetSeconds) * 1000;
 }
 
-function isInsideLiveHitWindowImpl(this: any, target: TargetNote): boolean {
+function isInsideLiveHitWindowImpl(this: PlaySceneContext, target: TargetNote): boolean {
   if (!this.tempoMap) return false;
   const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
   const now = this.getSongSecondsNow();
