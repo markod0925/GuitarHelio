@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { Capacitor } from '@capacitor/core';
 import {
   BALL_BOUNCE_AMPLITUDE_FACTOR,
   BALL_BOUNCE_AMPLITUDE_MAX_PX,
@@ -10,166 +9,167 @@ import {
   DEFAULT_HOLD_MS,
   DEFAULT_MIN_CONFIDENCE,
   DIFFICULTY_PRESETS,
-  PLAY_SCENE_NOTE_START_CUTOFF_SECONDS,
-  TARGET_HIT_GRACE_SECONDS
+  PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
 } from '../app/config';
-import { saveSongHighScoreIfHigher } from '../app/sessionPersistence';
-import { createMicNode } from '../audio/micInput';
-import { JzzTinySynth } from '../audio/jzzTinySynth';
-import { MidiScrubPlayer } from '../audio/midiScrubPlayer';
-import { PitchDetectorService } from '../audio/pitchDetector';
-import { buildPlaybackNotes } from '../audio/playbackNotes';
-import { rateHit, summarizeScores } from '../game/scoring';
-import { createInitialRuntimeState, type RuntimeTransition, updateRuntimeState } from '../game/stateMachine';
+import { PitchFrameRingBuffer } from '../audio/PitchFrameRingBuffer';
+import type { JzzTinySynth } from '../audio/jzzTinySynth';
+import type { MidiScrubPlayer } from '../audio/midiScrubPlayer';
+import type { PitchDetectorService } from '../audio/pitchDetector';
+import { summarizeScores } from '../game/scoring';
+import {
+  createInitialRuntimeState,
+  type RuntimeTransition,
+  type RuntimeUpdate
+} from '../game/stateMachine';
 import { generateTargetNotes } from '../guitar/targetGenerator';
 import { loadMidiFromUrl } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
-import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
+import type { DifficultyProfile, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
-import { formatSummary } from './hud';
-import {
-  resolveResumeSongSeconds,
-  resolveResumeSongSecondsForAudio,
-  resolveSongSecondsForRuntime,
-  sanitizeSongSeconds
-} from './playbackResumeState';
 import { BallTrailRingBuffer } from './BallAnimator';
 import {
-  getSongSecondsFromClock as getSongSecondsFromClockValue,
-  pausePlaybackClock as pausePlaybackClockState,
   releaseMicStream,
-  startPlaybackClock as startPlaybackClockState,
   type PlaybackClockState
 } from './AudioController';
 import { FretboardRenderer } from './FretboardRenderer';
 import { MinimapRenderer } from './MinimapRenderer';
 import { NoteRenderer } from './NoteRenderer';
 import {
-  analyzeHeldHit,
   filterSourceNotesByOnsetSeconds,
-  formatDebugBool,
-  formatDebugNumber,
-  formatDebugPath,
-  formatSignedMs,
-  isBackingTrackAudioUrl,
   isGameplayDebugOverlayEnabled,
   sanitizeSelection
 } from './playSceneDebug';
 import type {
   AudioSeekDebugInfo,
+  HeldHitAnalysis,
   HitDebugSnapshot,
   Layout,
+  MutablePoint,
   PlaybackMode,
   SceneData,
 } from './playSceneTypes';
 import { RoundedBox } from './RoundedBox';
-import {
-  computeEndScreenStars as computeOverlayEndScreenStars,
-  resolveTopFeedbackMessage as resolveOverlayTopFeedbackMessage
-} from './UIOverlays';
+import { GameplayController } from './play/controllers/GameplayController';
+import { PlaybackController } from './play/controllers/PlaybackController';
+import { UIController } from './play/controllers/UIController';
 
 export class PlayScene extends Phaser.Scene {
-  private static readonly PAUSE_BUTTON_SIZE = 34;
-  private static readonly PAUSE_BUTTON_GAP = 10;
-  private static readonly PLAYBACK_SPEED_MIN = 0.25;
-  private static readonly PLAYBACK_SPEED_MAX = 1.25;
-  private static readonly PLAYBACK_SPEED_DEFAULT = 1;
-  private static readonly POST_SONG_END_SCREEN_DELAY_MS = 2000;
-  private static readonly PRE_PLAYBACK_DELAY_MS = 3500;
-  private static readonly BALL_TRAIL_HISTORY_CAPACITY =
+  public static readonly PAUSE_BUTTON_SIZE = 34;
+  public static readonly PAUSE_BUTTON_GAP = 10;
+  public static readonly PLAYBACK_SPEED_MIN = 0.25;
+  public static readonly PLAYBACK_SPEED_MAX = 1.25;
+  public static readonly PLAYBACK_SPEED_DEFAULT = 1;
+  public static readonly POST_SONG_END_SCREEN_DELAY_MS = 2000;
+  public static readonly PRE_PLAYBACK_DELAY_MS = 3500;
+  public static readonly BALL_TRAIL_HISTORY_CAPACITY =
     BALL_GHOST_TRAIL_COUNT * BALL_GHOST_TRAIL_SAMPLE_STEP * 12 + BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS * 4 + 96;
 
-  private sceneData?: SceneData;
-  private targets: TargetNote[] = [];
-  private targetOnsetSeconds: number[] = [];
-  private runtime = createInitialRuntimeState();
-  private scoreEvents: ScoreEvent[] = [];
-  private totalScore = 0;
-  private currentComboStreak = 0;
-  private correctlyHitTargetIds = new Set<string>();
-  private latestFrames: PitchFrame[] = [];
-  private waitingStartMs: number | null = null;
-  private ticksPerQuarter = 480;
-  private tempoMap: TempoMap | null = null;
-  private playbackStartAudioTime: number | null = null;
-  private playbackStartSongSeconds = 0;
-  private pausedSongSeconds = 0;
-  private profile: DifficultyProfile = DIFFICULTY_PRESETS.Easy;
-  private fallbackTimeoutSeconds: number | undefined;
-  private feedbackText = '';
-  private feedbackUntilMs = 0;
-  private playbackMode: PlaybackMode = 'midi';
-  private backingTrackBuffer?: AudioBuffer;
-  private backingTrackSource?: AudioBufferSourceNode;
-  private backingTrackGain?: GainNode;
-  private backingTrackSourceStartedAtAudioTime?: number;
-  private backingTrackSourceStartSongSeconds = 0;
-  private backingTrackIsPlaying = false;
-  private backingTrackAudioUrl?: string;
-  private pausedBackingAudioSeconds?: number;
-  private lastKnownBackingAudioSeconds = 0;
-  private playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
+  public sceneData?: SceneData;
+  public targets: TargetNote[] = [];
+  public targetOnsetSeconds: number[] = [];
+  public runtime = createInitialRuntimeState();
+  public scoreEvents: ScoreEvent[] = [];
+  public totalScore = 0;
+  public currentComboStreak = 0;
+  public correctlyHitTargetIds = new Set<string>();
+  public readonly latestFrames = new PitchFrameRingBuffer(64);
+  public readonly heldHitAnalysisScratch: HeldHitAnalysis = {
+    valid: false,
+    streakMs: 0,
+    validFrameCount: 0,
+    sampleCount: 0,
+    latestFrame: undefined
+  };
+  public waitingStartMs: number | null = null;
+  public ticksPerQuarter = 480;
+  public tempoMap: TempoMap | null = null;
+  public playbackStartAudioTime: number | null = null;
+  public playbackStartSongSeconds = 0;
+  public pausedSongSeconds = 0;
+  public profile: DifficultyProfile = DIFFICULTY_PRESETS.Easy;
+  public fallbackTimeoutSeconds: number | undefined;
+  public feedbackText = '';
+  public feedbackUntilMs = 0;
+  public playbackMode: PlaybackMode = 'midi';
+  public backingTrackBuffer?: AudioBuffer;
+  public backingTrackSource?: AudioBufferSourceNode;
+  public backingTrackGain?: GainNode;
+  public backingTrackSourceStartedAtAudioTime?: number;
+  public backingTrackSourceStartSongSeconds = 0;
+  public backingTrackIsPlaying = false;
+  public backingTrackAudioUrl?: string;
+  public pausedBackingAudioSeconds?: number;
+  public lastKnownBackingAudioSeconds = 0;
+  public playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
-  private laneLayer?: Phaser.GameObjects.Graphics;
-  private ball?: Phaser.GameObjects.Arc;
-  private ballTrailSegments: Array<{ shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line }> = [];
-  private readonly ballTrailHistory = new BallTrailRingBuffer(PlayScene.BALL_TRAIL_HISTORY_CAPACITY);
-  private hasLastBallTrailPoint = false;
-  private lastBallTrailX = 0;
-  private lastBallTrailY = 0;
-  private readonly fretboardRenderer = new FretboardRenderer(this);
-  private readonly minimapRenderer = new MinimapRenderer(this);
-  private readonly noteRenderer = new NoteRenderer(this);
-  private handReminderImage?: Phaser.GameObjects.Image;
-  private statusText?: Phaser.GameObjects.Text;
-  private feedbackMessageText?: Phaser.GameObjects.Text;
-  private liveScoreText?: Phaser.GameObjects.Text;
-  private debugButton?: RoundedBox;
-  private debugButtonLabel?: Phaser.GameObjects.Text;
-  private resultsOverlay?: Phaser.GameObjects.Container;
-  private pauseOverlay?: Phaser.GameObjects.Container;
-  private pauseButton?: RoundedBox;
-  private pauseButtonLeftBar?: Phaser.GameObjects.Rectangle;
-  private pauseButtonRightBar?: Phaser.GameObjects.Rectangle;
-  private pauseButtonPlayIcon?: Phaser.GameObjects.Triangle;
-  private playbackSpeedPanel?: RoundedBox;
-  private playbackSpeedTrack?: Phaser.GameObjects.Rectangle;
-  private playbackSpeedKnob?: Phaser.GameObjects.Arc;
-  private playbackSpeedLabel?: Phaser.GameObjects.Text;
-  private playbackSpeedValueText?: Phaser.GameObjects.Text;
-  private playbackSpeedAdjusting = false;
-  private playbackSpeedDragPointerId?: number;
-  private pendingPlaybackSpeedMultiplier?: number;
-  private playbackWasRunningBeforeSpeedAdjust = false;
-  private runtimeTimer?: Phaser.Time.TimerEvent;
-  private finishDelayTimer?: Phaser.Time.TimerEvent;
-  private finishQueuedAtMs?: number;
-  private playbackIntroTimer?: Phaser.Time.TimerEvent;
-  private playbackStarted = false;
-  private prePlaybackStartAtMs?: number;
+  public laneLayer?: Phaser.GameObjects.Graphics;
+  public ball?: Phaser.GameObjects.Arc;
+  public ballTrailSegments: Array<{ shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line }> = [];
+  public readonly ballTrailHistory = new BallTrailRingBuffer(PlayScene.BALL_TRAIL_HISTORY_CAPACITY);
+  public readonly ballPositionScratch: MutablePoint = { x: 0, y: 0 };
+  public hasLastBallTrailPoint = false;
+  public lastBallTrailX = 0;
+  public lastBallTrailY = 0;
+  public readonly fretboardRenderer = new FretboardRenderer(this);
+  public readonly minimapRenderer = new MinimapRenderer(this);
+  public readonly noteRenderer = new NoteRenderer(this);
+  public handReminderImage?: Phaser.GameObjects.Image;
+  public statusText?: Phaser.GameObjects.Text;
+  public feedbackMessageText?: Phaser.GameObjects.Text;
+  public liveScoreText?: Phaser.GameObjects.Text;
+  public debugButton?: RoundedBox;
+  public debugButtonLabel?: Phaser.GameObjects.Text;
+  public resultsOverlay?: Phaser.GameObjects.Container;
+  public pauseOverlay?: Phaser.GameObjects.Container;
+  public pauseButton?: RoundedBox;
+  public pauseButtonLeftBar?: Phaser.GameObjects.Rectangle;
+  public pauseButtonRightBar?: Phaser.GameObjects.Rectangle;
+  public pauseButtonPlayIcon?: Phaser.GameObjects.Triangle;
+  public playbackSpeedPanel?: RoundedBox;
+  public playbackSpeedTrack?: Phaser.GameObjects.Rectangle;
+  public playbackSpeedKnob?: Phaser.GameObjects.Arc;
+  public playbackSpeedLabel?: Phaser.GameObjects.Text;
+  public playbackSpeedValueText?: Phaser.GameObjects.Text;
+  public playbackSpeedAdjusting = false;
+  public playbackSpeedDragPointerId?: number;
+  public pendingPlaybackSpeedMultiplier?: number;
+  public playbackWasRunningBeforeSpeedAdjust = false;
+  public runtimeTimer?: Phaser.Time.TimerEvent;
+  public finishDelayTimer?: Phaser.Time.TimerEvent;
+  public finishQueuedAtMs?: number;
+  public playbackIntroTimer?: Phaser.Time.TimerEvent;
+  public playbackStarted = false;
+  public prePlaybackStartAtMs?: number;
 
-  private audioCtx?: AudioContext;
-  private debugSynth?: JzzTinySynth;
-  private scrubPlayer?: MidiScrubPlayer;
-  private detector?: PitchDetectorService;
-  private micStream?: MediaStream;
-  private onResize?: () => void;
-  private cachedLayout?: Layout;
-  private pauseMenuBackListener?: (event: Event) => void;
-  private pauseMenuPopStateListener?: (event: PopStateEvent) => void;
-  private playbackWasRunningBeforePauseMenu = false;
-  private pauseMenuResumeSongSeconds?: number;
-  private playbackPausedByButton = false;
-  private playbackWasRunningBeforeButtonPause = false;
-  private waitingPauseStartedAtAudioTime?: number;
-  private debugOverlayEnabled = false;
-  private debugOverlayContainer?: Phaser.GameObjects.Container;
-  private debugOverlayPanel?: RoundedBox;
-  private debugOverlayText?: Phaser.GameObjects.Text;
-  private hitDebugSnapshot?: HitDebugSnapshot;
-  private lastRuntimeTransition: RuntimeTransition = 'none';
-  private lastRuntimeTransitionAtMs = 0;
-  private lastAudioSeekDebug?: AudioSeekDebugInfo;
+  public audioCtx?: AudioContext;
+  public debugSynth?: JzzTinySynth;
+  public scrubPlayer?: MidiScrubPlayer;
+  public detector?: PitchDetectorService;
+  public micStream?: MediaStream;
+  public onResize?: () => void;
+  public cachedLayout?: Layout;
+  public pauseMenuBackListener?: (event: Event) => void;
+  public pauseMenuPopStateListener?: (event: PopStateEvent) => void;
+  public playbackWasRunningBeforePauseMenu = false;
+  public pauseMenuResumeSongSeconds?: number;
+  public playbackPausedByButton = false;
+  public playbackWasRunningBeforeButtonPause = false;
+  public waitingPauseStartedAtAudioTime?: number;
+  public debugOverlayEnabled = false;
+  public debugOverlayContainer?: Phaser.GameObjects.Container;
+  public debugOverlayPanel?: RoundedBox;
+  public debugOverlayText?: Phaser.GameObjects.Text;
+  public hitDebugSnapshot?: HitDebugSnapshot;
+  public lastRuntimeTransition: RuntimeTransition = 'none';
+  public lastRuntimeTransitionAtMs = 0;
+  public lastAudioSeekDebug?: AudioSeekDebugInfo;
+  public runtimeUpdateScratch: RuntimeUpdate = {
+    state: this.runtime,
+    transition: 'none'
+  };
+  public readonly gameplayController = new GameplayController(this);
+  public readonly playbackController = new PlaybackController(this);
+  public readonly uiController = new UIController(this);
 
   constructor() {
     super('PlayScene');
@@ -210,7 +210,7 @@ export class PlayScene extends Phaser.Scene {
     this.totalScore = 0;
     this.currentComboStreak = 0;
     this.correctlyHitTargetIds.clear();
-    this.latestFrames = [];
+    this.latestFrames.clear();
     this.waitingStartMs = null;
     this.playbackStartAudioTime = null;
     this.playbackStartSongSeconds = 0;
@@ -361,801 +361,125 @@ export class PlayScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
 
-  private async setupAudioStack(sourceNotes: SourceNote[]): Promise<void> {
-    const audioCtx = new AudioContext();
-    this.audioCtx = audioCtx;
-    let synth: JzzTinySynth;
-    try {
-      synth = new JzzTinySynth(audioCtx);
-    } catch (error) {
-      console.error('JZZ Tiny synth setup failed', error);
-      this.feedbackText = 'Playback synth unavailable.';
-      this.feedbackUntilMs = Number.POSITIVE_INFINITY;
-      return;
-    }
-    this.debugSynth = synth;
-    const playbackNotes = buildPlaybackNotes(sourceNotes, this.ticksPerQuarter);
-    this.scrubPlayer = new MidiScrubPlayer(synth, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
-
-    try {
-      const micSource = await createMicNode(audioCtx);
-      this.micStream = micSource.mediaStream;
-      const detector = new PitchDetectorService(audioCtx);
-      await detector.init();
-      detector.onPitch((frame) => {
-        if (this.pauseOverlay) return;
-        if (this.runtime.state === PlayState.Finished) return;
-        this.latestFrames.push(frame);
-        if (this.latestFrames.length > 64) this.latestFrames.shift();
-      });
-      detector.start(micSource);
-      this.detector = detector;
-    } catch (error) {
-      console.error('Microphone setup failed', error);
-      if (this.profile.gating_timeout_seconds === undefined) {
-        this.fallbackTimeoutSeconds = 2.5;
-      }
-      this.feedbackText = this.fallbackTimeoutSeconds
-        ? 'Microphone unavailable. Auto-miss timeout active.'
-        : 'Microphone unavailable.';
-      this.feedbackUntilMs = Number.POSITIVE_INFINITY;
-    }
-
-    await audioCtx.resume();
-    this.playbackMode = 'midi';
-    this.pausedBackingAudioSeconds = undefined;
-    this.lastKnownBackingAudioSeconds = 0;
-    this.backingTrackBuffer = undefined;
-    this.backingTrackSource = undefined;
-    this.backingTrackGain = undefined;
-    this.backingTrackSourceStartedAtAudioTime = undefined;
-    this.backingTrackSourceStartSongSeconds = 0;
-    this.backingTrackIsPlaying = false;
-    this.backingTrackAudioUrl = undefined;
-    this.playbackStarted = false;
-    this.pausedSongSeconds = 0;
-    this.playbackStartSongSeconds = 0;
-    this.playbackStartAudioTime = null;
-    this.prePlaybackStartAtMs = undefined;
+  public async setupAudioStack(sourceNotes: SourceNote[]): Promise<void> {
+    await this.playbackController.setupAudioStack(sourceNotes);
   }
 
-  private schedulePlaybackStart(delayMs: number = PlayScene.PRE_PLAYBACK_DELAY_MS): void {
-    if (this.runtime.state === PlayState.Finished || this.playbackStarted) return;
-    const clampedDelayMs = Math.max(0, delayMs);
-    this.prePlaybackStartAtMs = performance.now() + clampedDelayMs;
-    this.playbackIntroTimer?.remove(false);
-    this.playbackIntroTimer = this.time.delayedCall(clampedDelayMs, () => {
-      this.playbackIntroTimer = undefined;
-      if (!this.scene.isActive() || this.runtime.state === PlayState.Finished || this.playbackStarted) return;
-      if (this.pauseOverlay || this.playbackPausedByButton) {
-        this.schedulePlaybackStart(120);
-        return;
-      }
-      void this.beginSessionPlayback();
-    });
+  public schedulePlaybackStart(delayMs: number = PlayScene.PRE_PLAYBACK_DELAY_MS): void {
+    this.playbackController.schedulePlaybackStart(delayMs);
   }
 
-  private async beginSessionPlayback(): Promise<void> {
-    if (!this.audioCtx || this.playbackStarted) return;
-    if (this.audioCtx.state !== 'running') {
-      await this.audioCtx.resume();
-    }
-
-    const startSongSeconds = this.tempoMap?.tickToSeconds(this.runtime.current_tick) ?? 0;
-    this.resetBallTrailHistory();
-    this.prePlaybackStartAtMs = undefined;
-
-    const wantsBackingAudio = isBackingTrackAudioUrl(this.sceneData?.audioUrl ?? '');
-    if (wantsBackingAudio) {
-      const startedBackingAudio = await this.startBackingTrackAudio(this.sceneData?.audioUrl, startSongSeconds);
-      if (!startedBackingAudio) {
-        this.playbackStarted = false;
-        this.startPlaybackClock(startSongSeconds);
-        this.pausePlaybackClock();
-        this.schedulePlaybackStart(300);
-        this.feedbackText = 'Backing track failed to start. Retrying...';
-        this.feedbackUntilMs = performance.now() + 1200;
-        return;
-      }
-      this.playbackStarted = true;
-    } else {
-      this.playbackMode = 'midi';
-      this.startPlaybackClock(startSongSeconds);
-      this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx.currentTime);
-      this.playbackStarted = true;
-    }
-
-    this.feedbackText = 'Go!';
-    this.feedbackUntilMs = performance.now() + 900;
+  public async beginSessionPlayback(): Promise<void> {
+    await this.playbackController.beginSessionPlayback();
   }
 
-  private tickRuntime(): void {
-    if (!this.audioCtx || !this.tempoMap || this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
-    if (!this.playbackStarted) {
-      this.drawTopStarfield();
-      this.updateSongMinimapProgress();
-      this.updateHud();
-      this.updateDebugOverlay();
-      return;
-    }
-    const previousState = this.runtime.state;
-    let songSecondsNow: number | undefined;
-
-    if (this.runtime.state === PlayState.Playing) {
-      songSecondsNow = this.getSongSecondsNow();
-      this.runtime.current_tick = this.tempoMap.secondsToTick(songSecondsNow);
-      if (this.playbackMode === 'midi') {
-        this.scrubPlayer?.updateToTick(this.runtime.current_tick, this.audioCtx.currentTime);
-      }
-    }
-
-    const active = this.targets[this.runtime.active_target_index];
-    const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
-    const isWithinGraceWindow =
-      active !== undefined &&
-      this.runtime.state === PlayState.Playing &&
-      songSecondsNow !== undefined &&
-      targetSeconds !== undefined &&
-      songSecondsNow >= targetSeconds - TARGET_HIT_GRACE_SECONDS &&
-      songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
-    const canValidateHit =
-      active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
-    const hitAnalysis =
-      active !== undefined && canValidateHit
-        ? analyzeHeldHit(
-          this.latestFrames,
-          active.expected_midi,
-          this.profile.pitch_tolerance_semitones,
-          DEFAULT_HOLD_MS,
-          DEFAULT_MIN_CONFIDENCE
-        )
-        : {
-          valid: false,
-          streakMs: 0,
-          validFrameCount: 0,
-          sampleCount: this.latestFrames.length,
-          latestFrame: this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined
-        };
-    const validHit = active !== undefined && canValidateHit && hitAnalysis.valid;
-    const targetDeltaMs =
-      songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined;
-
-    const snapshot = this.hitDebugSnapshot ?? {
-      isWithinGraceWindow: false,
-      canValidateHit: false,
-      validHit: false,
-      holdMs: 0,
-      holdRequiredMs: DEFAULT_HOLD_MS,
-      minConfidence: DEFAULT_MIN_CONFIDENCE,
-      validFrameCount: 0,
-      sampleCount: 0
-    };
-    snapshot.songSecondsNow = songSecondsNow;
-    snapshot.targetSeconds = targetSeconds;
-    snapshot.targetDeltaMs = targetDeltaMs;
-    snapshot.isWithinGraceWindow = isWithinGraceWindow;
-    snapshot.canValidateHit = canValidateHit;
-    snapshot.validHit = validHit;
-    snapshot.activeTarget = active;
-    snapshot.latestFrame = hitAnalysis.latestFrame;
-    snapshot.holdMs = hitAnalysis.streakMs;
-    snapshot.holdRequiredMs = DEFAULT_HOLD_MS;
-    snapshot.minConfidence = DEFAULT_MIN_CONFIDENCE;
-    snapshot.validFrameCount = hitAnalysis.validFrameCount;
-    snapshot.sampleCount = hitAnalysis.sampleCount;
-    this.hitDebugSnapshot = snapshot;
-
-    const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
-      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
-      targetTimeSeconds: targetSeconds,
-      songTimeSeconds: songSecondsNow,
-      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
-      finishWhenNoTargets: false
-    });
-
-    this.runtime = update.state;
-    this.handleTransition(update.transition, update.target, previousState);
-    if (update.transition !== 'none') {
-      this.lastRuntimeTransition = update.transition;
-      this.lastRuntimeTransitionAtMs = performance.now();
-    }
-
-    this.redrawTargetsAndBall();
-    this.drawTopStarfield();
-    this.updateSongMinimapProgress();
-    this.updateHud();
-    this.updateDebugOverlay();
-
-    if (!this.targets[this.runtime.active_target_index]) {
-      this.queueFinishSong();
-    } else {
-      this.clearFinishSongQueue();
-    }
+  public tickRuntime(): void {
+    this.gameplayController.tickRuntime();
   }
 
-  private handleTransition(transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
-    if (transition === 'entered_waiting') {
-      this.pausePlaybackClock();
-      this.pauseBackingPlayback();
-      this.waitingStartMs = performance.now();
-      this.latestFrames = [];
-      this.feedbackText = 'Waiting...';
-      this.feedbackUntilMs = performance.now() + 500;
-      return;
-    }
-
-    if (transition === 'validated_hit' && target) {
-      if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
-        this.resumeBackingPlayback();
-      }
-      const signedDeltaMs = this.measureHitSignedDeltaMs(target, previousState);
-      const deltaMs = this.measureHitDeltaMs(target, previousState);
-      const rated = rateHit(deltaMs);
-      this.recordScoreEvent({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
-      if (rated.rating !== 'Miss') {
-        this.correctlyHitTargetIds.add(target.id);
-      }
-      this.waitingStartMs = null;
-      this.latestFrames = [];
-      if (signedDeltaMs !== undefined && signedDeltaMs < -50) {
-        this.feedbackText = 'Too Soon';
-      } else {
-        this.feedbackText = rated.rating === 'Miss' ? 'Too Late' : rated.rating;
-      }
-      this.feedbackUntilMs = performance.now() + 700;
-      return;
-    }
-
-    if (transition === 'timeout_miss' && target) {
-      if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
-        this.resumeBackingPlayback();
-      }
-      const fallbackDeltaMs = (this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds ?? 0) * 1000;
-      const deltaMs = this.waitingStartMs === null ? fallbackDeltaMs : performance.now() - this.waitingStartMs;
-      this.recordScoreEvent({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
-      this.waitingStartMs = null;
-      this.latestFrames = [];
-      this.feedbackText = 'Too Late';
-      this.feedbackUntilMs = performance.now() + 900;
-    }
+  public writeInvalidHeldHitAnalysis(): HeldHitAnalysis {
+    this.heldHitAnalysisScratch.valid = false;
+    this.heldHitAnalysisScratch.streakMs = 0;
+    this.heldHitAnalysisScratch.validFrameCount = 0;
+    this.heldHitAnalysisScratch.sampleCount = this.latestFrames.length;
+    this.heldHitAnalysisScratch.latestFrame = this.latestFrames.latest();
+    return this.heldHitAnalysisScratch;
   }
 
-  private recordScoreEvent(event: ScoreEvent): void {
-    this.scoreEvents.push(event);
-    this.totalScore += event.points;
-    if (event.rating === 'Miss') {
-      this.currentComboStreak = 0;
-      return;
-    }
-    this.currentComboStreak += 1;
+  public handleTransition(transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
+    this.gameplayController.handleTransition(transition, target, previousState);
   }
 
-  private finishSong(): void {
-    if (this.resultsOverlay?.active) return;
-    this.runtime.state = PlayState.Finished;
-    this.runtime.waiting_started_at_s = undefined;
-    this.runtime.waiting_target_id = undefined;
-    this.finishDelayTimer?.remove(false);
-    this.finishDelayTimer = undefined;
-    this.finishQueuedAtMs = undefined;
-    this.playbackIntroTimer?.remove(false);
-    this.playbackIntroTimer = undefined;
-    this.prePlaybackStartAtMs = undefined;
-    this.playbackStarted = false;
-    this.pauseMenuResumeSongSeconds = undefined;
-    this.playbackPausedByButton = false;
-    this.playbackWasRunningBeforeButtonPause = false;
-    this.waitingPauseStartedAtAudioTime = undefined;
-    this.closePauseMenu();
-    this.setBallAndTrailVisible(false);
-    this.debugButton?.disableInteractive().setVisible(false);
-    this.debugButtonLabel?.setVisible(false);
-    this.pauseButton?.disableInteractive().setVisible(false);
-    this.pauseButtonLeftBar?.setVisible(false);
-    this.pauseButtonRightBar?.setVisible(false);
-    this.pauseButtonPlayIcon?.setVisible(false);
-    this.feedbackMessageText?.setVisible(false);
-    this.playbackSpeedTrack?.disableInteractive().setVisible(false);
-    this.playbackSpeedKnob?.disableInteractive().setVisible(false);
-    this.playbackSpeedPanel?.setVisible(false);
-    this.playbackSpeedLabel?.setVisible(false);
-    this.playbackSpeedValueText?.setVisible(false);
-    this.debugOverlayContainer?.setVisible(false);
-
-    this.runtimeTimer?.remove(false);
-    this.runtimeTimer = undefined;
-
-    this.stopBackingPlayback();
-    this.detector?.stop();
-
-    const summary = summarizeScores(this.scoreEvents);
-    const songScoreKey = this.resolveSongScoreKey();
-    const bestScore = songScoreKey ? saveSongHighScoreIfHigher(songScoreKey, summary.totalScore) : summary.totalScore;
-    if (songScoreKey) {
-      this.persistNativeSongHighScore(songScoreKey, bestScore);
-    }
-    const { width, height } = this.scale;
-    const panelWidth = Math.min(620, width * 0.82);
-    const panelHeight = Math.min(420, height * 0.76);
-
-    const panelGlow = new RoundedBox(this, width / 2, height / 2, panelWidth + 10, panelHeight + 10, 0x60a5fa, 0.16);
-    const panel = new RoundedBox(this, width / 2, height / 2, panelWidth, panelHeight, 0x101c3c, 0.95)
-      .setStrokeStyle(2, 0x60a5fa, 0.58);
-    const title = this.add.text(width / 2, height * 0.26, 'Session Complete', {
-      color: '#f8fafc',
-      fontFamily: 'Montserrat, sans-serif',
-      fontStyle: 'bold',
-      fontSize: `${Math.max(24, Math.floor(width * 0.035))}px`
-    }).setOrigin(0.5);
-    const summaryText = this.add.text(width / 2, height * 0.34, `${formatSummary(summary)}\nBest Score: ${bestScore}`, {
-      color: '#e2e8f0',
-      fontFamily: 'Montserrat, sans-serif',
-      align: 'left',
-      fontSize: `${Math.max(16, Math.floor(width * 0.02))}px`
-    }).setOrigin(0.5, 0);
-    const earnedStars = this.computeEndScreenStars(summary);
-    const starObjects = this.createEndScreenStars(width / 2, height * 0.18, earnedStars, width);
-    const restartButtonY = height * 0.69;
-    const backButtonY = height * 0.81;
-    const actionButtonWidth = panelWidth * 0.74;
-    const actionButtonHeight = 52;
-    const restartButton = new RoundedBox(this, width / 2, restartButtonY, actionButtonWidth, actionButtonHeight, 0xf97316, 1)
-      .setStrokeStyle(1, 0xfed7aa, 0.9)
-      .setInteractive({ useHandCursor: true });
-    const restartLabel = this.add
-      .text(width / 2, restartButtonY, 'Restart', {
-        color: '#fff7ed',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    const backButton = new RoundedBox(this, width / 2, backButtonY, actionButtonWidth, actionButtonHeight, 0x1e293b, 1)
-      .setStrokeStyle(1, 0x64748b, 0.9)
-      .setInteractive({ useHandCursor: true });
-    const backLabel = this.add
-      .text(width / 2, backButtonY, 'Back to Start', {
-        color: '#e2e8f0',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    const restart = (): void => this.resetSession();
-    const goBack = (): void => this.goBackToStart();
-    restartButton.on('pointerdown', restart);
-    restartLabel.on('pointerdown', restart);
-    backButton.on('pointerdown', goBack);
-    backLabel.on('pointerdown', goBack);
-    this.input.keyboard?.once('keydown-ENTER', restart);
-    this.input.keyboard?.once('keydown-ESC', goBack);
-
-    this.resultsOverlay = this.add.container(0, 0, [
-      panelGlow,
-      panel,
-      title,
-      summaryText,
-      ...starObjects,
-      restartButton,
-      restartLabel,
-      backButton,
-      backLabel
-    ]);
+  public recordScoreEvent(event: ScoreEvent): void {
+    this.gameplayController.recordScoreEvent(event);
   }
 
-  private computeEndScreenStars(summary: ReturnType<typeof summarizeScores>): number {
-    return computeOverlayEndScreenStars(this.targets.length, summary);
+  public finishSong(): void {
+    this.uiController.finishSong();
   }
 
-  private createEndScreenStars(
+  public computeEndScreenStars(summary: ReturnType<typeof summarizeScores>): number {
+    return this.uiController.computeEndScreenStars(summary);
+  }
+
+  public createEndScreenStars(
     centerX: number,
     centerY: number,
     earnedStars: number,
     width: number
   ): Phaser.GameObjects.GameObject[] {
-    const objects: Phaser.GameObjects.GameObject[] = [];
-    const spacing = Math.max(44, Math.floor(width * 0.06));
-    const starFontSize = `${Math.max(34, Math.floor(width * 0.05))}px`;
-    const baseColor = '#64748b';
-    const activeColor = '#facc15';
-
-    for (let index = 0; index < 3; index += 1) {
-      const x = centerX + (index - 1) * spacing;
-      const baseStar = this.add
-        .text(x, centerY, '☆', {
-          color: baseColor,
-          fontFamily: 'Montserrat, sans-serif',
-          fontStyle: 'bold',
-          fontSize: starFontSize
-        })
-        .setOrigin(0.5);
-      objects.push(baseStar);
-
-      if (index >= earnedStars) continue;
-
-      const fillStar = this.add
-        .text(x, centerY, '★', {
-          color: activeColor,
-          fontFamily: 'Montserrat, sans-serif',
-          fontStyle: 'bold',
-          fontSize: starFontSize
-        })
-        .setOrigin(0.5)
-        .setAlpha(0)
-        .setScale(0.7);
-      this.tweens.add({
-        targets: fillStar,
-        alpha: 1,
-        scaleX: 1.14,
-        scaleY: 1.14,
-        duration: 220,
-        delay: 180 + index * 180,
-        ease: 'Back.Out',
-        onComplete: () => {
-          this.tweens.add({
-            targets: fillStar,
-            scaleX: 1,
-            scaleY: 1,
-            duration: 110,
-            ease: 'Sine.Out'
-          });
-        }
-      });
-      objects.push(fillStar);
-    }
-
-    return objects;
+    return this.uiController.createEndScreenStars(centerX, centerY, earnedStars, width);
   }
 
-  private attachBackHandlers(): void {
-    this.input.keyboard?.on('keydown-ESC', this.onBackRequested, this);
-
-    this.pauseMenuBackListener = (event: Event): void => {
-      event.preventDefault();
-      this.onBackRequested();
-    };
-    document.addEventListener('backbutton', this.pauseMenuBackListener);
-
-    this.pauseMenuPopStateListener = (_event: PopStateEvent): void => {
-      if (!this.scene.isActive()) return;
-      if (this.runtime.state === PlayState.Finished) return;
-      window.history.pushState({ gh_play_scene: true }, '', window.location.href);
-      this.onBackRequested();
-    };
-    window.addEventListener('popstate', this.pauseMenuPopStateListener);
-    window.history.pushState({ gh_play_scene: true }, '', window.location.href);
+  public attachBackHandlers(): void {
+    this.uiController.attachBackHandlers();
   }
 
-  private onBackRequested(): void {
-    if (this.runtime.state === PlayState.Finished) return;
-    if (this.pauseOverlay) {
-      this.closePauseMenu();
-      return;
-    }
-    this.openPauseMenu();
+  public onBackRequested(): void {
+    this.uiController.onBackRequested();
   }
 
-  private openPauseMenu(): void {
-    if (this.pauseOverlay) return;
-    this.playbackWasRunningBeforePauseMenu =
-      this.runtime.state === PlayState.Playing && this.playbackStarted && !this.playbackPausedByButton;
-    this.pauseMenuResumeSongSeconds = undefined;
-
-    if (this.runtimeTimer) {
-      this.runtimeTimer.paused = true;
-    }
-    if (this.playbackWasRunningBeforePauseMenu) {
-      this.pausePlaybackClock();
-      this.pauseMenuResumeSongSeconds = this.pausedSongSeconds;
-      this.pauseBackingPlayback();
-    }
-    this.latestFrames = [];
-
-    const { width, height } = this.scale;
-    const panelWidth = Math.min(420, width * 0.84);
-    const panelHeight = Math.min(360, height * 0.7);
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    const backdrop = new RoundedBox(this, centerX, centerY, width, height, 0x000000, 0.55, 0)
-      .setInteractive({ useHandCursor: false });
-
-    const panelGlow = new RoundedBox(this, centerX, centerY, panelWidth + 8, panelHeight + 8, 0x60a5fa, 0.14);
-    const panel = new RoundedBox(this, centerX, centerY, panelWidth, panelHeight, 0x101c3c, 0.96).setStrokeStyle(2, 0x60a5fa, 0.58);
-    const title = this.add
-      .text(centerX, centerY - panelHeight * 0.33, 'Pause Menu', {
-        color: '#f8fafc',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(22, Math.floor(width * 0.03))}px`
-      })
-      .setOrigin(0.5);
-
-    const continueButtonY = centerY - panelHeight * 0.12;
-    const resetButtonY = centerY + panelHeight * 0.08;
-    const backButtonY = centerY + panelHeight * 0.28;
-
-    const continueButton = new RoundedBox(this, centerX, continueButtonY, panelWidth * 0.72, 54, 0x1d4ed8, 1)
-      .setStrokeStyle(1, 0x93c5fd, 0.9)
-      .setInteractive({ useHandCursor: true });
-    const continueLabel = this.add
-      .text(centerX, continueButtonY, 'Continue', {
-        color: '#eff6ff',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    const resetButton = new RoundedBox(this, centerX, resetButtonY, panelWidth * 0.72, 54, 0xf97316, 1)
-      .setStrokeStyle(1, 0xfed7aa, 0.9)
-      .setInteractive({ useHandCursor: true });
-    const resetLabel = this.add
-      .text(centerX, resetButtonY, 'Reset', {
-        color: '#fff7ed',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    const backButton = new RoundedBox(this, centerX, backButtonY, panelWidth * 0.72, 54, 0x1e293b, 1)
-      .setStrokeStyle(1, 0x64748b, 0.9)
-      .setInteractive({ useHandCursor: true });
-    const backLabel = this.add
-      .text(centerX, backButtonY, 'Back to Start', {
-        color: '#e2e8f0',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(18, Math.floor(width * 0.022))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    continueButton.on('pointerdown', () => this.closePauseMenu());
-    continueLabel.on('pointerdown', () => this.closePauseMenu());
-    resetButton.on('pointerdown', () => this.resetSession());
-    resetLabel.on('pointerdown', () => this.resetSession());
-    backButton.on('pointerdown', () => this.goBackToStart());
-    backLabel.on('pointerdown', () => this.goBackToStart());
-
-    this.pauseOverlay = this.add.container(0, 0, [
-      backdrop,
-      panelGlow,
-      panel,
-      title,
-      continueButton,
-      continueLabel,
-      resetButton,
-      resetLabel,
-      backButton,
-      backLabel
-    ]);
-    this.pauseOverlay.setDepth(1000);
-    this.syncPauseButtonIcon();
+  public openPauseMenu(): void {
+    this.uiController.openPauseMenu();
   }
 
-  private closePauseMenu(): void {
-    if (!this.pauseOverlay) return;
-
-    this.pauseOverlay.destroy(true);
-    this.pauseOverlay = undefined;
-
-    if (this.runtimeTimer) {
-      this.runtimeTimer.paused = this.playbackPausedByButton;
-    }
-    if (this.playbackWasRunningBeforePauseMenu) {
-      if (this.pauseMenuResumeSongSeconds !== undefined) {
-        this.pausedSongSeconds = this.pauseMenuResumeSongSeconds;
-      }
-      this.resumeBackingPlayback();
-    }
-    this.latestFrames = [];
-    this.playbackWasRunningBeforePauseMenu = false;
-    this.pauseMenuResumeSongSeconds = undefined;
-    this.syncPauseButtonIcon();
+  public closePauseMenu(): void {
+    this.uiController.closePauseMenu();
   }
 
-  private toggleGameplayPauseFromButton(): void {
-    if (this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
-    if (this.playbackPausedByButton) {
-      this.resumeGameplayFromButtonPause();
-      return;
-    }
-    this.pauseGameplayFromButton();
+  public toggleGameplayPauseFromButton(): void {
+    this.uiController.toggleGameplayPauseFromButton();
   }
 
-  private pauseGameplayFromButton(): void {
-    if (this.playbackPausedByButton) return;
-    this.playbackPausedByButton = true;
-    this.playbackWasRunningBeforeButtonPause = this.runtime.state === PlayState.Playing && this.playbackStarted;
-    this.waitingPauseStartedAtAudioTime =
-      this.runtime.state === PlayState.WaitingForHit && this.audioCtx ? this.audioCtx.currentTime : undefined;
-
-    if (this.runtimeTimer) {
-      this.runtimeTimer.paused = true;
-    }
-    if (this.playbackWasRunningBeforeButtonPause) {
-      this.pausePlaybackClock();
-      this.pauseBackingPlayback();
-    }
-    this.latestFrames = [];
-    this.syncPauseButtonIcon();
+  public pauseGameplayFromButton(): void {
+    this.uiController.pauseGameplayFromButton();
   }
 
-  private resumeGameplayFromButtonPause(): void {
-    if (!this.playbackPausedByButton) return;
-    this.playbackPausedByButton = false;
-
-    if (
-      this.runtime.state === PlayState.WaitingForHit &&
-      this.audioCtx &&
-      this.runtime.waiting_started_at_s !== undefined &&
-      this.waitingPauseStartedAtAudioTime !== undefined
-    ) {
-      const pausedForSeconds = Math.max(0, this.audioCtx.currentTime - this.waitingPauseStartedAtAudioTime);
-      this.runtime.waiting_started_at_s += pausedForSeconds;
-    }
-    this.waitingPauseStartedAtAudioTime = undefined;
-
-    if (this.runtimeTimer) {
-      this.runtimeTimer.paused = false;
-    }
-    if (this.runtime.state === PlayState.WaitingForHit) {
-      this.stopBackingTrackSource();
-      this.playbackStartAudioTime = null;
-      this.playbackStartSongSeconds = this.pausedSongSeconds;
-    } else if (this.playbackWasRunningBeforeButtonPause) {
-      this.resumeBackingPlayback();
-    }
-    this.playbackWasRunningBeforeButtonPause = false;
-    this.latestFrames = [];
-    this.syncPauseButtonIcon();
+  public resumeGameplayFromButtonPause(): void {
+    this.uiController.resumeGameplayFromButtonPause();
   }
 
-  private isWaitingPausedByButton(): boolean {
-    return this.playbackPausedByButton && this.runtime.state === PlayState.WaitingForHit;
+  public isWaitingPausedByButton(): boolean {
+    return this.uiController.isWaitingPausedByButton();
   }
 
-  private relayoutPauseOverlay(): void {
-    if (!this.pauseOverlay) return;
-    this.pauseOverlay.destroy(true);
-    this.pauseOverlay = undefined;
-    this.openPauseMenu();
+  public relayoutPauseOverlay(): void {
+    this.uiController.relayoutPauseOverlay();
   }
 
-  private resetSession(): void {
-    const data = this.sceneData;
-    if (!data) return;
-    this.scene.restart(data);
+  public resetSession(): void {
+    this.uiController.resetSession();
   }
 
-  private goBackToStart(): void {
-    this.scene.start('SongSelectScene');
+  public goBackToStart(): void {
+    this.uiController.goBackToStart();
   }
 
-  private resolveSongScoreKey(): string {
-    const explicitSongId = this.sceneData?.songId?.trim();
-    if (explicitSongId) return explicitSongId;
-    return this.sceneData?.midiUrl?.trim() ?? '';
+  public resolveSongScoreKey(): string {
+    return this.uiController.resolveSongScoreKey();
   }
 
-  private persistNativeSongHighScore(songScoreKey: string, bestScore: number): void {
-    if (!Capacitor.isNativePlatform()) return;
-
-    void import('../platform/nativeSongLibrary')
-      .then(({ updateNativeSongHighScore }) => updateNativeSongHighScore(songScoreKey, bestScore))
-      .catch((error) => {
-        console.warn('Failed to persist native high score', { songScoreKey, bestScore, error });
-      });
+  public persistNativeSongHighScore(songScoreKey: string, bestScore: number): void {
+    this.uiController.persistNativeSongHighScore(songScoreKey, bestScore);
   }
 
-  private createDebugOverlay(): void {
-    if (!this.debugOverlayEnabled || this.debugOverlayContainer) return;
-
-    this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.78)
-      .setStrokeStyle(2, 0x38bdf8, 0.48)
-      .setDepth(910);
-    this.debugOverlayText = this.add
-      .text(0, 0, '', {
-        color: '#dbeafe',
-        fontFamily: 'Montserrat, sans-serif',
-        fontSize: '12px',
-        lineSpacing: 3
-      })
-      .setOrigin(0, 0)
-      .setDepth(911);
-
-    this.debugOverlayContainer = this.add
-      .container(0, 0, [this.debugOverlayPanel, this.debugOverlayText])
-      .setDepth(910)
-      .setVisible(true);
-    this.relayoutDebugOverlay();
+  public createDebugOverlay(): void {
+    this.uiController.createDebugOverlay();
   }
 
-  private relayoutDebugOverlay(): void {
-    if (!this.debugOverlayPanel || !this.debugOverlayText) return;
-
-    const { width, height } = this.scale;
-    const panelWidth = Math.min(760, width * 0.84);
-    const panelHeight = Math.min(360, height * 0.56);
-    const centerX = width / 2;
-    const centerY = height * 0.52;
-
-    this.debugOverlayPanel.setBoxSize(panelWidth, panelHeight);
-    this.debugOverlayPanel.setPosition(centerX, centerY);
-    this.debugOverlayText
-      .setPosition(centerX - panelWidth / 2 + 12, centerY - panelHeight / 2 + 12)
-      .setFontSize(`${Math.max(11, Math.floor(width * 0.0115))}px`);
+  public relayoutDebugOverlay(): void {
+    this.uiController.relayoutDebugOverlay();
   }
 
-  private toggleDebugOverlay(): void {
-    if (!this.debugOverlayContainer) return;
-    const nextVisible = !this.debugOverlayContainer.visible;
-    this.debugOverlayContainer.setVisible(nextVisible);
-    this.feedbackText = `Debug overlay ${nextVisible ? 'ON' : 'OFF'} (F3)`;
-    this.feedbackUntilMs = performance.now() + 900;
-    this.updateHud();
+  public toggleDebugOverlay(): void {
+    this.uiController.toggleDebugOverlay();
   }
 
-  private updateDebugOverlay(): void {
-    if (!this.debugOverlayEnabled || !this.debugOverlayText || !this.debugOverlayContainer || !this.debugOverlayContainer.visible) {
-      return;
-    }
-
-    const snapshot = this.hitDebugSnapshot;
-    const active = snapshot?.activeTarget ?? this.targets[this.runtime.active_target_index];
-    const latestFrame = snapshot?.latestFrame ?? (this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined);
-    const songSecondsNow =
-      snapshot?.songSecondsNow ?? (this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds);
-    const targetSeconds = snapshot?.targetSeconds ?? (active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined);
-    const playbackBpm = this.getCurrentPlaybackBpm(songSecondsNow);
-    const deltaMs =
-      snapshot?.targetDeltaMs ?? (songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined);
-    const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
-    const waitingElapsedSeconds =
-      this.runtime.waiting_started_at_s !== undefined && this.audioCtx
-        ? Math.max(0, this.audioCtx.currentTime - this.runtime.waiting_started_at_s)
-        : undefined;
-    const transitionAgeMs = this.lastRuntimeTransitionAtMs > 0 ? performance.now() - this.lastRuntimeTransitionAtMs : undefined;
-    const clockSongSeconds = this.getSongSecondsFromClock();
-    const runtimeTickSongSeconds = this.tempoMap ? this.tempoMap.tickToSeconds(Math.max(0, this.runtime.current_tick)) : undefined;
-    const backingCurrentSeconds = this.getBackingTrackSongSeconds();
-    const backingDurationSeconds = this.backingTrackBuffer?.duration;
-    const backingDriftMs =
-      songSecondsNow !== undefined && backingCurrentSeconds !== undefined
-        ? (backingCurrentSeconds - songSecondsNow) * 1000
-        : undefined;
-    const seekDebug = this.lastAudioSeekDebug;
-    const seekAgeMs = seekDebug ? performance.now() - seekDebug.atMs : undefined;
-
-    const lines = [
-      'DEBUG OVERLAY (F3)',
-      `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
-      `song id=${this.sceneData?.songId ?? '-'} midi=${formatDebugPath(this.sceneData?.midiUrl)} audio=${formatDebugPath(this.sceneData?.audioUrl)}`,
-      active
-        ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
-        : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
-      `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
-      `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s bpm=${formatDebugNumber(playbackBpm, 2)} d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
-      `clock song=${formatDebugNumber(clockSongSeconds, 3)}s tickSong=${formatDebugNumber(runtimeTickSongSeconds, 3)}s startSong=${formatDebugNumber(this.playbackStartSongSeconds, 3)}s ctxStart=${formatDebugNumber(this.playbackStartAudioTime, 3)}s`,
-      `resume pausedSong=${formatDebugNumber(this.pausedSongSeconds, 3)}s pausedAudio=${formatDebugNumber(this.pausedBackingAudioSeconds, 3)}s lastAudio=${formatDebugNumber(this.lastKnownBackingAudioSeconds, 3)}s speed=${formatDebugNumber(this.playbackSpeedMultiplier, 2)}x started=${formatDebugBool(this.playbackStarted)}`,
-      `backing cur=${formatDebugNumber(backingCurrentSeconds, 3)}s dur=${formatDebugNumber(backingDurationSeconds, 3)}s playing=${formatDebugBool(this.backingTrackIsPlaying)} sourceSong=${formatDebugNumber(this.backingTrackSourceStartSongSeconds, 3)}s sourceCtx=${formatDebugNumber(this.backingTrackSourceStartedAtAudioTime, 3)}s drift=${formatSignedMs(backingDriftMs)}`,
-      `seek req=${formatDebugNumber(seekDebug?.requestedSongSeconds, 3)}s target=${formatDebugNumber(seekDebug?.targetSeconds, 3)}s before=${formatDebugNumber(seekDebug?.beforeSeekSeconds, 3)}s after=${formatDebugNumber(seekDebug?.afterPlaySeconds, 3)}s retry=${formatDebugNumber(seekDebug?.afterRetrySeconds, 3)}s fallbackMidi=${seekDebug ? formatDebugBool(seekDebug.fallbackToMidi) : '-'} ok=${seekDebug ? formatDebugBool(seekDebug.ok) : '-'} age=${seekAgeMs !== undefined ? `${Math.round(seekAgeMs)}ms` : '-'}`,
-      `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
-      `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
-      `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
-    ];
-
-    this.debugOverlayText.setText(lines.join('\n'));
+  public updateDebugOverlay(): void {
+    this.uiController.updateDebugOverlay();
   }
 
-  private drawStaticLanes(): void {
+  public drawStaticLanes(): void {
     if (!this.laneLayer || !this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
 
     const layout = this.layout();
@@ -1289,7 +613,7 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private layoutSongMinimap(): void {
+  public layoutSongMinimap(): void {
     this.minimapRenderer.layoutMinimap(
       this.targets,
       this.ticksPerQuarter,
@@ -1300,7 +624,7 @@ export class PlayScene extends Phaser.Scene {
     );
   }
 
-  private layoutPauseButton(): void {
+  public layoutPauseButton(): void {
     if (!this.pauseButton || !this.pauseButtonLeftBar || !this.pauseButtonRightBar || !this.pauseButtonPlayIcon) return;
 
     const sideMargin = 14;
@@ -1331,7 +655,7 @@ export class PlayScene extends Phaser.Scene {
       .setDepth(290);
   }
 
-  private createPlaybackSpeedSlider(): void {
+  public createPlaybackSpeedSlider(): void {
     if (this.playbackSpeedPanel || this.playbackSpeedTrack || this.playbackSpeedKnob) return;
 
     this.playbackSpeedPanel = new RoundedBox(this, 0, 0, 10, 10, 0x0b1228, 0.9)
@@ -1383,7 +707,7 @@ export class PlayScene extends Phaser.Scene {
     this.updatePlaybackSpeedSliderVisuals();
   }
 
-  private layoutPlaybackSpeedSlider(): void {
+  public layoutPlaybackSpeedSlider(): void {
     if (
       !this.playbackSpeedPanel ||
       !this.playbackSpeedTrack ||
@@ -1422,7 +746,7 @@ export class PlayScene extends Phaser.Scene {
     this.updatePlaybackSpeedSliderVisuals();
   }
 
-  private applyPlaybackSpeedFromSliderX(pointerX: number, previewOnly = false): void {
+  public applyPlaybackSpeedFromSliderX(pointerX: number, previewOnly = false): void {
     if (this.isWaitingPausedByButton()) return;
     if (!this.playbackSpeedTrack) return;
     const left = this.playbackSpeedTrack.x - this.playbackSpeedTrack.displayWidth / 2;
@@ -1436,7 +760,7 @@ export class PlayScene extends Phaser.Scene {
     this.setPlaybackSpeed(speed);
   }
 
-  private beginPlaybackSpeedAdjustment(pointerId: number): void {
+  public beginPlaybackSpeedAdjustment(pointerId: number): void {
     this.playbackSpeedAdjusting = true;
     this.playbackSpeedDragPointerId = pointerId;
     this.pendingPlaybackSpeedMultiplier = this.playbackSpeedMultiplier;
@@ -1454,7 +778,7 @@ export class PlayScene extends Phaser.Scene {
     this.pauseBackingPlayback();
   }
 
-  private handlePlaybackSpeedPointerUp(pointer: Phaser.Input.Pointer): void {
+  public handlePlaybackSpeedPointerUp(pointer: Phaser.Input.Pointer): void {
     if (!this.playbackSpeedAdjusting) return;
     if (this.playbackSpeedDragPointerId !== undefined && pointer.id !== this.playbackSpeedDragPointerId) return;
     this.playbackSpeedAdjusting = false;
@@ -1476,7 +800,7 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private setPendingPlaybackSpeed(speedMultiplier: number): void {
+  public setPendingPlaybackSpeed(speedMultiplier: number): void {
     this.pendingPlaybackSpeedMultiplier = Phaser.Math.Clamp(
       speedMultiplier,
       PlayScene.PLAYBACK_SPEED_MIN,
@@ -1485,7 +809,7 @@ export class PlayScene extends Phaser.Scene {
     this.updatePlaybackSpeedSliderVisuals();
   }
 
-  private setPlaybackSpeed(speedMultiplier: number): void {
+  public setPlaybackSpeed(speedMultiplier: number): void {
     const safeSpeed = Phaser.Math.Clamp(
       speedMultiplier,
       PlayScene.PLAYBACK_SPEED_MIN,
@@ -1520,7 +844,7 @@ export class PlayScene extends Phaser.Scene {
     this.updateHud();
   }
 
-  private updatePlaybackSpeedSliderVisuals(): void {
+  public updatePlaybackSpeedSliderVisuals(): void {
     if (!this.playbackSpeedTrack || !this.playbackSpeedKnob || !this.playbackSpeedValueText) return;
 
     const visualSpeed = this.pendingPlaybackSpeedMultiplier ?? this.playbackSpeedMultiplier;
@@ -1533,30 +857,30 @@ export class PlayScene extends Phaser.Scene {
     this.playbackSpeedValueText.setText(`${Math.round(visualSpeed * 100)}%`);
   }
 
-  private setPauseButtonIconMode(showPlay: boolean): void {
+  public setPauseButtonIconMode(showPlay: boolean): void {
     this.pauseButtonLeftBar?.setVisible(!showPlay);
     this.pauseButtonRightBar?.setVisible(!showPlay);
     this.pauseButtonPlayIcon?.setVisible(showPlay);
   }
 
-  private syncPauseButtonIcon(): void {
+  public syncPauseButtonIcon(): void {
     this.setPauseButtonIconMode(this.pauseOverlay !== undefined || this.playbackPausedByButton);
   }
 
-  private redrawSongMinimapStatic(): void {
+  public redrawSongMinimapStatic(): void {
     this.minimapRenderer.redrawStatic(this.targets, this.ticksPerQuarter);
   }
 
-  private updateSongMinimapProgress(): void {
+  public updateSongMinimapProgress(): void {
     this.minimapRenderer.updateProgress(this.runtime.current_tick, this.targets, this.correctlyHitTargetIds);
   }
 
-  private drawTopStarfield(): void {
+  public drawTopStarfield(): void {
     const layout = this.layout();
     this.fretboardRenderer.drawTopStarfield(layout, this.runtime.current_tick);
   }
 
-  private layoutHandReminder(): void {
+  public layoutHandReminder(): void {
     if (!this.handReminderImage) return;
     const { width, height } = this.scale;
     const textureFrame = this.handReminderImage.frame;
@@ -1572,7 +896,7 @@ export class PlayScene extends Phaser.Scene {
     this.handReminderImage.setPosition(width - 12, height - 8);
   }
 
-  private async playDebugTargetNote(): Promise<void> {
+  public async playDebugTargetNote(): Promise<void> {
     if (this.isWaitingPausedByButton()) {
       this.feedbackText = 'Resume with Play before debug input';
       this.feedbackUntilMs = performance.now() + 900;
@@ -1622,83 +946,19 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private consumeDebugHit(): void {
-    if (this.isWaitingPausedByButton()) {
-      this.feedbackText = 'Resume with Play before debug input';
-      this.feedbackUntilMs = performance.now() + 900;
-      this.updateHud();
-      this.updateDebugOverlay();
-      return;
-    }
-    if (!this.audioCtx || !this.tempoMap) return;
-    if (!this.playbackStarted) {
-      this.feedbackText = 'Playback not started yet';
-      this.feedbackUntilMs = performance.now() + 700;
-      this.updateHud();
-      this.updateDebugOverlay();
-      return;
-    }
-    const previousState = this.runtime.state;
-    const active = this.targets[this.runtime.active_target_index];
-    const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
-    const songTimeSeconds = this.getSongSecondsNow();
-    const forceTooLateForWaiting = previousState === PlayState.WaitingForHit;
-    const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, !forceTooLateForWaiting, {
-      gatingTimeoutSeconds: forceTooLateForWaiting ? 0 : this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
-      targetTimeSeconds,
-      songTimeSeconds,
-      lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
-      finishWhenNoTargets: false
-    });
-    this.runtime = update.state;
-    this.handleTransition(update.transition, update.target, previousState);
-    if (update.transition !== 'none') {
-      this.lastRuntimeTransition = update.transition;
-      this.lastRuntimeTransitionAtMs = performance.now();
-    }
-    this.redrawTargetsAndBall();
-    this.updateSongMinimapProgress();
-    this.updateHud();
-    this.updateDebugOverlay();
-    if (!this.targets[this.runtime.active_target_index]) {
-      this.queueFinishSong();
-    } else {
-      this.clearFinishSongQueue();
-    }
+  public consumeDebugHit(): void {
+    this.gameplayController.consumeDebugHit();
   }
 
-  private queueFinishSong(): void {
-    if (this.resultsOverlay?.active) return;
-    const now = performance.now();
-    if (this.finishQueuedAtMs === undefined) {
-      this.finishQueuedAtMs = now + PlayScene.POST_SONG_END_SCREEN_DELAY_MS;
-      if (!this.finishDelayTimer) {
-        this.finishDelayTimer = this.time.delayedCall(PlayScene.POST_SONG_END_SCREEN_DELAY_MS, () => {
-          this.finishDelayTimer = undefined;
-          this.finishQueuedAtMs = undefined;
-          if (!this.scene.isActive()) return;
-          this.finishSong();
-        });
-      }
-      return;
-    }
-
-    if (now >= this.finishQueuedAtMs) {
-      this.finishDelayTimer?.remove(false);
-      this.finishDelayTimer = undefined;
-      this.finishQueuedAtMs = undefined;
-      if (!this.scene.isActive()) return;
-      this.finishSong();
-    }
+  public queueFinishSong(): void {
+    this.gameplayController.queueFinishSong();
   }
 
-  private clearFinishSongQueue(): void {
-    this.finishDelayTimer?.remove(false);
-    this.finishDelayTimer = undefined;
-    this.finishQueuedAtMs = undefined;
+  public clearFinishSongQueue(): void {
+    this.gameplayController.clearFinishSongQueue();
   }
 
-  private redrawTargetsAndBall(): void {
+  public redrawTargetsAndBall(): void {
     const layout = this.layout();
     this.noteRenderer.redrawTargetsAndBall({
       ball: this.ball,
@@ -1714,22 +974,25 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
-  private resolveBallPosition(layout: Layout): { x: number; y: number } {
+  public writeBallPosition(x: number, y: number): MutablePoint {
+    this.ballPositionScratch.x = x;
+    this.ballPositionScratch.y = y;
+    return this.ballPositionScratch;
+  }
+
+  public resolveBallPosition(layout: Layout): MutablePoint {
     if (this.targets.length === 0) {
-      return {
-        x: layout.hitLineX,
-        y: layout.top - Math.max(18, this.scale.height * 0.04)
-      };
+      return this.writeBallPosition(layout.hitLineX, layout.top - Math.max(18, this.scale.height * 0.04));
     }
 
     const waitingTarget = this.runtime.state === PlayState.WaitingForHit ? this.targets[this.runtime.active_target_index] : undefined;
     if (waitingTarget) {
-      return { x: layout.hitLineX, y: this.getStringCenterY(layout, waitingTarget.string) };
+      return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, waitingTarget.string));
     }
 
     const firstTarget = this.targets[0];
     if (this.targetOnsetSeconds.length !== this.targets.length) {
-      return { x: layout.hitLineX, y: this.getStringCenterY(layout, firstTarget.string) };
+      return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, firstTarget.string));
     }
 
     const firstTargetSeconds = Math.max(0.001, this.targetOnsetSeconds[0]);
@@ -1746,11 +1009,11 @@ export class PlayScene extends Phaser.Scene {
     const nextTargetIndex = this.findTargetIndexAtOrAfterSongSeconds(songSecondsNow);
     if (nextTargetIndex === -1) {
       const lastTarget = this.targets[this.targets.length - 1];
-      return { x: layout.hitLineX, y: this.getStringCenterY(layout, lastTarget.string) };
+      return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, lastTarget.string));
     }
 
     if (nextTargetIndex === 0) {
-      return { x: layout.hitLineX, y: this.getStringCenterY(layout, this.targets[0].string) };
+      return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, this.targets[0].string));
     }
 
     const previousTargetIndex = nextTargetIndex - 1;
@@ -1767,17 +1030,17 @@ export class PlayScene extends Phaser.Scene {
     const linearY = Phaser.Math.Linear(startY, endY, progress);
     const arcOffset = 4 * arcHeight * progress * (1 - progress);
 
-    return {
-      x: layout.hitLineX + Math.sin(progress * Math.PI) * lateralExcursion,
-      y: linearY - arcOffset
-    };
+    return this.writeBallPosition(
+      layout.hitLineX + Math.sin(progress * Math.PI) * lateralExcursion,
+      linearY - arcOffset
+    );
   }
 
-  private resolvePrePlaybackBallPosition(
+  public resolvePrePlaybackBallPosition(
     layout: Layout,
     firstTarget: TargetNote,
     firstTargetSeconds: number
-  ): { x: number; y: number } {
+  ): MutablePoint {
     if (this.prePlaybackStartAtMs === undefined) {
       return this.resolveIntroBallPosition(layout, firstTarget, 0, firstTargetSeconds);
     }
@@ -1790,12 +1053,12 @@ export class PlayScene extends Phaser.Scene {
     return this.resolveIntroBallPosition(layout, firstTarget, elapsedRatio * 0.9, firstTargetSeconds);
   }
 
-  private resolveIntroBallPosition(
+  public resolveIntroBallPosition(
     layout: Layout,
     firstTarget: TargetNote,
     progress: number,
     firstTargetSeconds: number
-  ): { x: number; y: number } {
+  ): MutablePoint {
     const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
     const thirdStringY = this.getStringCenterY(layout, 3);
     const targetY = this.getStringCenterY(layout, firstTarget.string);
@@ -1803,13 +1066,13 @@ export class PlayScene extends Phaser.Scene {
     const introDuration = Math.max(0.2, firstTargetSeconds);
     const introLateralExcursion = this.resolveBallLateralExcursion(layout, thirdStringY, targetY, introDuration);
 
-    return {
-      x: layout.hitLineX + Phaser.Math.Linear(introLateralExcursion, 0, clampedProgress),
-      y: startY + (targetY - startY) * clampedProgress * clampedProgress
-    };
+    return this.writeBallPosition(
+      layout.hitLineX + Phaser.Math.Linear(introLateralExcursion, 0, clampedProgress),
+      startY + (targetY - startY) * clampedProgress * clampedProgress
+    );
   }
 
-  private findTargetIndexAtOrAfterSongSeconds(songSeconds: number): number {
+  public findTargetIndexAtOrAfterSongSeconds(songSeconds: number): number {
     if (this.targetOnsetSeconds.length === 0) return -1;
 
     let low = 0;
@@ -1827,12 +1090,12 @@ export class PlayScene extends Phaser.Scene {
     return result;
   }
 
-  private getStringCenterY(layout: Layout, stringNumber: number): number {
+  public getStringCenterY(layout: Layout, stringNumber: number): number {
     const laneIndex = Phaser.Math.Clamp(Math.round(stringNumber) - 1, 0, 5);
     return layout.top + laneIndex * layout.laneSpacing;
   }
 
-  private resolveBallArcHeight(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
+  public resolveBallArcHeight(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
     const baseAmplitude = Phaser.Math.Clamp(
       layout.laneSpacing * BALL_BOUNCE_AMPLITUDE_FACTOR,
       BALL_BOUNCE_AMPLITUDE_MIN_PX,
@@ -1848,7 +1111,7 @@ export class PlayScene extends Phaser.Scene {
     );
   }
 
-  private resolveBallLateralExcursion(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
+  public resolveBallLateralExcursion(layout: Layout, startY: number, endY: number, intervalSeconds: number): number {
     const laneDistance = Math.abs(endY - startY) / Math.max(layout.laneSpacing, 1);
     const laneFactor = Phaser.Math.Clamp(0.7 + laneDistance * 0.16, 0.7, 1.45);
     const timeFactor = Phaser.Math.Clamp(intervalSeconds / 0.55, 0.42, 1.05);
@@ -1859,41 +1122,15 @@ export class PlayScene extends Phaser.Scene {
     return Phaser.Math.Clamp(baseExcursion * laneFactor * timeFactor, minExcursion, maxExcursion);
   }
 
-  private updateHud(): void {
-    if (!this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
-
-    const now = performance.now();
-
-    const streak = Math.max(1, this.currentComboStreak);
-    let status = `x${streak}`;
-    if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
-      status = `x${streak}`;
-    }
-
-    const topMessage = this.resolveTopFeedbackMessage(now);
-    const completed = Math.min(this.runtime.active_target_index, this.targets.length);
-
-    this.statusText.setText(status);
-    this.feedbackMessageText.setText(topMessage).setVisible(topMessage.length > 0);
-    this.liveScoreText.setText(`${this.totalScore}  |  ${completed}/${this.targets.length}`);
-    this.updateDebugOverlay();
+  public updateHud(): void {
+    this.uiController.updateHud();
   }
 
-  private resolveTopFeedbackMessage(now: number): string {
-    return resolveOverlayTopFeedbackMessage({
-      runtimeState: this.runtime.state,
-      timeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
-      audioCurrentTime: this.audioCtx?.currentTime,
-      waitingStartedAtSeconds: this.runtime.waiting_started_at_s,
-      playbackStarted: this.playbackStarted,
-      prePlaybackStartAtMs: this.prePlaybackStartAtMs,
-      nowMs: now,
-      feedbackUntilMs: this.feedbackUntilMs,
-      feedbackText: this.feedbackText
-    });
+  public resolveTopFeedbackMessage(now: number): string {
+    return this.uiController.resolveTopFeedbackMessage(now);
   }
 
-  private layout(): Layout {
+  public layout(): Layout {
     if (this.cachedLayout) {
       return this.cachedLayout;
     }
@@ -1921,11 +1158,11 @@ export class PlayScene extends Phaser.Scene {
     return nextLayout;
   }
 
-  private createBallTrail(): void {
+  public createBallTrail(): void {
     this.destroyBallTrail();
   }
 
-  private destroyBallTrail(): void {
+  public destroyBallTrail(): void {
     for (const segment of this.ballTrailSegments) {
       segment.shadow.destroy();
       segment.main.destroy();
@@ -1937,11 +1174,11 @@ export class PlayScene extends Phaser.Scene {
     this.lastBallTrailY = 0;
   }
 
-  private pushBallTrailPoint(x: number, y: number): void {
+  public pushBallTrailPoint(x: number, y: number): void {
     this.ballTrailHistory.push(x, y);
   }
 
-  private updateBallTrail(x: number, y: number, laneSpacing: number): void {
+  public updateBallTrail(x: number, y: number, laneSpacing: number): void {
     if (!this.hasLastBallTrailPoint) {
       this.pushBallTrailPoint(x, y);
       this.hasLastBallTrailPoint = true;
@@ -1971,7 +1208,7 @@ export class PlayScene extends Phaser.Scene {
     this.drawBallDashedTrail(laneSpacing);
   }
 
-  private resetBallTrailHistory(): void {
+  public resetBallTrailHistory(): void {
     this.ballTrailHistory.clear();
     this.hasLastBallTrailPoint = false;
     this.lastBallTrailX = 0;
@@ -1979,7 +1216,7 @@ export class PlayScene extends Phaser.Scene {
     this.hideUnusedTrailSegments(0);
   }
 
-  private drawBallDashedTrail(laneSpacing: number): void {
+  public drawBallDashedTrail(laneSpacing: number): void {
     const historySize = this.ballTrailHistory.size;
     if (historySize < 3) {
       this.hideUnusedTrailSegments(0);
@@ -2050,7 +1287,7 @@ export class PlayScene extends Phaser.Scene {
     this.hideUnusedTrailSegments(segmentIndex);
   }
 
-  private getOrCreateTrailSegment(index: number): { shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line } {
+  public getOrCreateTrailSegment(index: number): { shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line } {
     const existing = this.ballTrailSegments[index];
     if (existing) return existing;
 
@@ -2069,14 +1306,14 @@ export class PlayScene extends Phaser.Scene {
     return created;
   }
 
-  private hideUnusedTrailSegments(startIndex: number): void {
+  public hideUnusedTrailSegments(startIndex: number): void {
     for (let i = startIndex; i < this.ballTrailSegments.length; i += 1) {
       this.ballTrailSegments[i].shadow.setVisible(false);
       this.ballTrailSegments[i].main.setVisible(false);
     }
   }
 
-  private computeTrailPathLength(startIndex: number, endExclusiveIndex: number): number {
+  public computeTrailPathLength(startIndex: number, endExclusiveIndex: number): number {
     let length = 0;
     for (let i = startIndex + 1; i < endExclusiveIndex; i += 1) {
       length += Phaser.Math.Distance.Between(
@@ -2089,7 +1326,7 @@ export class PlayScene extends Phaser.Scene {
     return length;
   }
 
-  private buildProfileWithSettings(
+  public buildProfileWithSettings(
     base: DifficultyProfile,
     allowedStrings: number[] | undefined,
     allowedFingers: number[] | undefined,
@@ -2113,7 +1350,7 @@ export class PlayScene extends Phaser.Scene {
     };
   }
 
-  private cleanup(): void {
+  public cleanup(): void {
     this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);
     this.input.keyboard?.off('keydown-F3', this.toggleDebugOverlay, this);
 
@@ -2217,311 +1454,87 @@ export class PlayScene extends Phaser.Scene {
     this.audioCtx = undefined;
   }
 
-  private async startBackingTrackAudio(audioUrl: string | undefined, startSongSeconds: number): Promise<boolean> {
-    if (!audioUrl || !isBackingTrackAudioUrl(audioUrl)) {
-      return false;
-    }
-    if (!this.audioCtx) return false;
-
-    this.playbackMode = 'audio';
-    this.lastKnownBackingAudioSeconds = 0;
-    this.pausedBackingAudioSeconds = undefined;
-
-    try {
-      if (!this.backingTrackBuffer || this.backingTrackAudioUrl !== audioUrl) {
-        this.backingTrackBuffer = await this.loadBackingTrackBuffer(audioUrl);
-        this.backingTrackAudioUrl = audioUrl;
-      }
-      this.ensureBackingTrackGainNode();
-      return await this.playBackingTrackAudioFrom(startSongSeconds);
-    } catch (error) {
-      this.lastAudioSeekDebug = {
-        requestedSongSeconds: startSongSeconds,
-        targetSeconds: startSongSeconds,
-        beforeSeekSeconds: 0,
-        afterPlaySeconds: undefined,
-        fallbackToMidi: false,
-        seekDisabled: false,
-        ok: false,
-        atMs: performance.now()
-      };
-      console.warn('Backing track load failed', { audioUrl, error });
-      return false;
-    }
+  public async startBackingTrackAudio(audioUrl: string | undefined, startSongSeconds: number): Promise<boolean> {
+    return await this.playbackController.startBackingTrackAudio(audioUrl, startSongSeconds);
   }
 
-  private pauseBackingPlayback(): void {
-    if (!this.playbackStarted) return;
-    if (this.playbackMode === 'audio') {
-      const pausedAudioSeconds = resolveSongSecondsForRuntime(
-        this.getSongSecondsFromClock(),
-        this.pausedSongSeconds,
-        this.getBackingTrackSongSeconds()
-      );
-      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds);
-      this.pausedBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds, this.pausedSongSeconds);
-      this.pausedSongSeconds = this.pausedBackingAudioSeconds;
-      this.stopBackingTrackSource();
-      return;
-    }
-    this.scrubPlayer?.pause(this.runtime.current_tick);
+  public pauseBackingPlayback(): void {
+    this.playbackController.pauseBackingPlayback();
   }
 
-  private resumeBackingPlayback(): void {
-    if (!this.playbackStarted) return;
-    const runtimeResumeSeconds = resolveResumeSongSeconds(this.runtime.current_tick, this.pausedSongSeconds, this.tempoMap);
-    let resumeSeconds = runtimeResumeSeconds;
-    if (this.playbackMode === 'audio') {
-      resumeSeconds = resolveResumeSongSecondsForAudio(resumeSeconds, this.pausedBackingAudioSeconds);
-      resumeSeconds = Math.max(resumeSeconds, this.lastKnownBackingAudioSeconds);
-    }
-    this.pausedSongSeconds = resumeSeconds;
-    this.startPlaybackClock(resumeSeconds);
-
-    if (this.playbackMode === 'audio') {
-      void this.resumeBackingTrackAudio(resumeSeconds);
-      return;
-    }
-    this.scrubPlayer?.resume(this.runtime.current_tick, this.audioCtx?.currentTime ?? 0);
+  public resumeBackingPlayback(): void {
+    this.playbackController.resumeBackingPlayback();
   }
 
-  private stopBackingPlayback(): void {
-    this.stopBackingTrackSource();
-    this.releaseBackingTrackAudio();
-    this.scrubPlayer?.stop();
+  public stopBackingPlayback(): void {
+    this.playbackController.stopBackingPlayback();
   }
 
-  private async resumeBackingTrackAudio(songSeconds: number): Promise<void> {
-    const resumed = await this.playBackingTrackAudioFrom(songSeconds);
-    if (resumed) return;
-
-    this.feedbackText = 'Backing track unavailable.';
-    this.feedbackUntilMs = performance.now() + 1200;
+  public async resumeBackingTrackAudio(songSeconds: number): Promise<void> {
+    await this.playbackController.resumeBackingTrackAudio(songSeconds);
   }
 
-  private async playBackingTrackAudioFrom(songSeconds: number): Promise<boolean> {
-    if (!this.audioCtx || !this.backingTrackBuffer) return false;
-    const safeSeconds = Math.max(0, songSeconds);
-    const targetSeconds = this.clampAudioSeekSeconds(safeSeconds);
-    const beforeSeekSeconds = sanitizeSongSeconds(
-      this.getBackingTrackSongSeconds() ?? this.pausedSongSeconds,
-      this.pausedSongSeconds
-    );
-    this.stopBackingTrackSource();
-    this.ensureBackingTrackGainNode();
-
-    try {
-      const source = this.audioCtx.createBufferSource();
-      source.buffer = this.backingTrackBuffer;
-      source.playbackRate.value = this.playbackSpeedMultiplier;
-      source.connect(this.backingTrackGain!);
-      const startAtAudioTime = this.audioCtx.currentTime + 0.005;
-      source.onended = () => {
-        if (this.backingTrackSource !== source) return;
-        this.backingTrackSource = undefined;
-        this.backingTrackSourceStartedAtAudioTime = undefined;
-        this.backingTrackSourceStartSongSeconds = this.backingTrackBuffer?.duration ?? targetSeconds;
-        this.backingTrackIsPlaying = false;
-      };
-      source.start(startAtAudioTime, targetSeconds);
-      this.backingTrackSource = source;
-      this.backingTrackSourceStartedAtAudioTime = startAtAudioTime;
-      this.backingTrackSourceStartSongSeconds = targetSeconds;
-      this.backingTrackIsPlaying = true;
-
-      this.lastAudioSeekDebug = {
-        requestedSongSeconds: safeSeconds,
-        targetSeconds,
-        beforeSeekSeconds,
-        afterPlaySeconds: targetSeconds,
-        afterRetrySeconds: undefined,
-        fallbackToMidi: false,
-        seekDisabled: false,
-        ok: true,
-        atMs: performance.now()
-      };
-      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, targetSeconds);
-      this.syncRuntimeToBackingTrackPosition(targetSeconds);
-      this.pausedBackingAudioSeconds = undefined;
-      return true;
-    } catch (error) {
-      this.lastAudioSeekDebug = {
-        requestedSongSeconds: safeSeconds,
-        targetSeconds,
-        beforeSeekSeconds,
-        afterPlaySeconds: undefined,
-        fallbackToMidi: false,
-        seekDisabled: false,
-        ok: false,
-        atMs: performance.now()
-      };
-      console.warn('Backing track play failed', { audioUrl: this.sceneData?.audioUrl, error });
-      return false;
-    }
+  public async playBackingTrackAudioFrom(songSeconds: number): Promise<boolean> {
+    return await this.playbackController.playBackingTrackAudioFrom(songSeconds);
   }
 
-  private releaseBackingTrackAudio(): void {
-    this.stopBackingTrackSource();
-    this.backingTrackBuffer = undefined;
-    this.backingTrackAudioUrl = undefined;
-    if (this.backingTrackGain) {
-      try {
-        this.backingTrackGain.disconnect();
-      } catch {
-        // Ignore best-effort disconnect errors.
-      }
-    }
-    this.backingTrackGain = undefined;
-    this.backingTrackSourceStartedAtAudioTime = undefined;
-    this.backingTrackSourceStartSongSeconds = 0;
-    this.backingTrackIsPlaying = false;
-    this.pausedBackingAudioSeconds = undefined;
-    this.lastKnownBackingAudioSeconds = 0;
+  public releaseBackingTrackAudio(): void {
+    this.playbackController.releaseBackingTrackAudio();
   }
 
-  private syncRuntimeToBackingTrackPosition(songSeconds: number): void {
-    const safeSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
-    this.startPlaybackClock(safeSeconds);
-    if (this.tempoMap) {
-      this.runtime.current_tick = Math.max(0, this.tempoMap.secondsToTick(safeSeconds));
-    }
+  public syncRuntimeToBackingTrackPosition(songSeconds: number): void {
+    this.playbackController.syncRuntimeToBackingTrackPosition(songSeconds);
   }
 
-  private stopBackingTrackSource(): void {
-    if (!this.backingTrackSource) return;
-    this.backingTrackSource.onended = null;
-    try {
-      this.backingTrackSource.stop();
-    } catch {
-      // Ignore stop errors for already-ended sources.
-    }
-    try {
-      this.backingTrackSource.disconnect();
-    } catch {
-      // Ignore best-effort disconnect errors.
-    }
-    this.backingTrackSource = undefined;
-    this.backingTrackSourceStartedAtAudioTime = undefined;
-    this.backingTrackIsPlaying = false;
+  public stopBackingTrackSource(): void {
+    this.playbackController.stopBackingTrackSource();
   }
 
-  private ensureBackingTrackGainNode(): void {
-    if (!this.audioCtx) return;
-    if (this.backingTrackGain) return;
-    const gain = this.audioCtx.createGain();
-    gain.gain.value = 1;
-    gain.connect(this.audioCtx.destination);
-    this.backingTrackGain = gain;
+  public ensureBackingTrackGainNode(): void {
+    this.playbackController.ensureBackingTrackGainNode();
   }
 
-  private getBackingTrackSongSeconds(): number | undefined {
-    const buffer = this.backingTrackBuffer;
-    if (!buffer) return undefined;
-    if (!this.backingTrackIsPlaying || !this.audioCtx || this.backingTrackSourceStartedAtAudioTime === undefined) {
-      return Phaser.Math.Clamp(this.backingTrackSourceStartSongSeconds, 0, Math.max(0, buffer.duration));
-    }
-    const elapsed = Math.max(0, this.audioCtx.currentTime - this.backingTrackSourceStartedAtAudioTime);
-    const position = this.backingTrackSourceStartSongSeconds + elapsed * this.playbackSpeedMultiplier;
-    return Phaser.Math.Clamp(position, 0, Math.max(0, buffer.duration));
+  public getBackingTrackSongSeconds(): number | undefined {
+    return this.playbackController.getBackingTrackSongSeconds();
   }
 
-  private async loadBackingTrackBuffer(audioUrl: string): Promise<AudioBuffer> {
-    if (!this.audioCtx) {
-      throw new Error('Audio context unavailable while loading backing track.');
-    }
-    const response = await fetch(audioUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch backing track (${response.status} ${response.statusText})`);
-    }
-    const encoded = await response.arrayBuffer();
-    if (encoded.byteLength === 0) {
-      throw new Error('Backing track file is empty.');
-    }
-    return await this.audioCtx.decodeAudioData(encoded.slice(0));
+  public async loadBackingTrackBuffer(audioUrl: string): Promise<AudioBuffer> {
+    return await this.playbackController.loadBackingTrackBuffer(audioUrl);
   }
 
-  private clampAudioSeekSeconds(songSeconds: number): number {
-    if (!this.backingTrackBuffer || !Number.isFinite(this.backingTrackBuffer.duration) || this.backingTrackBuffer.duration <= 0) {
-      return songSeconds;
-    }
-    return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, this.backingTrackBuffer.duration - 0.02));
+  public clampAudioSeekSeconds(songSeconds: number): number {
+    return this.playbackController.clampAudioSeekSeconds(songSeconds);
   }
 
-  private createPlaybackClockState(): PlaybackClockState {
-    return {
-      playbackStartSongSeconds: this.playbackStartSongSeconds,
-      pausedSongSeconds: this.pausedSongSeconds,
-      playbackStartAudioTime: this.playbackStartAudioTime
-    };
+  public createPlaybackClockState(): PlaybackClockState {
+    return this.playbackController.createPlaybackClockState();
   }
 
-  private applyPlaybackClockState(state: PlaybackClockState): void {
-    this.playbackStartSongSeconds = state.playbackStartSongSeconds;
-    this.pausedSongSeconds = state.pausedSongSeconds;
-    this.playbackStartAudioTime = state.playbackStartAudioTime;
+  public applyPlaybackClockState(state: PlaybackClockState): void {
+    this.playbackController.applyPlaybackClockState(state);
   }
 
-  private startPlaybackClock(songSeconds: number): void {
-    const clockState = this.createPlaybackClockState();
-    startPlaybackClockState(clockState, this.audioCtx, songSeconds);
-    this.applyPlaybackClockState(clockState);
+  public startPlaybackClock(songSeconds: number): void {
+    this.playbackController.startPlaybackClock(songSeconds);
   }
 
-  private pausePlaybackClock(): void {
-    const clockState = this.createPlaybackClockState();
-    const pausedCurrentTick = pausePlaybackClockState(
-      clockState,
-      this.audioCtx,
-      this.runtime.current_tick,
-      this.tempoMap,
-      this.playbackSpeedMultiplier
-    );
-    this.applyPlaybackClockState(clockState);
-    this.runtime.current_tick = pausedCurrentTick;
+  public pausePlaybackClock(): void {
+    this.playbackController.pausePlaybackClock();
   }
 
-  private getSongSecondsNow(): number {
-    const expectedClockSongSeconds = this.getSongSecondsFromClock();
-    if (this.playbackMode === 'audio' && this.backingTrackBuffer) {
-      const resolved = resolveSongSecondsForRuntime(
-        expectedClockSongSeconds,
-        this.pausedSongSeconds,
-        this.getBackingTrackSongSeconds()
-      );
-      this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolved);
-      return resolved;
-    }
-    return expectedClockSongSeconds;
+  public getSongSecondsNow(): number {
+    return this.playbackController.getSongSecondsNow();
   }
 
-  private getSongSecondsFromClock(): number {
-    return getSongSecondsFromClockValue(
-      this.createPlaybackClockState(),
-      this.audioCtx,
-      this.playbackSpeedMultiplier
-    );
+  public getSongSecondsFromClock(): number {
+    return this.playbackController.getSongSecondsFromClock();
   }
 
-  private getCurrentPlaybackBpm(songSeconds: number | undefined): number | undefined {
-    if (!this.tempoMap || songSeconds === undefined || !Number.isFinite(songSeconds)) return undefined;
-    const segments = this.tempoMap.segments;
-    if (segments.length === 0) return undefined;
-
-    const safeSeconds = Math.max(0, songSeconds);
-    let selected = segments[0];
-    for (const segment of segments) {
-      if (segment.startSeconds <= safeSeconds) {
-        selected = segment;
-        continue;
-      }
-      break;
-    }
-
-    if (!Number.isFinite(selected.usPerQuarter) || selected.usPerQuarter <= 0) return undefined;
-    return 60_000_000 / selected.usPerQuarter;
+  public getCurrentPlaybackBpm(songSeconds: number | undefined): number | undefined {
+    return this.playbackController.getCurrentPlaybackBpm(songSeconds);
   }
 
-  private setBallAndTrailVisible(visible: boolean): void {
+  public setBallAndTrailVisible(visible: boolean): void {
     this.ball?.setVisible(visible);
     if (!visible) {
       this.ballTrailHistory.clear();
@@ -2538,24 +1551,15 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private measureHitDeltaMs(target: TargetNote, previousState: PlayState): number {
-    if (previousState === PlayState.Playing && this.tempoMap) {
-      const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
-      return Math.abs(this.getSongSecondsNow() - targetSeconds) * 1000;
-    }
-    return this.waitingStartMs === null ? 0 : performance.now() - this.waitingStartMs;
+  public measureHitDeltaMs(target: TargetNote, previousState: PlayState): number {
+    return this.gameplayController.measureHitDeltaMs(target, previousState);
   }
 
-  private measureHitSignedDeltaMs(target: TargetNote, previousState: PlayState): number | undefined {
-    if (previousState !== PlayState.Playing || !this.tempoMap) return undefined;
-    const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
-    return (this.getSongSecondsNow() - targetSeconds) * 1000;
+  public measureHitSignedDeltaMs(target: TargetNote, previousState: PlayState): number | undefined {
+    return this.gameplayController.measureHitSignedDeltaMs(target, previousState);
   }
 
-  private isInsideLiveHitWindow(target: TargetNote): boolean {
-    if (!this.tempoMap) return false;
-    const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
-    const now = this.getSongSecondsNow();
-    return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
+  public isInsideLiveHitWindow(target: TargetNote): boolean {
+    return this.gameplayController.isInsideLiveHitWindow(target);
   }
 }

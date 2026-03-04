@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { FINGER_COLORS } from '../app/config';
 import type { TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
-import type { Layout } from './playSceneTypes';
+import type { Layout, MutablePoint } from './playSceneTypes';
 
 type RedrawArgs = {
   ball?: Phaser.GameObjects.Arc;
@@ -12,7 +12,7 @@ type RedrawArgs = {
   targets: TargetNote[];
   correctlyHitTargetIds: ReadonlySet<string>;
   layout: Layout;
-  resolveBallPosition: (layout: Layout) => { x: number; y: number };
+  resolveBallPosition: (layout: Layout) => MutablePoint;
   updateBallTrail: (x: number, y: number, laneSpacing: number) => void;
   setBallAndTrailVisible: (visible: boolean) => void;
 };

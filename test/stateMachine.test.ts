@@ -147,4 +147,39 @@ describe('updateRuntimeState', () => {
     expect(update.state.state).toBe(PlayState.Playing);
     expect(update.state.active_target_index).toBe(1);
   });
+
+  test('supports reusable out result object', () => {
+    const state: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1002,
+      active_target_index: 0
+    };
+    const out = {
+      state,
+      transition: 'none' as const,
+      target
+    };
+
+    const update = updateRuntimeState(state, [target], 10.2, true, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    }, out);
+
+    expect(update).toBe(out);
+    expect(update.transition).toBe('validated_hit');
+    expect(update.target?.id).toBe(target.id);
+
+    const noTargetState: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1200,
+      active_target_index: 1
+    };
+    const secondUpdate = updateRuntimeState(noTargetState, [target], 30, false, {
+      finishWhenNoTargets: false
+    }, out);
+
+    expect(secondUpdate).toBe(out);
+    expect(secondUpdate.transition).toBe('none');
+    expect(secondUpdate.target).toBeUndefined();
+  });
 });

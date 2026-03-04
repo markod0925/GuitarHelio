@@ -28,8 +28,6 @@
     "@capacitor/core": "^8.1.0",
     "@capacitor/filesystem": "^8.1.2",
     "@fontsource/montserrat": "^5.2.8",
-    "@spotify/basic-pitch": "^1.0.1",
-    "@tensorflow/tfjs": "^4.22.0",
     "@tonejs/midi": "^2.0.28",
     "aubiojs": "^0.1.1",
     "audio-decode": "^2.2.3",
@@ -38,9 +36,9 @@
     "phaser": "^3.80.1"
   },
   "devDependencies": {
-    "@tensorflow/tfjs-node": "^4.22.0",
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "typescript": "^5.6.2",
     "vite": "^5.4.8",
     "vitest": "^2.1.1"

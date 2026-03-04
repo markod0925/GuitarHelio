@@ -31,10 +31,11 @@ export function updateRuntimeState(
   targets: TargetNote[],
   nowSeconds: number,
   isHitValid: boolean,
-  options: RuntimeUpdateOptions = {}
+  options: RuntimeUpdateOptions = {},
+  out?: RuntimeUpdate
 ): RuntimeUpdate {
   if (state.state === PlayState.Finished) {
-    return { state, transition: 'none' };
+    return writeRuntimeUpdate(out, state, 'none');
   }
 
   const approachThresholdTicks = options.approachThresholdTicks ?? APPROACH_THRESHOLD_TICKS;
@@ -43,37 +44,40 @@ export function updateRuntimeState(
   const activeTarget = targets[state.active_target_index];
   if (!activeTarget) {
     if (options.finishWhenNoTargets === false) {
-      return {
-        state: {
+      return writeRuntimeUpdate(
+        out,
+        {
           ...state,
           state: PlayState.Playing,
           waiting_started_at_s: undefined,
           waiting_target_id: undefined
         },
-        transition: 'none'
-      };
+        'none'
+      );
     }
-    return {
-      state: {
+    return writeRuntimeUpdate(
+      out,
+      {
         ...state,
         state: PlayState.Finished,
         waiting_started_at_s: undefined,
         waiting_target_id: undefined
       },
-      transition: 'finished'
-    };
+      'finished'
+    );
   }
 
   if (state.state === PlayState.Playing && isHitValid) {
-    return {
-      state: {
+    return writeRuntimeUpdate(
+      out,
+      {
         state: PlayState.Playing,
         active_target_index: state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
-      transition: 'validated_hit',
-      target: activeTarget
-    };
+      'validated_hit',
+      activeTarget
+    );
   }
 
   const comparisonSongSeconds = options.songTimeSeconds ?? nowSeconds;
@@ -85,29 +89,31 @@ export function updateRuntimeState(
     state.state === PlayState.Playing && state.current_tick >= activeTarget.tick - approachThresholdTicks;
 
   if (shouldEnterWaitingByTime || (options.targetTimeSeconds === undefined && shouldEnterWaitingByTick)) {
-    return {
-      state: {
+    return writeRuntimeUpdate(
+      out,
+      {
         ...state,
         state: PlayState.WaitingForHit,
         waiting_target_id: activeTarget.id,
         waiting_started_at_s: nowSeconds,
         current_tick: state.current_tick
       },
-      transition: 'entered_waiting',
-      target: activeTarget
-    };
+      'entered_waiting',
+      activeTarget
+    );
   }
 
   if (state.state === PlayState.WaitingForHit && isHitValid) {
-    return {
-      state: {
+    return writeRuntimeUpdate(
+      out,
+      {
         state: PlayState.Playing,
         active_target_index: state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
-      transition: 'validated_hit',
-      target: activeTarget
-    };
+      'validated_hit',
+      activeTarget
+    );
   }
 
   const timeoutSeconds = options.gatingTimeoutSeconds;
@@ -118,16 +124,37 @@ export function updateRuntimeState(
     nowSeconds - state.waiting_started_at_s >= timeoutSeconds;
 
   if (hasTimedOut) {
-    return {
-      state: {
+    return writeRuntimeUpdate(
+      out,
+      {
         state: PlayState.Playing,
         active_target_index: state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
-      transition: 'timeout_miss',
-      target: activeTarget
-    };
+      'timeout_miss',
+      activeTarget
+    );
   }
 
-  return { state, transition: 'none' };
+  return writeRuntimeUpdate(out, state, 'none');
+}
+
+function writeRuntimeUpdate(
+  out: RuntimeUpdate | undefined,
+  state: RuntimeState,
+  transition: RuntimeTransition,
+  target?: TargetNote
+): RuntimeUpdate {
+  if (!out) {
+    return { state, transition, target };
+  }
+
+  out.state = state;
+  out.transition = transition;
+  if (target) {
+    out.target = target;
+  } else {
+    delete out.target;
+  }
+  return out;
 }

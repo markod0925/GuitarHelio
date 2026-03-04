@@ -9,12 +9,6 @@
       "cover": "cover.png"
     },
     {
-      "id": "vivaldi-concerto-la-stravaganza-4-2-c-icking-archive",
-      "name": "vivaldi concerto la stravaganza 4 2 (c)icking archive",
-      "folder": "vivaldi_concerto_la_stravaganza_4_2_(c)icking-archive",
-      "midi": "song.mid"
-    },
-    {
       "id": "i-residui-di-supposta-di-maria",
       "name": "I residui di supposta di Maria",
       "folder": "I residui di supposta di Maria",
@@ -23,26 +17,12 @@
       "cover": "cover.jpg"
     },
     {
-      "id": "un-cane-una-scoreggia-un-gatto-una-cacca",
-      "name": "Un cane una scoreggia un gatto una cacca",
-      "folder": "Un cane una scoreggia un gatto una cacca",
+      "id": "poldar-tanz",
+      "name": "Poldar Tanz",
+      "folder": "Poldar Tanz",
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"
-    },
-    {
-      "id": "banana-groove",
-      "name": "Banana Groove",
-      "folder": "Banana Groove",
-      "midi": "song.mid",
-      "audio": "song.mp3",
-      "cover": "cover.jpg"
-    },
-    {
-      "id": "verdantine-current",
-      "name": "Verdantine Current",
-      "folder": "Verdantine_Current",
-      "midi": "song.mid"
     }
   ]
 }

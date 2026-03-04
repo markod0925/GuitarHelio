@@ -1,4 +1,5 @@
 import type { PitchFrame, SourceNote } from '../types/models';
+import type { PitchFrameWindow } from '../audio/PitchFrameRingBuffer';
 import { TempoMap } from '../midi/tempoMap';
 import type { HeldHitAnalysis } from './playSceneTypes';
 
@@ -32,21 +33,26 @@ export function filterSourceNotesByOnsetSeconds(
 }
 
 export function analyzeHeldHit(
-  frames: PitchFrame[],
+  frames: PitchFrameWindow | readonly PitchFrame[],
   expectedMidi: number,
   tolerance: number,
   holdMs: number,
-  minConfidence: number
+  minConfidence: number,
+  out?: HeldHitAnalysis
 ): HeldHitAnalysis {
-  if (frames.length === 0) {
-    return { valid: false, streakMs: 0, validFrameCount: 0, sampleCount: 0, latestFrame: undefined };
+  const frameCount = frames.length;
+  if (frameCount === 0) {
+    return writeHeldHitAnalysis(out, false, 0, 0, 0, undefined);
   }
 
   let streakStartSeconds: number | null = null;
   let streakMs = 0;
   let validFrameCount = 0;
+  const latestFrame = resolveLatestPitchFrame(frames);
 
-  for (const frame of frames) {
+  for (let index = 0; index < frameCount; index += 1) {
+    const frame = resolvePitchFrameAt(frames, index);
+    if (!frame) continue;
     const validFrame = isPitchFrameValid(frame, expectedMidi, tolerance, minConfidence);
     if (!validFrame) {
       streakStartSeconds = null;
@@ -63,23 +69,55 @@ export function analyzeHeldHit(
 
     streakMs = Math.max(0, (frame.t_seconds - streakStartSeconds) * 1000);
     if (streakMs >= holdMs) {
-      return {
-        valid: true,
-        streakMs,
-        validFrameCount,
-        sampleCount: frames.length,
-        latestFrame: frames[frames.length - 1]
-      };
+      return writeHeldHitAnalysis(out, true, streakMs, validFrameCount, frameCount, latestFrame);
     }
   }
 
-  return {
-    valid: false,
-    streakMs,
-    validFrameCount,
-    sampleCount: frames.length,
-    latestFrame: frames[frames.length - 1]
-  };
+  return writeHeldHitAnalysis(out, false, streakMs, validFrameCount, frameCount, latestFrame);
+}
+
+function writeHeldHitAnalysis(
+  out: HeldHitAnalysis | undefined,
+  valid: boolean,
+  streakMs: number,
+  validFrameCount: number,
+  sampleCount: number,
+  latestFrame: PitchFrame | undefined
+): HeldHitAnalysis {
+  if (!out) {
+    return {
+      valid,
+      streakMs,
+      validFrameCount,
+      sampleCount,
+      latestFrame
+    };
+  }
+
+  out.valid = valid;
+  out.streakMs = streakMs;
+  out.validFrameCount = validFrameCount;
+  out.sampleCount = sampleCount;
+  out.latestFrame = latestFrame;
+  return out;
+}
+
+function resolvePitchFrameAt(frames: PitchFrameWindow | readonly PitchFrame[], index: number): PitchFrame | undefined {
+  if (isPitchFrameArray(frames)) {
+    return frames[index];
+  }
+  return frames.at(index);
+}
+
+function resolveLatestPitchFrame(frames: PitchFrameWindow | readonly PitchFrame[]): PitchFrame | undefined {
+  if (isPitchFrameArray(frames)) {
+    return frames.length > 0 ? frames[frames.length - 1] : undefined;
+  }
+  return frames.latest();
+}
+
+function isPitchFrameArray(value: PitchFrameWindow | readonly PitchFrame[]): value is readonly PitchFrame[] {
+  return Array.isArray(value);
 }
 
 export function isPitchFrameValid(

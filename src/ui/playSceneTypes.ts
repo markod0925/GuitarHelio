@@ -21,6 +21,11 @@ export type Layout = {
   noteHeight: number;
 };
 
+export type MutablePoint = {
+  x: number;
+  y: number;
+};
+
 export type PlaybackMode = 'midi' | 'audio';
 
 export type HitDebugSnapshot = {
