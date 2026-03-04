@@ -197,6 +197,7 @@ export class SongSelectScene extends Phaser.Scene {
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
   private debugConverterMode: DebugConverterMode = 'legacy';
+  private nativeBackButtonListener?: { remove: () => Promise<void> };
   private reloadSongsTask?: () => Promise<void>;
   private coverLoadGeneration = 0;
   private catalogLoadGeneration = 0;
@@ -254,28 +255,31 @@ export class SongSelectScene extends Phaser.Scene {
     this.songOptions = songGridView.options;
     this.configureSongScroll(songGridView);
 
-    const difficultyDropdown = this.createDifficultyDropdown(width, height, labelSize);
-
     const startScale = Math.SQRT2;
     const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
     const startButtonHeight = Math.round(62 * 1.08);
     const startY = height - startButtonHeight / 2 - 16;
     const startTopY = startY - startButtonHeight / 2;
+    const difficultyToImportGap = 86;
+    const importToSettingsGap = 92;
+    const settingsToTunerGap = 86;
     const sideButtonWidth = Math.min(300, width * 0.3);
     const sideButtonHeight = 56;
-    const sideButtonVerticalGap = 86;
     const sideButtonsBottomGapFromStart = 14;
-    let settingsButtonY = height * 0.60;
-    let tunerButtonY = settingsButtonY + sideButtonVerticalGap;
-    let importButtonY = height * 0.43;
+    let difficultyButtonY = height * 0.27;
+    let importButtonY = difficultyButtonY + difficultyToImportGap;
+    let settingsButtonY = importButtonY + importToSettingsGap;
+    let tunerButtonY = settingsButtonY + settingsToTunerGap;
     const maxTunerButtonBottom = startTopY - sideButtonsBottomGapFromStart;
     const tunerButtonBottom = tunerButtonY + sideButtonHeight / 2;
     if (tunerButtonBottom > maxTunerButtonBottom) {
       const shiftUp = tunerButtonBottom - maxTunerButtonBottom;
+      difficultyButtonY -= shiftUp;
       settingsButtonY -= shiftUp;
       tunerButtonY -= shiftUp;
       importButtonY -= shiftUp;
     }
+    const difficultyDropdown = this.createDifficultyDropdown(width, labelSize, difficultyButtonY);
     const sideIconSize = Math.min(26, Math.floor(labelSize * 1.5));
     const settingsButton = new RoundedBox(this, width * 0.79, settingsButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
@@ -909,6 +913,30 @@ export class SongSelectScene extends Phaser.Scene {
         openSettings();
       }
     });
+    if (Capacitor.isNativePlatform()) {
+      void import('@capacitor/app')
+        .then(({ App }) =>
+          App.addListener('backButton', () => {
+            if (!this.scene.isActive()) return;
+            if (this.importInProgress) return;
+            if (this.settingsOpen) {
+              closeSettings();
+              return;
+            }
+            if (this.tunerOpen) {
+              closeTuner();
+              return;
+            }
+            App.exitApp();
+          })
+        )
+        .then((listener) => {
+          this.nativeBackButtonListener = listener;
+        })
+        .catch((error) => {
+          console.warn('Failed to register native back handler in SongSelectScene', error);
+        });
+    }
 
     const bindSongInteractions = (): void => {
       this.songOptions.forEach((option, index) => {
@@ -1008,6 +1036,10 @@ export class SongSelectScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       void this.stopTuner(false);
+      if (this.nativeBackButtonListener) {
+        void this.nativeBackButtonListener.remove();
+        this.nativeBackButtonListener = undefined;
+      }
       this.coverLoadGeneration += 1;
       this.catalogLoadGeneration += 1;
       this.reloadSongsTask = undefined;
@@ -2306,9 +2338,8 @@ export class SongSelectScene extends Phaser.Scene {
     };
   }
 
-  private createDifficultyDropdown(width: number, height: number, labelSize: number): DifficultyDropdown {
+  private createDifficultyDropdown(width: number, labelSize: number, triggerY: number): DifficultyDropdown {
     const triggerX = width * 0.79;
-    const triggerY = height * 0.27;
     const fontSize = Math.max(15, labelSize + 1);
     const measurementLabel = this.add
       .text(triggerX, triggerY, 'Medium', {
@@ -2321,7 +2352,7 @@ export class SongSelectScene extends Phaser.Scene {
       .setVisible(false);
     const horizontalPadding = Math.max(34, Math.floor(labelSize * 1.8));
     const buttonWidth = Math.ceil(measurementLabel.width + horizontalPadding);
-    const buttonHeight = Math.min(54, Math.max(42, height * 0.08));
+    const buttonHeight = Math.min(54, Math.max(42, this.scale.height * 0.08));
 
     const trigger = new RoundedBox(this, triggerX, triggerY, buttonWidth, buttonHeight, 0x1a2a53, 0.72)
       .setStrokeStyle(2, 0x3b82f6, 0.35)

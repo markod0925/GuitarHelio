@@ -5,3 +5,4 @@ third_party/onnxruntime/windows-x64/lib/onnxruntime.pdb
 third_party/*/build/
 *.tsbuildinfo
 AGENTS.md
+tsconfig.tsbuildinfo

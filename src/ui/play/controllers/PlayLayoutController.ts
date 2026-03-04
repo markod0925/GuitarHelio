@@ -212,7 +212,7 @@ function layoutPauseButtonImpl(this: PlaySceneContext): void {
 
   const sideMargin = 14;
   const centerX = sideMargin + sceneClass.PAUSE_BUTTON_SIZE / 2;
-  const centerY = this.scale.height - sideMargin - sceneClass.PAUSE_BUTTON_SIZE / 2;
+  const centerY = this.scale.height - sideMargin - sceneClass.PAUSE_BUTTON_SIZE / 2 - 4;
   const barOffsetX = Math.max(4, Math.floor(sceneClass.PAUSE_BUTTON_SIZE * 0.15));
   const barHeight = Math.max(14, Math.floor(sceneClass.PAUSE_BUTTON_SIZE * 0.48));
   const barWidth = Math.max(4, Math.floor(sceneClass.PAUSE_BUTTON_SIZE * 0.14));
@@ -305,7 +305,7 @@ function layoutPlaybackSpeedSliderImpl(this: PlaySceneContext): void {
   const panelWidth = Math.min(360, width * 0.4);
   const panelHeight = 42;
   const centerX = width / 2;
-  const centerY = 24;
+  const centerY = 28;
   const sidePadding = 12;
   const labelWidth = Math.max(52, Math.floor(panelWidth * 0.2));
   const valueWidth = Math.max(52, Math.floor(panelWidth * 0.2));

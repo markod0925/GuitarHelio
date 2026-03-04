@@ -527,6 +527,7 @@ At end-of-song, gameplay MUST show a completion menu with two explicit actions:
 * `Restart` → restart the same session/song
 * `Back to Start` → return to `SongSelectScene`
 * when the last target note is completed, gameplay MUST wait about 2 seconds before opening the completion menu/end screen
+* when completion menu is visible, bottom minimap and bottom-right hand reminder MUST be hidden to avoid overlap with end-screen controls
 * the completion menu MUST show 3 neutral stars that fill in yellow (with a brief scale animation) based on played-note ratio:
   * >= 30% played notes: 1 star
   * >= 60% played notes: 2 stars
@@ -558,6 +559,7 @@ Properties:
 
 * width proportional to duration
 * each note must have a minimum circular head size: visual width MUST never be smaller than note height (circle-equivalent footprint)
+* for mobile readability, target-note circular heads MUST render at approximately 2x the previous baseline diameter
 * when note duration is longer, the shape MUST extend horizontally as a capsule/pill from that circular minimum
 * color based on finger
 * once a TargetNote is played correctly (`Perfect`, `Great`, or `OK`), its bar color MUST turn green
@@ -574,6 +576,8 @@ Suggested finger colors:
 3 (ring) → blue
 4 (pinky) → red
 ```
+
+For mobile readability, the finger-color palette MUST favor brighter/lighter variants of yellow, purple, blue, and red while preserving the same finger-to-color mapping.
 
 ---
 
@@ -622,6 +626,8 @@ All pause menu actions MUST be clickable both on button backgrounds and on their
 * `Back to Start` → leave gameplay and return to `SongSelectScene`
 
 While this menu is open, runtime progression and playback MUST remain paused.
+
+On `SongSelectScene` in Capacitor Android runtime, smartphone `Back` MUST exit/close the app directly (unless a local overlay such as settings/tuner is open, in which case it closes that overlay first).
 
 ---
 
@@ -753,12 +759,13 @@ The app visual style (start screen, gameplay scene, modal overlays) MUST follow 
 * typography MUST use `Montserrat` project-wide
 * `Montserrat` font assets MUST be bundled locally in the app package; runtime MUST NOT depend on external font CDN/network fetch
 * gameplay overlays (pause/results) styled consistently with the same panel language
+* on Capacitor Android runtime, app content MUST run in immersive full-screen mode (status bar + navigation bar hidden by default, transient reveal only by system gesture)
 
 Start-screen layout constraints:
 
 * the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
-* in landscape/mobile layouts, right-side controls (`Import`, `Settings`, `Tuner`) and `Start Session` CTA MUST keep non-overlapping spacing
+* in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`) and `Start Session` CTA MUST keep non-overlapping spacing
 
 ---
 

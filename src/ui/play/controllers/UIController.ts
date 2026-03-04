@@ -142,6 +142,8 @@ function finishSongImpl(this: PlaySceneContext): void {
   this.pauseButtonLeftBar?.setVisible(false);
   this.pauseButtonRightBar?.setVisible(false);
   this.pauseButtonPlayIcon?.setVisible(false);
+  this.handReminderImage?.setVisible(false);
+  this.minimapRenderer.setVisible(false);
   this.feedbackMessageText?.setVisible(false);
   this.playbackSpeedTrack?.disableInteractive().setVisible(false);
   this.playbackSpeedKnob?.disableInteractive().setVisible(false);

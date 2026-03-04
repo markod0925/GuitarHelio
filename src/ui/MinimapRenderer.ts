@@ -14,6 +14,16 @@ export class MinimapRenderer {
 
   constructor(private readonly scene: Phaser.Scene) {}
 
+  setVisible(visible: boolean): void {
+    this.background?.setVisible(visible);
+    this.staticLayer?.setVisible(visible);
+    this.progressFill?.setVisible(visible);
+    this.progressCursor?.setVisible(visible);
+    for (const overlay of this.hitOverlays) {
+      overlay.setVisible(visible && overlay.visible);
+    }
+  }
+
   layoutMinimap(
     targets: TargetNote[],
     ticksPerQuarter: number,
@@ -80,6 +90,10 @@ export class MinimapRenderer {
 
     this.progressFill?.setPosition(this.layout.innerLeft, this.layout.innerTop).setSize(1, this.layout.innerHeight);
     this.progressCursor?.setPosition(this.layout.innerLeft, this.layout.innerTop - 1);
+    this.background?.setVisible(true);
+    this.staticLayer?.setVisible(true);
+    this.progressFill?.setVisible(true);
+    this.progressCursor?.setVisible(true);
   }
 
   redrawStatic(targets: TargetNote[], ticksPerQuarter: number): void {
