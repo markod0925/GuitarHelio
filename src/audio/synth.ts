@@ -1,4 +1,5 @@
 import type { SourceNote } from '../types/models';
+import { noteKey } from './noteKey';
 
 type Voice = {
   osc: OscillatorNode;
@@ -92,9 +93,6 @@ function midiToHz(midi: number): number {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-function noteKey(note: SourceNote): string {
-  return `${note.track}:${note.channel}:${note.midi_note}:${note.tick_on}`;
-}
 
 function releaseVoice(voice: Voice, when: number, releaseSeconds: number): void {
   holdAudioParam(voice.gain.gain, when);

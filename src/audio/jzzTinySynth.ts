@@ -1,6 +1,7 @@
 import * as JZZModule from 'jzz';
 import TinyInstaller from 'jzz-synth-tiny';
 import type { SourceNote } from '../types/models';
+import { noteKey } from './noteKey';
 import type { MidiVoiceOutput } from './midiScrubPlayer';
 
 type JzzOutPort = {
@@ -25,12 +26,22 @@ type JzzWithTiny = {
 };
 
 let tinyInstalled = false;
+const SCHEDULER_LOOKAHEAD_SECONDS = 0.03;
+const SCHEDULER_TICK_MS = 8;
+
+type ScheduledEvent = {
+  when: number;
+  id: number;
+  callback: () => void;
+};
 
 export class JzzTinySynth implements MidiVoiceOutput {
   private readonly jzz: JzzWithTiny;
   private readonly out: JzzOutPort;
-  private readonly timers = new Set<number>();
+  private readonly scheduledEvents: ScheduledEvent[] = [];
   private readonly activeNotes = new Map<string, { channel: number; midi: number }>();
+  private schedulerTimer: number | null = null;
+  private sequenceId = 0;
   private disposed = false;
 
   constructor(private readonly clock: Pick<AudioContext, 'currentTime' | 'destination'>) {
@@ -84,19 +95,63 @@ export class JzzTinySynth implements MidiVoiceOutput {
   }
 
   private schedule(when: number, callback: () => void): void {
-    const delayMs = Math.max(0, Math.round((when - this.clock.currentTime) * 1000));
-    const timer = window.setTimeout(() => {
-      this.timers.delete(timer);
-      callback();
-    }, delayMs);
-    this.timers.add(timer);
+    this.insertScheduledEvent({
+      when: Math.max(when, this.clock.currentTime),
+      id: this.sequenceId++,
+      callback
+    });
+    this.ensureSchedulerRunning();
   }
 
   private clearTimers(): void {
-    for (const timer of this.timers) {
-      window.clearTimeout(timer);
+    this.scheduledEvents.length = 0;
+    if (this.schedulerTimer !== null) {
+      window.clearTimeout(this.schedulerTimer);
+      this.schedulerTimer = null;
     }
-    this.timers.clear();
+  }
+
+  private insertScheduledEvent(event: ScheduledEvent): void {
+    if (this.scheduledEvents.length === 0) {
+      this.scheduledEvents.push(event);
+      return;
+    }
+
+    let lo = 0;
+    let hi = this.scheduledEvents.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const candidate = this.scheduledEvents[mid];
+      if (candidate.when < event.when || (candidate.when === event.when && candidate.id < event.id)) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    this.scheduledEvents.splice(lo, 0, event);
+  }
+
+  private ensureSchedulerRunning(): void {
+    if (this.schedulerTimer !== null || this.disposed) return;
+    this.schedulerTimer = window.setTimeout(() => this.flushScheduler(), 0);
+  }
+
+  private flushScheduler(): void {
+    this.schedulerTimer = null;
+    if (this.disposed) return;
+
+    const deadline = this.clock.currentTime + SCHEDULER_LOOKAHEAD_SECONDS;
+    while (this.scheduledEvents.length > 0) {
+      const next = this.scheduledEvents[0];
+      if (next.when > deadline) break;
+      this.scheduledEvents.shift();
+      next.callback();
+    }
+
+    if (this.scheduledEvents.length === 0) {
+      return;
+    }
+    this.schedulerTimer = window.setTimeout(() => this.flushScheduler(), SCHEDULER_TICK_MS);
   }
 
   private createOutput(): JzzOutPort {
@@ -147,6 +202,3 @@ function clampChannel(channel: number): number {
   return Math.max(0, Math.min(15, Math.floor(channel)));
 }
 
-function noteKey(note: SourceNote): string {
-  return `${note.track}:${note.channel}:${note.midi_note}:${note.tick_on}`;
-}

@@ -1,4 +1,5 @@
 import type { SourceNote } from '../types/models';
+import { noteKey } from './noteKey';
 
 export type MidiVoiceOutput = {
   noteOn: (note: SourceNote, when: number) => void;
@@ -152,6 +153,4 @@ function upperBoundByEndTick(notesByEnd: SourceNote[], tick: number): number {
   return lo;
 }
 
-function noteKey(note: SourceNote): string {
-  return `${note.track}:${note.channel}:${note.midi_note}:${note.tick_on}`;
-}
+

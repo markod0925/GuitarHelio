@@ -1,4 +1,5 @@
 import type { SourceNote } from '../types/models';
+import { noteKeyFull as noteKey } from './noteKey';
 
 type PlaybackNotesOptions = {
   mutedChannels?: number[];
@@ -69,6 +70,4 @@ function reduceTickGroup(group: SourceNote[], limit: number): SourceNote[] {
   return [...selected.values()].sort((a, b) => a.midi_note - b.midi_note || a.channel - b.channel);
 }
 
-function noteKey(note: SourceNote): string {
-  return `${note.track}:${note.channel}:${note.midi_note}:${note.tick_on}:${note.tick_off}`;
-}
+

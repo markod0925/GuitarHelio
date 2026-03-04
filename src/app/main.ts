@@ -17,7 +17,7 @@ const GAME_WIDTH = Math.round(BASE_WIDTH * INTERNAL_RENDER_SCALE);
 const GAME_HEIGHT = Math.round(BASE_HEIGHT * INTERNAL_RENDER_SCALE);
 
 const game = new Phaser.Game({
-  type: Phaser.AUTO,
+  type: Phaser.WEBGL,
   parent: 'app',
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
@@ -33,5 +33,11 @@ const game = new Phaser.Game({
   },
   scene: [BootScene, SongSelectScene, PlayScene]
 });
+
+const rendererName = game.renderer.type === Phaser.WEBGL ? 'WEBGL' : 'CANVAS';
+console.info(`[GuitarHelio] Phaser renderer: ${rendererName}`);
+if (rendererName !== 'WEBGL') {
+  console.warn('[GuitarHelio] Canvas renderer in use; performance may be reduced on mobile.');
+}
 
 void game;

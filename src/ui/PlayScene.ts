@@ -10,7 +10,6 @@ import {
   DEFAULT_HOLD_MS,
   DEFAULT_MIN_CONFIDENCE,
   DIFFICULTY_PRESETS,
-  FINGER_COLORS,
   PLAY_SCENE_NOTE_START_CUTOFF_SECONDS,
   TARGET_HIT_GRACE_SECONDS
 } from '../app/config';
@@ -29,94 +28,45 @@ import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote 
 import { PlayState } from '../types/models';
 import { formatSummary } from './hud';
 import {
-  computePauseState,
   resolveResumeSongSeconds,
   resolveResumeSongSecondsForAudio,
   resolveSongSecondsForRuntime,
   sanitizeSongSeconds
 } from './playbackResumeState';
+import { BallTrailRingBuffer } from './BallAnimator';
+import {
+  getSongSecondsFromClock as getSongSecondsFromClockValue,
+  pausePlaybackClock as pausePlaybackClockState,
+  releaseMicStream,
+  startPlaybackClock as startPlaybackClockState,
+  type PlaybackClockState
+} from './AudioController';
+import { FretboardRenderer } from './FretboardRenderer';
+import { MinimapRenderer } from './MinimapRenderer';
+import { NoteRenderer } from './NoteRenderer';
+import {
+  analyzeHeldHit,
+  filterSourceNotesByOnsetSeconds,
+  formatDebugBool,
+  formatDebugNumber,
+  formatDebugPath,
+  formatSignedMs,
+  isBackingTrackAudioUrl,
+  isGameplayDebugOverlayEnabled,
+  sanitizeSelection
+} from './playSceneDebug';
+import type {
+  AudioSeekDebugInfo,
+  HitDebugSnapshot,
+  Layout,
+  PlaybackMode,
+  SceneData,
+} from './playSceneTypes';
 import { RoundedBox } from './RoundedBox';
-
-type SceneData = {
-  songId?: string;
-  midiUrl: string;
-  audioUrl: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  allowedStrings?: number[];
-  allowedFingers?: number[];
-  allowedFrets?: number[];
-};
-
-type Layout = {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-  laneSpacing: number;
-  hitLineX: number;
-  pxPerTick: number;
-  noteHeight: number;
-};
-
-type PlaybackMode = 'midi' | 'audio';
-
-type HitDebugSnapshot = {
-  songSecondsNow?: number;
-  targetSeconds?: number;
-  targetDeltaMs?: number;
-  isWithinGraceWindow: boolean;
-  canValidateHit: boolean;
-  validHit: boolean;
-  activeTarget?: TargetNote;
-  latestFrame?: PitchFrame;
-  holdMs: number;
-  holdRequiredMs: number;
-  minConfidence: number;
-  validFrameCount: number;
-  sampleCount: number;
-};
-
-type HeldHitAnalysis = {
-  valid: boolean;
-  streakMs: number;
-  validFrameCount: number;
-  sampleCount: number;
-  latestFrame?: PitchFrame;
-};
-
-type TopStar = {
-  baseX: number;
-  y: number;
-  radius: number;
-  baseAlpha: number;
-  twinklePhase: number;
-  twinkleSpeed: number;
-};
-
-type SongMinimapLayout = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  innerLeft: number;
-  innerTop: number;
-  innerWidth: number;
-  innerHeight: number;
-  rowHeight: number;
-  totalTicks: number;
-};
-
-type AudioSeekDebugInfo = {
-  requestedSongSeconds: number;
-  targetSeconds: number;
-  beforeSeekSeconds: number;
-  afterPlaySeconds?: number;
-  afterRetrySeconds?: number;
-  fallbackToMidi: boolean;
-  seekDisabled: boolean;
-  ok: boolean;
-  atMs: number;
-};
+import {
+  computeEndScreenStars as computeOverlayEndScreenStars,
+  resolveTopFeedbackMessage as resolveOverlayTopFeedbackMessage
+} from './UIOverlays';
 
 export class PlayScene extends Phaser.Scene {
   private static readonly PAUSE_BUTTON_SIZE = 34;
@@ -126,6 +76,8 @@ export class PlayScene extends Phaser.Scene {
   private static readonly PLAYBACK_SPEED_DEFAULT = 1;
   private static readonly POST_SONG_END_SCREEN_DELAY_MS = 2000;
   private static readonly PRE_PLAYBACK_DELAY_MS = 3500;
+  private static readonly BALL_TRAIL_HISTORY_CAPACITY =
+    BALL_GHOST_TRAIL_COUNT * BALL_GHOST_TRAIL_SAMPLE_STEP * 12 + BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS * 4 + 96;
 
   private sceneData?: SceneData;
   private targets: TargetNote[] = [];
@@ -159,16 +111,16 @@ export class PlayScene extends Phaser.Scene {
   private playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
   private laneLayer?: Phaser.GameObjects.Graphics;
-  private starfieldLayer?: Phaser.GameObjects.Graphics;
-  private targetLayer?: Phaser.GameObjects.Graphics;
   private ball?: Phaser.GameObjects.Arc;
-  private ballTrailLayer?: Phaser.GameObjects.Graphics;
-  private ballTrailHistory: Array<{ x: number; y: number }> = [];
-  private lastBallTrailPoint?: { x: number; y: number };
-  private topStars: TopStar[] = [];
-  private topStarBand?: { width: number; yMin: number; yMax: number };
+  private ballTrailSegments: Array<{ shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line }> = [];
+  private readonly ballTrailHistory = new BallTrailRingBuffer(PlayScene.BALL_TRAIL_HISTORY_CAPACITY);
+  private hasLastBallTrailPoint = false;
+  private lastBallTrailX = 0;
+  private lastBallTrailY = 0;
+  private readonly fretboardRenderer = new FretboardRenderer(this);
+  private readonly minimapRenderer = new MinimapRenderer(this);
+  private readonly noteRenderer = new NoteRenderer(this);
   private handReminderImage?: Phaser.GameObjects.Image;
-  private fretLabels: Phaser.GameObjects.Text[] = [];
   private statusText?: Phaser.GameObjects.Text;
   private feedbackMessageText?: Phaser.GameObjects.Text;
   private liveScoreText?: Phaser.GameObjects.Text;
@@ -200,7 +152,9 @@ export class PlayScene extends Phaser.Scene {
   private debugSynth?: JzzTinySynth;
   private scrubPlayer?: MidiScrubPlayer;
   private detector?: PitchDetectorService;
+  private micStream?: MediaStream;
   private onResize?: () => void;
+  private cachedLayout?: Layout;
   private pauseMenuBackListener?: (event: Event) => void;
   private pauseMenuPopStateListener?: (event: PopStateEvent) => void;
   private playbackWasRunningBeforePauseMenu = false;
@@ -208,10 +162,6 @@ export class PlayScene extends Phaser.Scene {
   private playbackPausedByButton = false;
   private playbackWasRunningBeforeButtonPause = false;
   private waitingPauseStartedAtAudioTime?: number;
-  private songMinimapBackground?: RoundedBox;
-  private songMinimapStaticLayer?: Phaser.GameObjects.Graphics;
-  private songMinimapDynamicLayer?: Phaser.GameObjects.Graphics;
-  private songMinimapLayout?: SongMinimapLayout;
   private debugOverlayEnabled = false;
   private debugOverlayContainer?: Phaser.GameObjects.Container;
   private debugOverlayPanel?: RoundedBox;
@@ -276,7 +226,16 @@ export class PlayScene extends Phaser.Scene {
     this.backingTrackSourceStartSongSeconds = 0;
     this.backingTrackIsPlaying = false;
     this.backingTrackAudioUrl = undefined;
-    this.hitDebugSnapshot = undefined;
+    this.hitDebugSnapshot = {
+      isWithinGraceWindow: false,
+      canValidateHit: false,
+      validHit: false,
+      holdMs: 0,
+      holdRequiredMs: DEFAULT_HOLD_MS,
+      minConfidence: DEFAULT_MIN_CONFIDENCE,
+      validFrameCount: 0,
+      sampleCount: 0
+    };
     this.lastRuntimeTransition = 'none';
     this.lastRuntimeTransitionAtMs = 0;
     this.lastAudioSeekDebug = undefined;
@@ -284,8 +243,6 @@ export class PlayScene extends Phaser.Scene {
     this.playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
 
     this.laneLayer = this.add.graphics();
-    this.starfieldLayer = this.add.graphics();
-    this.targetLayer = this.add.graphics();
     this.ball = this.add.circle(0, 0, 10, 0xfef08a, 1).setDepth(260);
     this.createBallTrail();
     if (this.textures.exists('handReminder')) {
@@ -380,6 +337,7 @@ export class PlayScene extends Phaser.Scene {
     this.updateHud();
 
     this.onResize = () => {
+      this.cachedLayout = undefined;
       this.drawStaticLanes();
       this.redrawTargetsAndBall();
       this.updateSongMinimapProgress();
@@ -421,6 +379,7 @@ export class PlayScene extends Phaser.Scene {
 
     try {
       const micSource = await createMicNode(audioCtx);
+      this.micStream = micSource.mediaStream;
       const detector = new PitchDetectorService(audioCtx);
       await detector.init();
       detector.onPitch((frame) => {
@@ -544,38 +503,47 @@ export class PlayScene extends Phaser.Scene {
     const hitAnalysis =
       active !== undefined && canValidateHit
         ? analyzeHeldHit(
-            this.latestFrames,
-            active.expected_midi,
-            this.profile.pitch_tolerance_semitones,
-            DEFAULT_HOLD_MS,
-            DEFAULT_MIN_CONFIDENCE
-          )
+          this.latestFrames,
+          active.expected_midi,
+          this.profile.pitch_tolerance_semitones,
+          DEFAULT_HOLD_MS,
+          DEFAULT_MIN_CONFIDENCE
+        )
         : {
-            valid: false,
-            streakMs: 0,
-            validFrameCount: 0,
-            sampleCount: this.latestFrames.length,
-            latestFrame: this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined
-          };
+          valid: false,
+          streakMs: 0,
+          validFrameCount: 0,
+          sampleCount: this.latestFrames.length,
+          latestFrame: this.latestFrames.length > 0 ? this.latestFrames[this.latestFrames.length - 1] : undefined
+        };
     const validHit = active !== undefined && canValidateHit && hitAnalysis.valid;
     const targetDeltaMs =
       songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined;
 
-    this.hitDebugSnapshot = {
-      songSecondsNow,
-      targetSeconds,
-      targetDeltaMs,
-      isWithinGraceWindow,
-      canValidateHit,
-      validHit,
-      activeTarget: active,
-      latestFrame: hitAnalysis.latestFrame,
-      holdMs: hitAnalysis.streakMs,
+    const snapshot = this.hitDebugSnapshot ?? {
+      isWithinGraceWindow: false,
+      canValidateHit: false,
+      validHit: false,
+      holdMs: 0,
       holdRequiredMs: DEFAULT_HOLD_MS,
       minConfidence: DEFAULT_MIN_CONFIDENCE,
-      validFrameCount: hitAnalysis.validFrameCount,
-      sampleCount: hitAnalysis.sampleCount
+      validFrameCount: 0,
+      sampleCount: 0
     };
+    snapshot.songSecondsNow = songSecondsNow;
+    snapshot.targetSeconds = targetSeconds;
+    snapshot.targetDeltaMs = targetDeltaMs;
+    snapshot.isWithinGraceWindow = isWithinGraceWindow;
+    snapshot.canValidateHit = canValidateHit;
+    snapshot.validHit = validHit;
+    snapshot.activeTarget = active;
+    snapshot.latestFrame = hitAnalysis.latestFrame;
+    snapshot.holdMs = hitAnalysis.streakMs;
+    snapshot.holdRequiredMs = DEFAULT_HOLD_MS;
+    snapshot.minConfidence = DEFAULT_MIN_CONFIDENCE;
+    snapshot.validFrameCount = hitAnalysis.validFrameCount;
+    snapshot.sampleCount = hitAnalysis.sampleCount;
+    this.hitDebugSnapshot = snapshot;
 
     const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
       gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
@@ -664,12 +632,9 @@ export class PlayScene extends Phaser.Scene {
 
   private finishSong(): void {
     if (this.resultsOverlay?.active) return;
-    this.runtime = {
-      ...this.runtime,
-      state: PlayState.Finished,
-      waiting_started_at_s: undefined,
-      waiting_target_id: undefined
-    };
+    this.runtime.state = PlayState.Finished;
+    this.runtime.waiting_started_at_s = undefined;
+    this.runtime.waiting_target_id = undefined;
     this.finishDelayTimer?.remove(false);
     this.finishDelayTimer = undefined;
     this.finishQueuedAtMs = undefined;
@@ -782,15 +747,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private computeEndScreenStars(summary: ReturnType<typeof summarizeScores>): number {
-    const totalTargets = this.targets.length;
-    if (totalTargets <= 0) return 0;
-    const playedNotes =
-      summary.hitDistribution.Perfect + summary.hitDistribution.Great + summary.hitDistribution.OK;
-    const playedRatio = playedNotes / totalTargets;
-    if (playedRatio >= 0.9) return 3;
-    if (playedRatio >= 0.6) return 2;
-    if (playedRatio >= 0.3) return 1;
-    return 0;
+    return computeOverlayEndScreenStars(this.targets.length, summary);
   }
 
   private createEndScreenStars(
@@ -1042,10 +999,7 @@ export class PlayScene extends Phaser.Scene {
       this.waitingPauseStartedAtAudioTime !== undefined
     ) {
       const pausedForSeconds = Math.max(0, this.audioCtx.currentTime - this.waitingPauseStartedAtAudioTime);
-      this.runtime = {
-        ...this.runtime,
-        waiting_started_at_s: this.runtime.waiting_started_at_s + pausedForSeconds
-      };
+      this.runtime.waiting_started_at_s += pausedForSeconds;
     }
     this.waitingPauseStartedAtAudioTime = undefined;
 
@@ -1336,55 +1290,14 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private layoutSongMinimap(): void {
-    const { width, height } = this.scale;
-    const sideMargin = 14;
-    const reservedLeft = this.pauseButton
-      ? sideMargin + PlayScene.PAUSE_BUTTON_SIZE + PlayScene.PAUSE_BUTTON_GAP
-      : sideMargin;
-    const handReminderGap = 18;
-    const handReminderLeft = this.handReminderImage
-      ? this.handReminderImage.x - this.handReminderImage.displayWidth
-      : Number.POSITIVE_INFINITY;
-    const minimapRightLimit = Math.min(width - sideMargin, handReminderLeft - handReminderGap);
-    const minimapWidth = Math.max(1, minimapRightLimit - reservedLeft);
-    const minimapHeight = Math.max(44, Math.floor(height * 0.084));
-    const minimapX = reservedLeft;
-    const minimapY = height - minimapHeight - 14;
-    const centerX = minimapX + minimapWidth / 2;
-    const centerY = minimapY + minimapHeight / 2;
-    const innerPaddingX = 8;
-    const innerPaddingY = 4;
-    const innerWidth = Math.max(1, minimapWidth - innerPaddingX * 2);
-    const innerHeight = Math.max(1, minimapHeight - innerPaddingY * 2);
-    const lastTarget = this.targets.length > 0 ? this.targets[this.targets.length - 1] : undefined;
-    const mapEndTick = lastTarget ? lastTarget.tick + Math.max(lastTarget.duration_ticks, 1) : this.ticksPerQuarter * 4;
-    const totalTicks = Math.max(this.ticksPerQuarter * 4, mapEndTick);
-
-    if (!this.songMinimapBackground) {
-      this.songMinimapBackground = new RoundedBox(this, centerX, centerY, minimapWidth, minimapHeight, 0x0b1228, 0.9)
-        .setStrokeStyle(1, 0x334155, 0.85)
-        .setDepth(286);
-      this.songMinimapStaticLayer = this.add.graphics().setDepth(287);
-      this.songMinimapDynamicLayer = this.add.graphics().setDepth(288);
-    } else {
-      this.songMinimapBackground.setPosition(centerX, centerY).setBoxSize(minimapWidth, minimapHeight);
-      this.songMinimapBackground.setDepth(286);
-      this.songMinimapStaticLayer?.setDepth(287);
-      this.songMinimapDynamicLayer?.setDepth(288);
-    }
-
-    this.songMinimapLayout = {
-      x: minimapX,
-      y: minimapY,
-      width: minimapWidth,
-      height: minimapHeight,
-      innerLeft: minimapX + innerPaddingX,
-      innerTop: minimapY + innerPaddingY,
-      innerWidth,
-      innerHeight,
-      rowHeight: innerHeight / 6,
-      totalTicks
-    };
+    this.minimapRenderer.layoutMinimap(
+      this.targets,
+      this.ticksPerQuarter,
+      this.pauseButton,
+      this.handReminderImage,
+      PlayScene.PAUSE_BUTTON_SIZE,
+      PlayScene.PAUSE_BUTTON_GAP
+    );
   }
 
   private layoutPauseButton(): void {
@@ -1631,132 +1544,16 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private redrawSongMinimapStatic(): void {
-    if (!this.songMinimapStaticLayer || !this.songMinimapLayout) return;
-    const layout = this.songMinimapLayout;
-    this.songMinimapStaticLayer.clear();
-
-    this.songMinimapStaticLayer.lineStyle(1, 0x1e293b, 0.7);
-    for (let i = 0; i <= 6; i += 1) {
-      const y = layout.innerTop + i * layout.rowHeight;
-      this.songMinimapStaticLayer.beginPath();
-      this.songMinimapStaticLayer.moveTo(layout.innerLeft, y);
-      this.songMinimapStaticLayer.lineTo(layout.innerLeft + layout.innerWidth, y);
-      this.songMinimapStaticLayer.strokePath();
-    }
-
-    const measureTicks = this.ticksPerQuarter * 4;
-    if (measureTicks > 0) {
-      for (let tick = 0; tick <= layout.totalTicks; tick += measureTicks) {
-        const markerX = layout.innerLeft + (tick / layout.totalTicks) * layout.innerWidth;
-        const isMajor = tick % (measureTicks * 4) === 0;
-        this.songMinimapStaticLayer.lineStyle(1, isMajor ? 0xfacc15 : 0x64748b, isMajor ? 0.7 : 0.35);
-        this.songMinimapStaticLayer.beginPath();
-        this.songMinimapStaticLayer.moveTo(markerX, layout.innerTop);
-        this.songMinimapStaticLayer.lineTo(markerX, layout.innerTop + layout.innerHeight);
-        this.songMinimapStaticLayer.strokePath();
-      }
-    }
-
-    for (const target of this.targets) {
-      const { x, y, width, height, radius } = this.getSongMinimapNoteRect(target, layout);
-      this.songMinimapStaticLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, 0.9);
-      this.songMinimapStaticLayer.fillRoundedRect(x, y, width, height, radius);
-    }
+    this.minimapRenderer.redrawStatic(this.targets, this.ticksPerQuarter);
   }
 
   private updateSongMinimapProgress(): void {
-    if (!this.songMinimapDynamicLayer || !this.songMinimapLayout) return;
-    const layout = this.songMinimapLayout;
-    this.songMinimapDynamicLayer.clear();
-
-    const clampedTick = Phaser.Math.Clamp(this.runtime.current_tick, 0, layout.totalTicks);
-    const progressX = layout.innerLeft + (clampedTick / layout.totalTicks) * layout.innerWidth;
-    const playedWidth = Math.max(0, progressX - layout.innerLeft);
-    this.songMinimapDynamicLayer.fillStyle(0x22c55e, 0.18);
-    this.songMinimapDynamicLayer.fillRect(layout.innerLeft, layout.innerTop, playedWidth, layout.innerHeight);
-
-    for (const target of this.targets) {
-      if (target.tick > clampedTick) continue;
-      const { x, y, width, height, radius } = this.getSongMinimapNoteRect(target, layout);
-      this.songMinimapDynamicLayer.fillStyle(0x22c55e, 0.95);
-      this.songMinimapDynamicLayer.fillRoundedRect(x, y, width, height, radius);
-    }
-
-    this.songMinimapDynamicLayer.lineStyle(2, 0xf8fafc, 0.95);
-    this.songMinimapDynamicLayer.beginPath();
-    this.songMinimapDynamicLayer.moveTo(progressX, layout.innerTop - 1);
-    this.songMinimapDynamicLayer.lineTo(progressX, layout.innerTop + layout.innerHeight + 1);
-    this.songMinimapDynamicLayer.strokePath();
-  }
-
-  private getSongMinimapNoteRect(target: TargetNote, layout: SongMinimapLayout): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    radius: number;
-  } {
-    const noteHeight = Math.max(1.4, layout.rowHeight * 0.62);
-    const startX = layout.innerLeft + (target.tick / layout.totalTicks) * layout.innerWidth;
-    const endX = layout.innerLeft + ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
-    const noteWidth = Math.max(1.6, endX - startX);
-    const rowIndex = Phaser.Math.Clamp(target.string - 1, 0, 5);
-    const y = layout.innerTop + rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
-    return {
-      x: startX,
-      y,
-      width: noteWidth,
-      height: noteHeight,
-      radius: Math.min(2.5, noteHeight / 2)
-    };
+    this.minimapRenderer.updateProgress(this.runtime.current_tick, this.targets, this.correctlyHitTargetIds);
   }
 
   private drawTopStarfield(): void {
-    if (!this.starfieldLayer) return;
-
     const layout = this.layout();
-    const { width } = this.scale;
-    const yMin = 6;
-    const yMax = Math.max(yMin + 12, layout.top - 14);
-    const bandHeight = yMax - yMin;
-    const starCount = Math.max(36, Math.round((width * bandHeight) / 12000));
-
-    const shouldRebuildStars =
-      !this.topStarBand ||
-      this.topStarBand.width !== width ||
-      Math.abs(this.topStarBand.yMin - yMin) > 1 ||
-      Math.abs(this.topStarBand.yMax - yMax) > 1 ||
-      this.topStars.length !== starCount;
-
-    if (shouldRebuildStars) {
-      this.topStarBand = { width, yMin, yMax };
-      this.topStars = [];
-      for (let i = 0; i < starCount; i += 1) {
-        this.topStars.push({
-          baseX: Math.random() * width,
-          y: Phaser.Math.FloatBetween(yMin, yMax),
-          radius: Phaser.Math.FloatBetween(0.7, 1.9),
-          baseAlpha: Phaser.Math.FloatBetween(0.25, 0.85),
-          twinklePhase: Math.random() * Math.PI * 2,
-          twinkleSpeed: Phaser.Math.FloatBetween(0.4, 1.35)
-        });
-      }
-    }
-
-    this.starfieldLayer.clear();
-    const scrollPx = this.runtime.current_tick * layout.pxPerTick;
-    const nowSeconds = performance.now() / 1000;
-    for (const star of this.topStars) {
-      const x = Phaser.Math.Wrap(star.baseX - scrollPx, -8, width + 8);
-      const twinkle = 0.72 + 0.28 * Math.sin(nowSeconds * star.twinkleSpeed + star.twinklePhase);
-      const alpha = Phaser.Math.Clamp(star.baseAlpha * twinkle, 0.1, 0.9);
-      this.starfieldLayer.fillStyle(0xe2e8f0, alpha);
-      this.starfieldLayer.fillCircle(x, star.y, star.radius);
-      if (star.radius >= 1.5) {
-        this.starfieldLayer.fillStyle(0x93c5fd, alpha * 0.32);
-        this.starfieldLayer.fillCircle(x, star.y, star.radius * 2.2);
-      }
-    }
+    this.fretboardRenderer.drawTopStarfield(layout, this.runtime.current_tick);
   }
 
   private layoutHandReminder(): void {
@@ -1845,8 +1642,9 @@ export class PlayScene extends Phaser.Scene {
     const active = this.targets[this.runtime.active_target_index];
     const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
     const songTimeSeconds = this.getSongSecondsNow();
-    const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, true, {
-      gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
+    const forceTooLateForWaiting = previousState === PlayState.WaitingForHit;
+    const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, !forceTooLateForWaiting, {
+      gatingTimeoutSeconds: forceTooLateForWaiting ? 0 : this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
       targetTimeSeconds,
       songTimeSeconds,
       lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
@@ -1901,60 +1699,19 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private redrawTargetsAndBall(): void {
-    if (!this.targetLayer || !this.ball) return;
-
-    if (this.runtime.state === PlayState.Finished) {
-      this.setBallAndTrailVisible(false);
-      this.hideUnusedFretLabels(0);
-      return;
-    }
-    this.setBallAndTrailVisible(true);
-
     const layout = this.layout();
-    const currentTick = this.runtime.current_tick;
-    const waitingTargetId = this.runtime.state === PlayState.WaitingForHit ? this.runtime.waiting_target_id : undefined;
-    const viewLeft = layout.left - 30;
-    const viewRight = layout.right + 40;
-    const labelFontSize = `${Math.max(11, Math.floor(layout.noteHeight * 0.95))}px`;
-
-    this.targetLayer.clear();
-    let visibleFretLabels = 0;
-
-    for (const target of this.targets) {
-      const x = layout.hitLineX + (target.tick - currentTick) * layout.pxPerTick;
-      const noteDiameter = layout.noteHeight;
-      const noteRadius = noteDiameter / 2;
-      const width = Math.max(noteDiameter, target.duration_ticks * layout.pxPerTick);
-      if (x + width < viewLeft || x > viewRight) continue;
-
-      const y = layout.top + (target.string - 1) * layout.laneSpacing;
-      const isWaitingTarget = waitingTargetId === target.id;
-      const isPast = target.tick < currentTick;
-      const alpha = isWaitingTarget ? 1 : isPast ? 0.28 : 0.95;
-      const noteColor = this.correctlyHitTargetIds.has(target.id) ? 0x22c55e : (FINGER_COLORS[target.finger] ?? 0xffffff);
-
-      this.targetLayer.fillStyle(noteColor, alpha);
-      this.targetLayer.fillRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
-
-      const fretLabel = this.getOrCreateFretLabel(visibleFretLabels);
-      fretLabel
-        .setPosition(x + noteRadius, y)
-        .setText(`${target.fret}`)
-        .setFontSize(labelFontSize)
-        .setAlpha(alpha)
-        .setVisible(true);
-      visibleFretLabels += 1;
-
-      if (isWaitingTarget) {
-        this.targetLayer.lineStyle(2, 0xffffff, 1);
-        this.targetLayer.strokeRoundedRect(x, y - noteRadius, width, noteDiameter, noteRadius);
-      }
-    }
-    this.hideUnusedFretLabels(visibleFretLabels);
-
-    const ballPosition = this.resolveBallPosition(layout);
-    this.ball.setPosition(ballPosition.x, ballPosition.y);
-    this.updateBallTrail(this.ball.x, this.ball.y, layout.laneSpacing);
+    this.noteRenderer.redrawTargetsAndBall({
+      ball: this.ball,
+      runtimeState: this.runtime.state,
+      currentTick: this.runtime.current_tick,
+      waitingTargetId: this.runtime.state === PlayState.WaitingForHit ? this.runtime.waiting_target_id : undefined,
+      targets: this.targets,
+      correctlyHitTargetIds: this.correctlyHitTargetIds,
+      layout,
+      resolveBallPosition: (nextLayout) => this.resolveBallPosition(nextLayout),
+      updateBallTrail: (x, y, laneSpacing) => this.updateBallTrail(x, y, laneSpacing),
+      setBallAndTrailVisible: (visible) => this.setBallAndTrailVisible(visible)
+    });
   }
 
   private resolveBallPosition(layout: Layout): { x: number; y: number } {
@@ -2123,25 +1880,23 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private resolveTopFeedbackMessage(now: number): string {
-    if (this.runtime.state === PlayState.WaitingForHit) {
-      const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
-      if (timeoutSeconds !== undefined && this.audioCtx && this.runtime.waiting_started_at_s !== undefined) {
-        const remaining = Math.max(0, timeoutSeconds - (this.audioCtx.currentTime - this.runtime.waiting_started_at_s));
-        return `Waiting ${remaining.toFixed(1)}s`;
-      }
-      return 'Waiting';
-    }
-
-    if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
-      const remainingMs = this.prePlaybackStartAtMs !== undefined ? Math.max(0, this.prePlaybackStartAtMs - now) : 0;
-      return `Get Ready ${(remainingMs / 1000).toFixed(1)}s`;
-    }
-
-    if (now >= this.feedbackUntilMs) return '';
-    return normalizeTopFeedback(this.feedbackText);
+    return resolveOverlayTopFeedbackMessage({
+      runtimeState: this.runtime.state,
+      timeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
+      audioCurrentTime: this.audioCtx?.currentTime,
+      waitingStartedAtSeconds: this.runtime.waiting_started_at_s,
+      playbackStarted: this.playbackStarted,
+      prePlaybackStartAtMs: this.prePlaybackStartAtMs,
+      nowMs: now,
+      feedbackUntilMs: this.feedbackUntilMs,
+      feedbackText: this.feedbackText
+    });
   }
 
   private layout(): Layout {
+    if (this.cachedLayout) {
+      return this.cachedLayout;
+    }
     const { width, height } = this.scale;
     const left = width * 0.08;
     const right = width * 0.96;
@@ -2152,7 +1907,7 @@ export class PlayScene extends Phaser.Scene {
     const bottom = top + tabHeight;
     const laneSpacing = (bottom - top) / 5;
 
-    return {
+    const nextLayout: Layout = {
       left,
       right,
       top,
@@ -2162,49 +1917,54 @@ export class PlayScene extends Phaser.Scene {
       pxPerTick: Math.max(0.09, width / 5200),
       noteHeight: Math.max(14, laneSpacing * 0.38)
     };
+    this.cachedLayout = nextLayout;
+    return nextLayout;
   }
 
   private createBallTrail(): void {
     this.destroyBallTrail();
-    this.ballTrailLayer = this.add.graphics().setDepth(250);
   }
 
   private destroyBallTrail(): void {
-    this.ballTrailLayer?.destroy();
-    this.ballTrailLayer = undefined;
-    this.ballTrailHistory = [];
-    this.lastBallTrailPoint = undefined;
+    for (const segment of this.ballTrailSegments) {
+      segment.shadow.destroy();
+      segment.main.destroy();
+    }
+    this.ballTrailSegments = [];
+    this.ballTrailHistory.clear();
+    this.hasLastBallTrailPoint = false;
+    this.lastBallTrailX = 0;
+    this.lastBallTrailY = 0;
   }
 
   private pushBallTrailPoint(x: number, y: number): void {
-    this.ballTrailHistory.push({ x, y });
-    const maxHistory =
-      BALL_GHOST_TRAIL_COUNT * BALL_GHOST_TRAIL_SAMPLE_STEP * 3 + BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS + 20;
-    if (this.ballTrailHistory.length > maxHistory) {
-      this.ballTrailHistory.splice(0, this.ballTrailHistory.length - maxHistory);
-    }
+    this.ballTrailHistory.push(x, y);
   }
 
   private updateBallTrail(x: number, y: number, laneSpacing: number): void {
-    if (!this.ballTrailLayer) return;
-
-    const previous = this.lastBallTrailPoint;
-    if (!previous) {
+    if (!this.hasLastBallTrailPoint) {
       this.pushBallTrailPoint(x, y);
-      this.lastBallTrailPoint = { x, y };
+      this.hasLastBallTrailPoint = true;
+      this.lastBallTrailX = x;
+      this.lastBallTrailY = y;
     } else {
-      const distance = Phaser.Math.Distance.Between(previous.x, previous.y, x, y);
+      const distance = Phaser.Math.Distance.Between(this.lastBallTrailX, this.lastBallTrailY, x, y);
       if (distance > laneSpacing * 4) {
-        this.ballTrailHistory = [];
+        this.ballTrailHistory.clear();
         this.pushBallTrailPoint(x, y);
-        this.lastBallTrailPoint = { x, y };
+        this.lastBallTrailX = x;
+        this.lastBallTrailY = y;
       } else if (distance > 0.15) {
         const interpolationSteps = distance > laneSpacing * 0.7 ? BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS : 1;
         for (let i = 1; i <= interpolationSteps; i += 1) {
           const t = i / interpolationSteps;
-          this.pushBallTrailPoint(Phaser.Math.Linear(previous.x, x, t), Phaser.Math.Linear(previous.y, y, t));
+          this.pushBallTrailPoint(
+            Phaser.Math.Linear(this.lastBallTrailX, x, t),
+            Phaser.Math.Linear(this.lastBallTrailY, y, t)
+          );
         }
-        this.lastBallTrailPoint = { x, y };
+        this.lastBallTrailX = x;
+        this.lastBallTrailY = y;
       }
     }
 
@@ -2212,22 +1972,27 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private resetBallTrailHistory(): void {
-    this.ballTrailHistory = [];
-    this.lastBallTrailPoint = undefined;
-    this.ballTrailLayer?.clear();
+    this.ballTrailHistory.clear();
+    this.hasLastBallTrailPoint = false;
+    this.lastBallTrailX = 0;
+    this.lastBallTrailY = 0;
+    this.hideUnusedTrailSegments(0);
   }
 
   private drawBallDashedTrail(laneSpacing: number): void {
-    if (!this.ballTrailLayer) return;
-    this.ballTrailLayer.clear();
-
-    if (this.ballTrailHistory.length < 3) return;
+    const historySize = this.ballTrailHistory.size;
+    if (historySize < 3) {
+      this.hideUnusedTrailSegments(0);
+      return;
+    }
 
     const maxPointCount = Math.max(28, BALL_GHOST_TRAIL_COUNT * BALL_GHOST_TRAIL_SAMPLE_STEP * 8);
-    const startIndex = Math.max(0, this.ballTrailHistory.length - maxPointCount);
-    const points = this.ballTrailHistory.slice(startIndex);
-    const pathLength = this.computeTrailPathLength(points);
-    if (pathLength <= 0.001) return;
+    const startIndex = Math.max(0, historySize - maxPointCount);
+    const pathLength = this.computeTrailPathLength(startIndex, historySize);
+    if (pathLength <= 0.001) {
+      this.hideUnusedTrailSegments(0);
+      return;
+    }
 
     const dashLength = Phaser.Math.Clamp(laneSpacing * 0.3, 7, 14);
     const gapLength = Phaser.Math.Clamp(laneSpacing * 0.2, 5, 11);
@@ -2236,10 +2001,13 @@ export class PlayScene extends Phaser.Scene {
     const farThickness = Math.max(1.5, nearThickness * 0.55);
 
     let accumulatedDistance = 0;
-    for (let i = 1; i < points.length; i += 1) {
-      const start = points[i - 1];
-      const end = points[i];
-      const segmentLength = Phaser.Math.Distance.Between(start.x, start.y, end.x, end.y);
+    let segmentIndex = 0;
+    for (let i = startIndex + 1; i < historySize; i += 1) {
+      const startX = this.ballTrailHistory.getX(i - 1);
+      const startY = this.ballTrailHistory.getY(i - 1);
+      const endX = this.ballTrailHistory.getX(i);
+      const endY = this.ballTrailHistory.getY(i);
+      const segmentLength = Phaser.Math.Distance.Between(startX, startY, endX, endY);
       if (segmentLength <= 0.0001) continue;
 
       let localOffset = 0;
@@ -2253,37 +2021,70 @@ export class PlayScene extends Phaser.Scene {
 
         const drawStartT = dashStart / segmentLength;
         const drawEndT = dashEnd / segmentLength;
-        const x0 = Phaser.Math.Linear(start.x, end.x, drawStartT);
-        const y0 = Phaser.Math.Linear(start.y, end.y, drawStartT);
-        const x1 = Phaser.Math.Linear(start.x, end.x, drawEndT);
-        const y1 = Phaser.Math.Linear(start.y, end.y, drawEndT);
+        const x0 = Phaser.Math.Linear(startX, endX, drawStartT);
+        const y0 = Phaser.Math.Linear(startY, endY, drawStartT);
+        const x1 = Phaser.Math.Linear(startX, endX, drawEndT);
+        const y1 = Phaser.Math.Linear(startY, endY, drawEndT);
 
         const alphaT = Phaser.Math.Clamp(absoluteDashEnd / Math.max(0.001, pathLength - headClearDistance), 0, 1);
         const alpha = Phaser.Math.Linear(0.12, 0.48, alphaT);
         const thickness = Phaser.Math.Linear(farThickness, nearThickness, alphaT);
 
-        this.ballTrailLayer.lineStyle(thickness + 1.2, 0x1f2937, alpha * 0.24);
-        this.ballTrailLayer.beginPath();
-        this.ballTrailLayer.moveTo(x0, y0);
-        this.ballTrailLayer.lineTo(x1, y1);
-        this.ballTrailLayer.strokePath();
-
-        this.ballTrailLayer.lineStyle(thickness, 0xd1d5db, alpha);
-        this.ballTrailLayer.beginPath();
-        this.ballTrailLayer.moveTo(x0, y0);
-        this.ballTrailLayer.lineTo(x1, y1);
-        this.ballTrailLayer.strokePath();
+        const segment = this.getOrCreateTrailSegment(segmentIndex);
+        segment.shadow
+          .setTo(x0, y0, x1, y1)
+          .setLineWidth(thickness + 1.2, thickness + 1.2)
+          .setStrokeStyle(thickness + 1.2, 0x1f2937, alpha * 0.24)
+          .setVisible(true);
+        segment.main
+          .setTo(x0, y0, x1, y1)
+          .setLineWidth(thickness, thickness)
+          .setStrokeStyle(thickness, 0xd1d5db, alpha)
+          .setVisible(true);
+        segmentIndex += 1;
 
         localOffset += dashLength + gapLength;
       }
       accumulatedDistance += segmentLength;
     }
+    this.hideUnusedTrailSegments(segmentIndex);
   }
 
-  private computeTrailPathLength(points: Array<{ x: number; y: number }>): number {
+  private getOrCreateTrailSegment(index: number): { shadow: Phaser.GameObjects.Line; main: Phaser.GameObjects.Line } {
+    const existing = this.ballTrailSegments[index];
+    if (existing) return existing;
+
+    const shadow = this.add
+      .line(0, 0, 0, 0, 0, 0, 0x1f2937, 0.2)
+      .setOrigin(0, 0)
+      .setDepth(250)
+      .setVisible(false);
+    const main = this.add
+      .line(0, 0, 0, 0, 0, 0, 0xd1d5db, 0.2)
+      .setOrigin(0, 0)
+      .setDepth(251)
+      .setVisible(false);
+    const created = { shadow, main };
+    this.ballTrailSegments.push(created);
+    return created;
+  }
+
+  private hideUnusedTrailSegments(startIndex: number): void {
+    for (let i = startIndex; i < this.ballTrailSegments.length; i += 1) {
+      this.ballTrailSegments[i].shadow.setVisible(false);
+      this.ballTrailSegments[i].main.setVisible(false);
+    }
+  }
+
+  private computeTrailPathLength(startIndex: number, endExclusiveIndex: number): number {
     let length = 0;
-    for (let i = 1; i < points.length; i += 1) {
-      length += Phaser.Math.Distance.Between(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y);
+    for (let i = startIndex + 1; i < endExclusiveIndex; i += 1) {
+      length += Phaser.Math.Distance.Between(
+        this.ballTrailHistory.getX(i - 1),
+        this.ballTrailHistory.getY(i - 1),
+        this.ballTrailHistory.getX(i),
+        this.ballTrailHistory.getY(i)
+      );
     }
     return length;
   }
@@ -2361,17 +2162,8 @@ export class PlayScene extends Phaser.Scene {
 
     this.handReminderImage?.destroy();
     this.handReminderImage = undefined;
-    this.songMinimapBackground?.destroy();
-    this.songMinimapBackground = undefined;
-    this.songMinimapStaticLayer?.destroy();
-    this.songMinimapStaticLayer = undefined;
-    this.songMinimapDynamicLayer?.destroy();
-    this.songMinimapDynamicLayer = undefined;
-    this.songMinimapLayout = undefined;
-    this.starfieldLayer?.destroy();
-    this.starfieldLayer = undefined;
-    this.topStars = [];
-    this.topStarBand = undefined;
+    this.minimapRenderer.destroy();
+    this.fretboardRenderer.reset();
     this.destroyBallTrail();
     this.debugButton?.destroy();
     this.debugButton = undefined;
@@ -2389,7 +2181,7 @@ export class PlayScene extends Phaser.Scene {
     this.debugOverlayText = undefined;
     this.hitDebugSnapshot = undefined;
 
-    this.clearFretLabels();
+    this.noteRenderer.destroy();
 
     this.runtimeTimer?.remove(false);
     this.runtimeTimer = undefined;
@@ -2410,11 +2202,14 @@ export class PlayScene extends Phaser.Scene {
 
     this.detector?.stop();
     this.detector = undefined;
+    releaseMicStream(this.micStream);
+    this.micStream = undefined;
 
     if (this.onResize) {
       this.scale.off('resize', this.onResize);
       this.onResize = undefined;
     }
+    this.cachedLayout = undefined;
 
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
       void this.audioCtx.close();
@@ -2588,10 +2383,7 @@ export class PlayScene extends Phaser.Scene {
     const safeSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
     this.startPlaybackClock(safeSeconds);
     if (this.tempoMap) {
-      this.runtime = {
-        ...this.runtime,
-        current_tick: Math.max(0, this.tempoMap.secondsToTick(safeSeconds))
-      };
+      this.runtime.current_tick = Math.max(0, this.tempoMap.secondsToTick(safeSeconds));
     }
   }
 
@@ -2655,28 +2447,37 @@ export class PlayScene extends Phaser.Scene {
     return Phaser.Math.Clamp(songSeconds, 0, Math.max(0, this.backingTrackBuffer.duration - 0.02));
   }
 
+  private createPlaybackClockState(): PlaybackClockState {
+    return {
+      playbackStartSongSeconds: this.playbackStartSongSeconds,
+      pausedSongSeconds: this.pausedSongSeconds,
+      playbackStartAudioTime: this.playbackStartAudioTime
+    };
+  }
+
+  private applyPlaybackClockState(state: PlaybackClockState): void {
+    this.playbackStartSongSeconds = state.playbackStartSongSeconds;
+    this.pausedSongSeconds = state.pausedSongSeconds;
+    this.playbackStartAudioTime = state.playbackStartAudioTime;
+  }
+
   private startPlaybackClock(songSeconds: number): void {
-    const safeSongSeconds = sanitizeSongSeconds(songSeconds, this.pausedSongSeconds);
-    this.playbackStartSongSeconds = safeSongSeconds;
-    this.pausedSongSeconds = safeSongSeconds;
-    this.playbackStartAudioTime = this.audioCtx ? this.audioCtx.currentTime : null;
+    const clockState = this.createPlaybackClockState();
+    startPlaybackClockState(clockState, this.audioCtx, songSeconds);
+    this.applyPlaybackClockState(clockState);
   }
 
   private pausePlaybackClock(): void {
-    if (!this.audioCtx) return;
-    const pauseSnapshot = computePauseState(
-      this.getSongSecondsNow(),
-      this.pausedSongSeconds,
+    const clockState = this.createPlaybackClockState();
+    const pausedCurrentTick = pausePlaybackClockState(
+      clockState,
+      this.audioCtx,
       this.runtime.current_tick,
-      this.tempoMap
+      this.tempoMap,
+      this.playbackSpeedMultiplier
     );
-    this.pausedSongSeconds = pauseSnapshot.pausedSongSeconds;
-    this.runtime = {
-      ...this.runtime,
-      current_tick: pauseSnapshot.currentTick
-    };
-    this.playbackStartAudioTime = null;
-    this.playbackStartSongSeconds = this.pausedSongSeconds;
+    this.applyPlaybackClockState(clockState);
+    this.runtime.current_tick = pausedCurrentTick;
   }
 
   private getSongSecondsNow(): number {
@@ -2694,11 +2495,11 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private getSongSecondsFromClock(): number {
-    if (!this.audioCtx || this.playbackStartAudioTime === null) {
-      return this.pausedSongSeconds;
-    }
-    const elapsed = Math.max(0, this.audioCtx.currentTime - this.playbackStartAudioTime);
-    return sanitizeSongSeconds(this.playbackStartSongSeconds + elapsed * this.playbackSpeedMultiplier, this.pausedSongSeconds);
+    return getSongSecondsFromClockValue(
+      this.createPlaybackClockState(),
+      this.audioCtx,
+      this.playbackSpeedMultiplier
+    );
   }
 
   private getCurrentPlaybackBpm(songSeconds: number | undefined): number | undefined {
@@ -2720,43 +2521,21 @@ export class PlayScene extends Phaser.Scene {
     return 60_000_000 / selected.usPerQuarter;
   }
 
-  private clearFretLabels(): void {
-    for (const label of this.fretLabels) {
-      label.destroy();
-    }
-    this.fretLabels = [];
-  }
-
-  private getOrCreateFretLabel(index: number): Phaser.GameObjects.Text {
-    const existing = this.fretLabels[index];
-    if (existing) return existing;
-
-    const created = this.add
-      .text(0, 0, '', {
-        color: '#0b1020',
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5)
-      .setDepth(261)
-      .setVisible(false);
-    this.fretLabels.push(created);
-    return created;
-  }
-
-  private hideUnusedFretLabels(startIndex: number): void {
-    for (let i = startIndex; i < this.fretLabels.length; i += 1) {
-      this.fretLabels[i].setVisible(false);
-    }
-  }
-
   private setBallAndTrailVisible(visible: boolean): void {
     this.ball?.setVisible(visible);
     if (!visible) {
-      this.ballTrailHistory = [];
-      this.lastBallTrailPoint = undefined;
-      this.ballTrailLayer?.clear();
+      this.ballTrailHistory.clear();
+      this.hasLastBallTrailPoint = false;
+      this.lastBallTrailX = 0;
+      this.lastBallTrailY = 0;
+      this.hideUnusedTrailSegments(0);
+    } else {
+      for (const segment of this.ballTrailSegments) {
+        if (!segment.shadow.visible && !segment.main.visible) continue;
+        segment.shadow.setVisible(true);
+        segment.main.setVisible(true);
+      }
     }
-    this.ballTrailLayer?.setVisible(visible);
   }
 
   private measureHitDeltaMs(target: TargetNote, previousState: PlayState): number {
@@ -2779,145 +2558,4 @@ export class PlayScene extends Phaser.Scene {
     const now = this.getSongSecondsNow();
     return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
   }
-}
-
-function sanitizeSelection(
-  values: number[] | undefined,
-  min: number,
-  max: number,
-  fallback: number[] | undefined
-): number[] {
-  const candidate = values ?? fallback ?? [];
-  const deduped = Array.from(
-    new Set(candidate.filter((value) => Number.isInteger(value) && value >= min && value <= max))
-  );
-  deduped.sort((a, b) => a - b);
-  return deduped;
-}
-
-function isBackingTrackAudioUrl(url: string): boolean {
-  return /\.(mp3|wav|ogg|m4a)(?:[?#].*)?$/i.test(url);
-}
-
-function filterSourceNotesByOnsetSeconds(
-  sourceNotes: SourceNote[],
-  tempoMap: TempoMap,
-  cutoffSeconds: number
-): SourceNote[] {
-  const safeCutoffSeconds = Math.max(0, cutoffSeconds);
-  if (safeCutoffSeconds <= 0) return sourceNotes;
-
-  return sourceNotes.filter((note) => tempoMap.tickToSeconds(note.tick_on) >= safeCutoffSeconds);
-}
-
-function analyzeHeldHit(
-  frames: PitchFrame[],
-  expectedMidi: number,
-  tolerance: number,
-  holdMs: number,
-  minConfidence: number
-): HeldHitAnalysis {
-  if (frames.length === 0) {
-    return { valid: false, streakMs: 0, validFrameCount: 0, sampleCount: 0, latestFrame: undefined };
-  }
-
-  let streakStartSeconds: number | null = null;
-  let streakMs = 0;
-  let validFrameCount = 0;
-
-  for (const frame of frames) {
-    const validFrame = isPitchFrameValid(frame, expectedMidi, tolerance, minConfidence);
-    if (!validFrame) {
-      streakStartSeconds = null;
-      streakMs = 0;
-      continue;
-    }
-
-    validFrameCount += 1;
-    if (streakStartSeconds === null) {
-      streakStartSeconds = frame.t_seconds;
-      streakMs = 0;
-      continue;
-    }
-
-    streakMs = Math.max(0, (frame.t_seconds - streakStartSeconds) * 1000);
-    if (streakMs >= holdMs) {
-      return {
-        valid: true,
-        streakMs,
-        validFrameCount,
-        sampleCount: frames.length,
-        latestFrame: frames[frames.length - 1]
-      };
-    }
-  }
-
-  return {
-    valid: false,
-    streakMs,
-    validFrameCount,
-    sampleCount: frames.length,
-    latestFrame: frames[frames.length - 1]
-  };
-}
-
-function isPitchFrameValid(frame: PitchFrame, expectedMidi: number, tolerance: number, minConfidence: number): boolean {
-  return (
-    frame.midi_estimate !== null &&
-    frame.confidence >= minConfidence &&
-    Math.abs(frame.midi_estimate - expectedMidi) <= tolerance
-  );
-}
-
-function formatDebugBool(value: boolean): string {
-  return value ? 'Y' : 'N';
-}
-
-function formatDebugNumber(value: number | null | undefined, digits: number): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '-';
-  return value.toFixed(digits);
-}
-
-function formatSignedMs(value: number | undefined): string {
-  if (value === undefined || Number.isNaN(value)) return '-';
-  const rounded = Math.round(value);
-  return `${rounded >= 0 ? '+' : ''}${rounded}ms`;
-}
-
-function formatDebugPath(value: string | undefined): string {
-  if (!value) return '-';
-  const trimmed = value.trim();
-  if (!trimmed) return '-';
-  if (trimmed.startsWith('data:')) return '[data-url]';
-  const withoutQuery = trimmed.split('?')[0].split('#')[0];
-  const parts = withoutQuery.split('/').filter((part) => part.length > 0);
-  if (parts.length === 0) return withoutQuery;
-  const tail = parts.slice(-3).map((part) => {
-    try {
-      return decodeURIComponent(part);
-    } catch {
-      return part;
-    }
-  });
-  return `.../${tail.join('/')}`;
-}
-
-function normalizeTopFeedback(rawFeedbackText: string): string {
-  const normalized = rawFeedbackText.trim().toLowerCase();
-  if (normalized.length === 0) return '';
-
-  if (normalized.startsWith('perfect')) return 'Perfect';
-  if (normalized.startsWith('great')) return 'Great';
-  if (normalized.startsWith('ok')) return 'OK';
-  if (normalized.startsWith('too soon')) return 'Too Soon';
-  if (normalized.startsWith('too late') || normalized.startsWith('miss')) return 'Too Late';
-  return '';
-}
-
-function isGameplayDebugOverlayEnabled(): boolean {
-  if (import.meta.env.DEV) return true;
-  if (typeof window === 'undefined') return false;
-
-  const params = new URLSearchParams(window.location.search);
-  return params.get('debugGameplayOverlay') === '1';
 }
