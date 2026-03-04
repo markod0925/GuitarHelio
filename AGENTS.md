@@ -1,4 +1,4 @@
 # AGENTS.md
 
-## Regole permanenti del progetto
-- Quando viene fatta una modifica alle specifiche del progetto, aggiornare `GDD.md` in modo coerente con le modifiche effettuate.
+## Permanent Project Rules
+- Whenever the project specifications are changed, update `GDD.md` so it stays consistent with the implemented changes.

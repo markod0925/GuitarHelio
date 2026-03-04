@@ -256,9 +256,26 @@ export class SongSelectScene extends Phaser.Scene {
 
     const difficultyDropdown = this.createDifficultyDropdown(width, height, labelSize);
 
-    const settingsButtonY = height * 0.60;
+    const startScale = Math.SQRT2;
+    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
+    const startButtonHeight = Math.round(62 * 1.08);
+    const startY = height - startButtonHeight / 2 - 16;
+    const startTopY = startY - startButtonHeight / 2;
     const sideButtonWidth = Math.min(300, width * 0.3);
     const sideButtonHeight = 56;
+    const sideButtonVerticalGap = 86;
+    const sideButtonsBottomGapFromStart = 14;
+    let settingsButtonY = height * 0.60;
+    let tunerButtonY = settingsButtonY + sideButtonVerticalGap;
+    let importButtonY = height * 0.43;
+    const maxTunerButtonBottom = startTopY - sideButtonsBottomGapFromStart;
+    const tunerButtonBottom = tunerButtonY + sideButtonHeight / 2;
+    if (tunerButtonBottom > maxTunerButtonBottom) {
+      const shiftUp = tunerButtonBottom - maxTunerButtonBottom;
+      settingsButtonY -= shiftUp;
+      tunerButtonY -= shiftUp;
+      importButtonY -= shiftUp;
+    }
     const sideIconSize = Math.min(26, Math.floor(labelSize * 1.5));
     const settingsButton = new RoundedBox(this, width * 0.79, settingsButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
@@ -279,7 +296,6 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    const tunerButtonY = settingsButtonY + 86;
     const tunerButton = new RoundedBox(this, width * 0.79, tunerButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
@@ -313,7 +329,6 @@ export class SongSelectScene extends Phaser.Scene {
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5);
-    const importButtonY = height * 0.43;
     const importButton = new RoundedBox(this, width * 0.79, importButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
@@ -384,10 +399,6 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
-    const startScale = Math.SQRT2;
-    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
-    const startButtonHeight = Math.round(62 * 1.08);
-    const startY = height - startButtonHeight / 2 - 16;
     const startGlowHeight = Math.max(92, startButtonHeight + 26);
     const startGlow = this.add
       .ellipse(width / 2, startY + 4, Math.min(Math.round(404 * startScale), width * 0.86), startGlowHeight, 0xfb7185, 0.26)
@@ -2597,7 +2608,6 @@ function toErrorMessage(error: unknown): string {
 }
 
 function isImportSourceDebugEnabled(): boolean {
-  if (import.meta.env.DEV) return true;
   if (typeof window === 'undefined') return false;
 
   const params = new URLSearchParams(window.location.search);

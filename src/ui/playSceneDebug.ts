@@ -179,7 +179,6 @@ export function normalizeTopFeedback(rawFeedbackText: string): string {
 }
 
 export function isGameplayDebugOverlayEnabled(): boolean {
-  if (import.meta.env.DEV) return true;
   if (typeof window === 'undefined') return false;
 
   const params = new URLSearchParams(window.location.search);

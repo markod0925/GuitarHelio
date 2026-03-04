@@ -1,193 +1,240 @@
 # Guitar Helio
 
-## Panoramica
+## Overview
 
-Guitar Helio e un trainer chitarra con:
+Guitar Helio is a guitar trainer with:
 
-- **Start Screen** con catalogo canzoni, import `MIDI/MP3/OGG`, tuner e impostazioni sessione.
-- **Play Scene** con target note semplificate, gating a tempo, scoring e minimappa timeline.
-- **Modalita playback ibrida**: usa backing audio (`mp3/wav/ogg`) quando disponibile, altrimenti fallback MIDI synth.
-- **Persistenza locale**: punteggi migliori per canzone + impostazioni difficolta/corde/dita/tasti.
+- A **Start Screen** with song catalog, `MIDI/MP3/OGG` import, tuner, and session settings.
+- A **Play Scene** with simplified target notes, beat-gated progression, scoring, and timeline minimap.
+- A **Hybrid playback mode**: uses backing audio (`mp3/wav/ogg`) when available, otherwise falls back to MIDI synth playback.
+- **Local persistence**: best score per song plus saved difficulty/string/finger/fret settings.
 
-## Comandi principali
+## Repository Structure Documentation
+
+- Structural map of the codebase and file search guide: `REPO_STRUCTURE.md`
+
+## Main Commands
 
 ```bash
-npm run dev            # sviluppo web locale
-npm run dev:mobile     # sviluppo LAN (telefono nella stessa rete)
-npm run build          # typecheck + build produzione
-npm run preview        # preview build produzione
-npm run test           # test unitari (Vitest)
-npm run lint           # typecheck TS senza emit
+npm run dev            # local web development
+npm run dev:mobile     # LAN development (phone on the same network)
+npm run build          # typecheck + production build
+npm run preview        # preview production build
+npm run test           # unit tests (Vitest)
+npm run lint           # TypeScript typecheck without emit
 ```
 
-## Avvio rapido (PC + smartphone in LAN)
+## Packages and References
 
-1. Installa Node.js 20+ sul computer.
-2. Installa le dipendenze:
+Direct npm packages used by this repository.
+
+### Runtime Dependencies (`dependencies`)
+
+| Package | Role | Official reference |
+| --- | --- | --- |
+| `@capacitor/core` | Capacitor runtime bridge | https://capacitorjs.com/docs |
+| `@capacitor/filesystem` | Cross-platform file persistence APIs | https://capacitorjs.com/docs/apis/filesystem |
+| `@fontsource/montserrat` | Embedded Montserrat font files | https://fontsource.org/fonts/montserrat |
+| `@tonejs/midi` | MIDI parsing/writing utilities | https://github.com/Tonejs/Midi |
+| `aubiojs` | WASM pitch detection backend | https://github.com/qiuxiang/aubiojs |
+| `audio-decode` | Browser/Node audio decode helper | https://github.com/audiojs/audio-decode |
+| `jzz` | MIDI I/O and routing toolkit | https://jazz-soft.net/doc/JZZ/ |
+| `jzz-synth-tiny` | Tiny synth used for MIDI playback | https://github.com/jazz-soft/JZZ-synth-Tiny |
+| `phaser` | 2D game framework used for UI/gameplay scenes | https://docs.phaser.io/ |
+
+### Development Dependencies (`devDependencies`)
+
+| Package | Role | Official reference |
+| --- | --- | --- |
+| `@capacitor/android` | Android platform package for Capacitor | https://capacitorjs.com/docs/android |
+| `@capacitor/cli` | Capacitor CLI tooling | https://capacitorjs.com/docs/cli |
+| `typescript` | TypeScript compiler and type system | https://www.typescriptlang.org/docs/ |
+| `vite` | Dev server and production bundler | https://vite.dev/guide/ |
+| `vitest` | Unit test runner | https://vitest.dev/guide/ |
+
+### Local Converter Tool (`tools/audio-midi-converter`)
+
+| Package | Role | Official reference |
+| --- | --- | --- |
+| `@tonejs/midi` | MIDI generation in converter workflow | https://github.com/Tonejs/Midi |
+| `audio-decode` | Audio decoding in converter workflow | https://github.com/audiojs/audio-decode |
+
+### Native/Vendored Audio-to-MIDI Dependencies
+
+| Dependency | Role | Official reference |
+| --- | --- | --- |
+| `AUDIO-to-MIDI` workflow | End-to-end audio-to-MIDI conversion workflow integrated in this repo | https://github.com/markod0925/AUDIO-to-MIDI |
+| `TempoCNN` | Tempo estimation model/runtime used to enrich MIDI tempo metadata | https://github.com/hendriks73/tempo-cnn |
+| `NeuralNote` | Core note transcription backend used by the native converter pipeline | https://github.com/tiborvass/NeuralNote |
+
+## Quick Start (PC + Smartphone on LAN)
+
+1. Install Node.js 20+ on your computer.
+2. Install dependencies:
    ```bash
    npm install
    ```
-3. Compila i converter C++/ONNX (NeuralNote + Tempo-CNN):
+3. Build the C++/ONNX converters (NeuralNote + Tempo-CNN):
    ```bash
    npm run build:nn:cli
    npm run build:tempo:cli
    ```
-4. Avvia il progetto in LAN:
+4. Start LAN mode:
    ```bash
    npm run dev:mobile
    ```
-5. Apri dal telefono (stessa rete Wi-Fi) l'URL mostrato come `Network`, ad esempio:
+5. Open the URL shown as `Network` from your phone (same Wi-Fi), for example:
    `http://192.168.1.10:5173`
 
-## Controlli gameplay
+## Gameplay Controls
 
-- `Esc` o tasto `Back` (mobile): apre/chiude il menu pausa (`Continue`, `Reset`, `Back to Start`).
-- Pulsante pausa in basso a sinistra: pausa/riprende direttamente il gameplay senza aprire il menu.
-- Slider velocita in alto: `25%` -> `125%` (default `100%`), sincronizzato con timeline e backing audio.
-- Pulsante `Debug Note`: suona la nota target corrente.
-- `F3` (debug/dev): toggle overlay diagnostico centrale.
+- `Esc` or `Back` key (mobile): open/close the pause menu (`Continue`, `Reset`, `Back to Start`).
+- Bottom-left pause button: pause/resume gameplay directly without opening the menu.
+- Top speed slider: `25%` -> `125%` (default `100%`), synchronized with timeline and backing audio.
+- `Debug Note` button: play the current target note.
+- `F3` (debug/dev): toggle central diagnostics overlay.
 
-## Convertitore Audio -> MIDI (NeuralNote + Tempo-CNN C++/ONNX)
+## Audio -> MIDI Converter (NeuralNote + Tempo-CNN C++/ONNX)
 
-Il progetto usa una pipeline C++/ONNX vendorizzata in:
+The project uses a vendored C++/ONNX pipeline in:
 
-- `third_party/neuralnote_core` (trascrizione note)
-- `third_party/tempocnn_core` (stima tempo via ONNX)
-- `third_party/tempo_cnn/tempocnn/models/fcn.onnx` (modello Tempo-CNN)
-- `third_party/onnxruntime/<platform>/lib` (runtime ONNX condiviso)
+- `third_party/neuralnote_core` (note transcription)
+- `third_party/tempocnn_core` (ONNX tempo estimation)
+- `third_party/tempo_cnn/tempocnn/models/fcn.onnx` (Tempo-CNN model)
+- `third_party/onnxruntime/<platform>/lib` (shared ONNX runtime)
 
-Il wrapper Node usato da Vite API è in:
+Node wrapper used by the Vite API:
 
 - `tools/audio-midi-converter/src/neuralnote.mjs`
 
-Compatibilità mode:
-- `legacy` e `neuralnote` sono alias dello stesso backend C++/ONNX
-- `ab` è disabilitato (errore esplicito lato server/native)
+Mode compatibility:
+- `legacy` and `neuralnote` are aliases of the same C++/ONNX backend.
+- `ab` is disabled (explicit error on server/native side).
 
-Il preset attivo è `balanced`.
+Active preset: `balanced`.
 
-## Android standalone (senza PC acceso come server)
+## Android Standalone (No Always-On PC Server)
 
-Sì, è supportato: il progetto è predisposto per il packaging con **Capacitor**.
+Yes, this is supported. The project is ready for **Capacitor** packaging.
 
-### Cosa è già preparato nel repository
+### What Is Already Included
 
-- Dipendenze Capacitor in `package.json` (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`, `@capacitor/filesystem`).
-- Configurazione `capacitor.config.ts` con:
+- Capacitor dependencies in `package.json` (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`, `@capacitor/filesystem`).
+- `capacitor.config.ts` with:
   - `appId: com.guitarhelio.app`
   - `appName: GuitarHelio`
   - `webDir: dist`
-- Script npm dedicati per init/sync/apertura Android Studio/build APK debug.
-- Plugin Capacitor `NeuralNoteConverter` (Java + JNI C++) per import audio native con NeuralNote + Tempo-CNN.
-- Model files NeuralNote inclusi negli asset Android (`android/app/src/main/assets/neuralnote-model/`).
-- Modello Tempo-CNN incluso negli asset Android (`android/app/src/main/assets/tempo-model/fcn.onnx`).
+- Dedicated npm scripts for init/sync/open Android Studio/debug APK build.
+- `NeuralNoteConverter` Capacitor plugin (Java + JNI C++) for native audio import with NeuralNote + Tempo-CNN.
+- NeuralNote model files included in Android assets (`android/app/src/main/assets/neuralnote-model/`).
+- Tempo-CNN model included in Android assets (`android/app/src/main/assets/tempo-model/fcn.onnx`).
 
-### Setup completo (prima volta)
+### First-Time Setup
 
-1. Installa dipendenze:
+1. Install dependencies:
    ```bash
    npm install
    ```
-2. Build web:
+2. Build the web app:
    ```bash
    npm run build
    ```
-3. Aggiungi la piattaforma Android:
+3. Add the Android platform:
    ```bash
    npm run cap:add:android
    ```
-4. Sincronizza asset web dentro il progetto Android:
+4. Sync web assets into the Android project:
    ```bash
    npm run cap:sync
    ```
-5. Apri Android Studio:
+5. Open Android Studio:
    ```bash
    npm run cap:open:android
    ```
 
-Nota: il build Android richiede toolchain NDK/CMake installata in Android Studio per compilare il bridge JNI del convertitore.
+Note: Android build requires NDK/CMake toolchains installed in Android Studio to compile the converter JNI bridge.
 
-### Build APK debug da terminale
+### Build Debug APK from Terminal
 
 ```bash
 npm run android:apk:debug
 ```
 
-APK atteso in:
+Expected APK location:
 `android/app/build/outputs/apk/debug/app-debug.apk`
 
-### Permesso microfono (importante)
+### Microphone Permission (Important)
 
-L'app usa il microfono, quindi in Android devi avere il permesso `RECORD_AUDIO` in:
+The app uses the microphone, so Android must include `RECORD_AUDIO` in:
 `android/app/src/main/AndroidManifest.xml`
 
-Snippet atteso:
+Expected snippet:
 
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
 ```
 
-Inoltre il permesso va richiesto a runtime (Capacitor/Android) prima di iniziare il rilevamento pitch.
+The permission must also be requested at runtime (Capacitor/Android) before pitch detection starts.
 
 ## QA
 
-- Checklist di conformità implementativa al GDD: `IMPLEMENTATION_QA_CHECKLIST.md`
-- Suite test manuali runtime (Desktop + Android): `MANUAL_QA_RUNTIME_SUITE.md`
-- Test automatici: `npm run test`
-- Verifica build completa: `npm run build`
+- GDD implementation compliance checklist: `IMPLEMENTATION_QA_CHECKLIST.md`
+- Runtime manual test suite (Desktop + Android): `MANUAL_QA_RUNTIME_SUITE.md`
+- Automated tests: `npm run test`
+- Full build verification: `npm run build`
 
-### Smoke test rapido conversione Audio -> MIDI (Server + Android)
+### Quick Audio -> MIDI Smoke Test (Server + Android)
 
-Prerequisiti minimi:
+Minimum prerequisites:
 - `Node.js 20+`
-- toolchain C++ locale (`cmake`, `g++`, `make`) per i CLI NeuralNote/Tempo-CNN
-- Android SDK/NDK installati (per build APK)
-- JDK 21 attivo per Gradle/Capacitor Android
+- Local C++ toolchain (`cmake`, `g++`, `make`) for NeuralNote/Tempo-CNN CLIs
+- Android SDK/NDK installed (for APK build)
+- JDK 21 active for Gradle/Capacitor Android
 
-Checklist server (Node wrapper + CLI C++/ONNX):
-1. Build dei converter C++:
+Server checklist (Node wrapper + C++/ONNX CLI):
+1. Build C++ converters:
    ```bash
    npm run build:nn:cli
    npm run build:tempo:cli
    ```
-2. Verifica binari:
+2. Verify binaries:
    ```bash
    ls -la third_party/neuralnote_core/bin/nn_transcriber_cli
    ls -la third_party/tempocnn_core/bin/tempo_cnn_cli
    ```
-3. Conversione rapida di un file audio:
+3. Run quick conversion on an audio file:
    ```bash
-   node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs --input /percorso/audio.wav --output /tmp/smoke.mid
+   node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs --input /path/to/audio.wav --output /tmp/smoke.mid
    ```
-4. Esito atteso:
-   - output con progress fino a `Conversion complete`
-   - file `/tmp/smoke.mid` creato e non vuoto
-   - metadata tempo presenti nel MIDI (tempo base + tempo-map quando disponibile)
+4. Expected result:
+   - progress output reaches `Conversion complete`
+   - `/tmp/smoke.mid` is created and non-empty
+   - tempo metadata exists in MIDI (base tempo + tempo map when available)
 
-Checklist Android nativo (Capacitor plugin + JNI):
+Native Android checklist (Capacitor plugin + JNI):
 1. Build web + sync:
    ```bash
    npm run build
    npm run cap:sync
    ```
-2. Build APK debug:
+2. Build debug APK:
    ```bash
    npm run android:apk:debug
    ```
-3. Esito atteso:
+3. Expected result:
    - `BUILD SUCCESSFUL`
-   - APK presente in `android/app/build/outputs/apk/debug/app-debug.apk`
-4. Smoke funzionale su device/emulatore:
-   - apri app, vai su `Import MP3/OGG`
-   - importa un audio breve (5-15s)
-   - verifica avanzamento fino a `Conversion complete`
-   - verifica presenza nuova song con `song.mid` utilizzabile in gameplay
+   - APK exists at `android/app/build/outputs/apk/debug/app-debug.apk`
+4. Functional smoke test on device/emulator:
+   - open app and go to `Import MP3/OGG`
+   - import a short audio file (5-15s)
+   - verify progress reaches `Conversion complete`
+   - verify a new song with usable `song.mid` appears in gameplay catalog
 
-## Catalogo canzoni (`public/songs`)
+## Song Catalog (`public/songs`)
 
-Ogni canzone vive in una cartella dedicata sotto `public/songs/<song-id>/`.
+Each song lives in a dedicated folder under `public/songs/<song-id>/`.
 
-Struttura dati nel manifest (`public/songs/manifest.json`):
+Manifest data structure (`public/songs/manifest.json`):
 
 ```json
 {
@@ -204,48 +251,48 @@ Struttura dati nel manifest (`public/songs/manifest.json`):
 }
 ```
 
-Regole fallback:
-- Se manca `midi` nel manifest: la canzone non viene mostrata nella schermata iniziale.
-- Se `midi` è presente ma il file non è raggiungibile: l'avvio sessione fallisce con errore esplicito, senza bloccare la Start Screen.
-- Se manca/è invalido `cover`: viene usato `public/ui/song-cover-default.svg`.
-- Se manca/è invalido `audio`: viene usato il file MIDI come riferimento audio.
-- In gameplay: se `audio` punta a un WAV/MP3/OGG valido viene usato come backing track; altrimenti viene usato il playback MIDI.
+Fallback rules:
+- If `midi` is missing in manifest: the song is not shown in Start Screen.
+- If `midi` exists but file is unreachable: session start fails with explicit error, without blocking Start Screen.
+- If `cover` is missing/invalid: uses `public/ui/song-cover-default.svg`.
+- If `audio` is missing/invalid: uses MIDI as audio reference.
+- In gameplay: if `audio` points to a valid WAV/MP3/OGG, it is used as backing track; otherwise MIDI playback is used.
 
-Policy startup (web):
-- La Start Screen viene mostrata subito (senza attesa di validazione massiva di tutti gli asset).
-- La lista canzoni si aggiorna in background.
-- Le cover vengono caricate in lazy loading (prima quelle visibili, poi le altre).
+Web startup policy:
+- Start Screen is shown immediately (without waiting for full asset validation).
+- Song list updates in background.
+- Covers are lazy-loaded (visible first, then the rest).
 
-## Import song da Start Screen
+## Song Import from Start Screen
 
-Nella schermata iniziale è disponibile il pulsante `Import MIDI/MP3/OGG`.
+The Start Screen includes an `Import MIDI/MP3/OGG` button.
 
-Flusso:
-- selezioni un file `.mid`/`.midi` oppure `.mp3`/`.ogg`
-- viene creata una cartella canzone con il nome del file (senza estensione)
-- input MP3/OGG: l'audio originale viene salvato come `song.mp3` oppure `song.ogg`
-- input MP3/OGG: parte la conversione audio -> MIDI con barra di avanzamento
-- input MIDI: il file viene salvato direttamente come `song.mid` (senza conversione audio)
-- input MP3/OGG: se nei metadata audio è presente un'immagine embedded, viene estratta e salvata come `cover.*`
-- il catalogo canzoni viene aggiornato e la lista in Start Screen si ricarica automaticamente
+Flow:
+- select a `.mid`/`.midi` or `.mp3`/`.ogg` file
+- a song folder is created using the filename (without extension)
+- for MP3/OGG input: original audio is saved as `song.mp3` or `song.ogg`
+- for MP3/OGG input: audio -> MIDI conversion starts with progress bar
+- for MIDI input: file is saved directly as `song.mid` (no audio conversion)
+- for MP3/OGG input: if embedded cover art exists in metadata, it is extracted and saved as `cover.*`
+- song catalog is updated and Start Screen list reloads automatically
 
-Persistenza per piattaforma:
-- Web/Vite dev/preview: file e manifest vengono scritti in `public/songs/` (`public/songs/manifest.json`).
-- Android standalone (Capacitor): file e manifest vengono salvati nello storage app (`Directory.Data/songs/manifest.json`) tramite `@capacitor/filesystem`.
+Persistence by platform:
+- Web/Vite dev/preview: files and manifest are written to `public/songs/` (`public/songs/manifest.json`).
+- Android standalone (Capacitor): files and manifest are stored in app storage (`Directory.Data/songs/manifest.json`) via `@capacitor/filesystem`.
 
-Debug import source:
-- In build debug/dev è visibile il selettore `Import Source` (`Auto`, `Server`, `Native`) sotto il pulsante import.
-- `Auto` usa il percorso corretto in base alla piattaforma (server su web, native su Capacitor).
+Import source debug selector:
+- In debug/dev builds, the `Import Source` selector (`Auto`, `Server`, `Native`) is visible below the import button.
+- `Auto` uses the correct path by platform (server on web, native on Capacitor).
 
-## Benchmark startup CLI
+## Startup Benchmark CLI
 
-Per misurare il costo startup catalogo:
+To measure catalog startup cost:
 
 ```bash
 npm run perf:startup
 ```
 
-Opzioni utili:
+Useful options:
 
 ```bash
 node scripts/benchmark-startup.mjs --mode current --repeat 20
@@ -254,18 +301,23 @@ node scripts/benchmark-startup.mjs --mode both --manifest public/songs/manifest.
 ```
 
 Output:
-- riepilogo in console con `avg/p50/p95/max`
-- JSON completo salvato in `/tmp/guitarhelio-startup-benchmark.json`
+- console summary with `avg/p50/p95/max`
+- full JSON saved at `/tmp/guitarhelio-startup-benchmark.json`
 
-## Note performance e stabilita
+## Performance and Stability Notes
 
-- Le label dei fret in gameplay sono renderizzate con **pooling** (riuso oggetti) per evitare creazione/distruzione ad ogni frame.
-- Score e streak HUD sono aggiornati in modo **incrementale** su eventi di scoring, riducendo lavoro nel loop runtime.
-- Le azioni del menu pausa sono cliccabili sia sul bottone che sul testo (desktop/touch).
-- Le feature di import/conversione native (**NeuralNote + Tempo-CNN**, catalogo native songs, persistenza high score native) sono caricate **on-demand** tramite `import()` solo quando servono dalla Start Screen o a fine partita.
+- Fret labels in gameplay use **pooling** (object reuse) to avoid per-frame creation/destruction.
+- HUD score and streak are updated **incrementally** on scoring events, reducing work in the runtime loop.
+- Pause menu actions are clickable both on button and text (desktop/touch).
+- Native import/conversion features (**NeuralNote + Tempo-CNN**, native song catalog, native high-score persistence) are loaded **on-demand** via `import()` only when needed from Start Screen or at end of session.
 
-### Large chunk warnings (Vite)
+### Large Chunk Warnings (Vite)
 
-- Il warning Vite `Some chunks are larger than 500 kB` segnala **qualsiasi chunk** sopra soglia, inclusi chunk lazy, non solo il bootstrap iniziale.
-- Nel build attuale resta un chunk grande **core** (runtime Phaser + gameplay/audio necessari all'app).
-- Il precedente lazy chunk molto grande legato ai decoder audio WASM non è più nel bundle frontend: il decode usa WebAudio nativo del runtime.
+- Vite warning `Some chunks are larger than 500 kB` flags **any chunk** above threshold, including lazy chunks, not only the initial bootstrap.
+- In the current build, a large **core** chunk remains (Phaser runtime + gameplay/audio required by app).
+- The previously very large lazy chunk tied to WASM audio decoders is no longer in the frontend bundle: decoding now uses runtime-native WebAudio.
+
+## Content Usage Notice
+
+- This repository includes MP3 files generated with Suno.
+- Suno-generated MP3 assets in this repository are provided for development/testing context and are **not licensed for commercial use**.

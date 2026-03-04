@@ -70,6 +70,7 @@ Like Yousician:
 - Web application (desktop first)
 - Static deployable
 - Real-time audio
+- Capacitor Android runtime MUST be locked to landscape orientation (`sensorLandscape`)
 
 ## 2.2 Required stack
 
@@ -712,6 +713,12 @@ During gameplay, a debug button must be available to play the current required t
 If pressed while in `WaitingForHit`, it MUST also validate the hit and advance progression as if the correct pitch had been detected.
 If pressed outside the valid hit window, gameplay MUST NOT validate the hit and should report that the debug note was out of window.
 
+On Capacitor Android runtime, system back navigation (hardware/gesture back) during `PlayScene` MUST map to pause-menu behavior:
+
+* if pause menu is closed, open `Pause Menu`
+* if pause menu is open, close it
+* while gameplay is active, back navigation MUST NOT background/exit the app directly
+
 In debug sessions, gameplay MUST also provide a central debug overlay (toggle key: `F3`) showing at least:
 
 * runtime state and last state transition
@@ -751,6 +758,7 @@ Start-screen layout constraints:
 
 * the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
+* in landscape/mobile layouts, right-side controls (`Import`, `Settings`, `Tuner`) and `Start Session` CTA MUST keep non-overlapping spacing
 
 ---
 

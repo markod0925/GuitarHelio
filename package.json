@@ -25,6 +25,7 @@
     "perf:startup": "node scripts/benchmark-startup.mjs --repeat 20"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.1",
     "@capacitor/core": "^8.1.0",
     "@capacitor/filesystem": "^8.1.2",
     "@fontsource/montserrat": "^5.2.8",
@@ -38,9 +39,8 @@
   "devDependencies": {
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
-    "@tensorflow/tfjs-node": "^4.22.0",
     "typescript": "^5.6.2",
-    "vite": "^5.4.8",
-    "vitest": "^2.1.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   }
 }

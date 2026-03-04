@@ -302,6 +302,29 @@ function createEndScreenStarsImpl(
 function attachBackHandlersImpl(this: PlaySceneContext): void {
   this.input.keyboard?.on('keydown-ESC', this.onBackRequested, this);
 
+  if (this.nativeBackButtonListener) {
+    void this.nativeBackButtonListener.remove();
+    this.nativeBackButtonListener = undefined;
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('backButton', () => {
+          if (!this.scene.isActive()) return;
+          if (this.runtime.state === PlayState.Finished) return;
+          this.onBackRequested();
+        })
+      )
+      .then((listener) => {
+        this.nativeBackButtonListener = listener;
+      })
+      .catch((error) => {
+        console.warn('Failed to register native back button handler', error);
+      });
+    return;
+  }
+
   this.pauseMenuBackListener = (event: Event): void => {
     event.preventDefault();
     this.onBackRequested();

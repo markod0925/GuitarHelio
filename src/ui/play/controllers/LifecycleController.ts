@@ -105,6 +105,10 @@ function cleanupImpl(this: PlaySceneContext): void {
     window.removeEventListener('popstate', this.pauseMenuPopStateListener);
     this.pauseMenuPopStateListener = undefined;
   }
+  if (this.nativeBackButtonListener) {
+    void this.nativeBackButtonListener.remove();
+    this.nativeBackButtonListener = undefined;
+  }
 
   this.pauseOverlay?.destroy(true);
   this.pauseOverlay = undefined;

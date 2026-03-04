@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Capacitor } from '@capacitor/core';
 import { BootScene } from '../ui/BootScene';
 import { PlayScene } from '../ui/PlayScene';
 import { SongSelectScene } from '../ui/SongSelectScene';
@@ -11,10 +12,13 @@ import './styles.css';
 
 const BASE_WIDTH = 1024;
 const BASE_HEIGHT = 540;
-const INTERNAL_RENDER_SCALE =
-  typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-const GAME_WIDTH = Math.round(BASE_WIDTH * INTERNAL_RENDER_SCALE);
-const GAME_HEIGHT = Math.round(BASE_HEIGHT * INTERNAL_RENDER_SCALE);
+const GAME_WIDTH = BASE_WIDTH;
+const GAME_HEIGHT = BASE_HEIGHT;
+const IS_NATIVE_RUNTIME = Capacitor.isNativePlatform();
+
+if (typeof document !== 'undefined') {
+  document.documentElement.classList.add(IS_NATIVE_RUNTIME ? 'platform-native' : 'platform-web');
+}
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
@@ -28,8 +32,8 @@ const game = new Phaser.Game({
     pixelArt: false
   },
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH
+    mode: IS_NATIVE_RUNTIME ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
+    autoCenter: IS_NATIVE_RUNTIME ? undefined : Phaser.Scale.CENTER_BOTH
   },
   scene: [BootScene, SongSelectScene, PlayScene]
 });

@@ -1,38 +1,38 @@
 # GuitarHelio - Manual Runtime QA Suite
 
-Scope: validazione manuale end-to-end di gameplay, audio, mic, scoring e packaging Android.
+Scope: end-to-end manual validation of gameplay, audio, microphone input, scoring, and Android packaging.
 
 Related docs:
 - `GDD.md`
 - `IMPLEMENTATION_QA_CHECKLIST.md`
 
-## 1. Prerequisiti
+## 1. Prerequisites
 
 - Node.js 20+
-- Dipendenze installate: `npm install`
-- Build locale valida: `npm run build`
-- Almeno un dispositivo desktop con Chrome/Edge recente
-- Almeno un dispositivo Android (per sezione Android)
-- Strumento per produrre note (chitarra reale, tastiera, app generatore tono)
+- Dependencies installed: `npm install`
+- Valid local build: `npm run build`
+- At least one desktop device with recent Chrome/Edge
+- At least one Android device (for Android section)
+- A way to produce notes (real guitar, keyboard, tone generator app)
 
-## 2. Regole risultato
+## 2. Result Rules
 
-- `PASS`: comportamento coerente con expected result
-- `FAIL`: comportamento divergente, bug riproducibile
-- `BLOCKED`: test non eseguibile per mancanza prerequisiti
+- `PASS`: behavior matches expected result
+- `FAIL`: behavior diverges, reproducible bug
+- `BLOCKED`: test cannot run due to missing prerequisites
 
-## 3. Setup rapido ambiente test
+## 3. Quick Test Environment Setup
 
 ### Desktop/LAN
 
-1. Avvia:
+1. Start:
    ```bash
    npm run dev:mobile
    ```
-2. Apri URL locale su browser desktop.
-3. Verifica che `public/songs/example/song.mid` sia disponibile in song select.
+2. Open local URL in desktop browser.
+3. Verify `public/songs/example/song.mid` is available in Song Select.
 
-### Android debug
+### Android Debug
 
 1. Build + sync:
    ```bash
@@ -43,176 +43,176 @@ Related docs:
    ```bash
    npm run android:apk:debug
    ```
-3. Installa `android/app/build/outputs/apk/debug/app-debug.apk`.
+3. Install `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-## 4. Test cases Desktop
+## 4. Desktop Test Cases
 
-### DSK-01 - Boot e Song Select
+### DSK-01 - Boot and Song Select
 
-- Obiettivo: verificare avvio scene e selezione song/difficulty.
-- Passi:
-  1. Apri l'app.
-  2. Verifica presenza schermata Song Select.
-  3. Cambia song con click o frecce sinistra/destra.
-  4. Cambia difficulty con click o frecce su/giu.
-  5. Premi `Start Session`.
+- Objective: verify scene startup and song/difficulty selection.
+- Steps:
+  1. Open app.
+  2. Verify Song Select screen is shown.
+  3. Change song with click or left/right arrows.
+  4. Change difficulty with click or up/down arrows.
+  5. Press `Start Session`.
 - Expected:
-  - La scena `PlayScene` parte.
-  - Song e difficulty selezionate vengono applicate.
+  - `PlayScene` starts.
+  - Selected song and difficulty are applied.
 
-### DSK-02 - Audio sincronizzato col gating
+### DSK-02 - Audio Synchronized with Gating
 
-- Obiettivo: confermare sincronizzazione playhead/audio durante il gating.
-- Passi:
-  1. Avvia una sessione.
-  2. Non suonare alcuna nota quando arriva il primo target.
-  3. Osserva playhead/target e ascolta audio.
+- Objective: confirm playhead/audio synchronization during gating.
+- Steps:
+  1. Start a session.
+  2. Do not play any note when first target arrives.
+  3. Observe playhead/target and listen to audio.
 - Expected:
-  - Visuale si ferma in `WaitingForHit` sul target.
-  - L'audio si ferma insieme al playhead.
-  - Dopo hit valida (o timeout), audio e playhead ripartono allineati.
+  - Visual progression stops in `WaitingForHit` on target.
+  - Audio stops together with playhead.
+  - After valid hit (or timeout), audio and playhead resume aligned.
 
-### DSK-03 - Progressione su hit valida
+### DSK-03 - Progression on Valid Hit
 
-- Obiettivo: validare transizione `WaitingForHit -> Playing`.
-- Passi:
-  1. Durante `WaitingForHit`, suona una nota corretta (entro tolleranza difficulty).
-  2. Mantienila brevemente (>= hold time).
+- Objective: validate `WaitingForHit -> Playing` transition.
+- Steps:
+  1. During `WaitingForHit`, play a correct note (within difficulty tolerance).
+  2. Hold briefly (>= hold time).
 - Expected:
-  - Target viene validato.
-  - Sessione riprende avanzamento.
-  - HUD mostra feedback (`Perfect/Great/OK`) e incremento score.
+  - Target is validated.
+  - Session progression resumes.
+  - HUD shows feedback (`Perfect/Great/OK`) and score increase.
 
-### DSK-04 - Nessuna progressione su hit invalida
+### DSK-04 - No Progression on Invalid Hit
 
-- Obiettivo: evitare falsi positivi.
-- Passi:
-  1. Arriva in `WaitingForHit`.
-  2. Suona nota sbagliata o rumore non intonato.
+- Objective: prevent false positives.
+- Steps:
+  1. Reach `WaitingForHit`.
+  2. Play wrong note or unpitched noise.
 - Expected:
-  - Nessuna progressione al target successivo.
-  - Lo stato resta in attesa finche non arriva nota valida (o timeout se configurato).
+  - No progression to next target.
+  - State stays waiting until valid note arrives (or timeout if configured).
 
-### DSK-05 - Timeout miss (fallback senza mic)
+### DSK-05 - Timeout Miss (Mic Fallback)
 
-- Obiettivo: verificare gestione timeout opzionale.
-- Passi:
-  1. Blocca permesso microfono per il sito.
-  2. Ricarica e avvia sessione.
-  3. Attendi il primo target in waiting.
+- Objective: verify optional timeout behavior.
+- Steps:
+  1. Block microphone permission for the site.
+  2. Reload and start session.
+  3. Wait at first target in waiting state.
 - Expected:
-  - Messaggio mic non disponibile.
-  - Dopo timeout fallback, target marcato `Miss`.
-  - Avanzamento riprende automaticamente.
+  - Mic unavailable message is shown.
+  - After timeout fallback, target is marked `Miss`.
+  - Progression resumes automatically.
 
-### DSK-06 - Scoring e streak
+### DSK-06 - Scoring and Streak
 
-- Obiettivo: validare accumulo score e streak reset.
-- Passi:
-  1. Esegui almeno 3 target validi consecutivi.
-  2. Forza almeno un `Miss` (timeout o hit errata prolungata).
+- Objective: validate score accumulation and streak reset.
+- Steps:
+  1. Perform at least 3 consecutive valid targets.
+  2. Force at least one `Miss` (timeout or sustained invalid hit).
 - Expected:
-  - Score totale cresce sui target validi.
-  - Streak cresce sui validi e si azzera al `Miss`.
-  - Distribuzione hit coerente a fine brano.
+  - Total score increases on valid targets.
+  - Streak increases on valid hits and resets on `Miss`.
+  - End-of-song hit distribution is coherent.
 
-### DSK-07 - Fine brano e results panel
+### DSK-07 - End of Song and Results Panel
 
-- Obiettivo: validare stato `Finished` e riepilogo.
-- Passi:
-  1. Completa sessione fino a fine target.
-  2. Verifica pannello risultati.
-  3. Premi tap/Enter per tornare alla selezione.
+- Objective: validate `Finished` state and summary.
+- Steps:
+  1. Complete session until final target.
+  2. Verify results panel.
+  3. Press tap/Enter to return to selection.
 - Expected:
-  - App mostra score, hit distribution, avg reaction, longest streak.
-  - Ritorno a Song Select senza crash.
+  - App shows score, hit distribution, average reaction, longest streak.
+  - Returns to Song Select without crash.
 
-### DSK-08 - Resize/responsività minima
+### DSK-08 - Resize / Minimum Responsiveness
 
-- Obiettivo: verificare layout su dimensioni diverse.
-- Passi:
-  1. Ridimensiona finestra desktop (larga -> stretta).
-  2. Osserva lanes, hit line, bars, HUD.
+- Objective: verify layout across different sizes.
+- Steps:
+  1. Resize desktop window (wide -> narrow).
+  2. Observe lanes, hit line, bars, HUD.
 - Expected:
-  - Elementi restano visibili e leggibili.
-  - Nessun overlap critico o canvas corrotto.
+  - Elements remain visible and readable.
+  - No critical overlap or broken canvas.
 
-### DSK-09 - Priorità backing track audio
+### DSK-09 - Backing Track Audio Priority
 
-- Obiettivo: verificare priorità playback WAV/MP3 rispetto al MIDI.
-- Passi:
-  1. Configura una song con `audio` valido (`.mp3`/`.wav`) e `midi` valido.
-  2. Avvia sessione e ascolta il playback.
-  3. Rinomina/rimuovi temporaneamente il file audio della stessa song.
-  4. Riavvia sessione.
+- Objective: verify WAV/MP3 playback priority over MIDI.
+- Steps:
+  1. Configure a song with valid `audio` (`.mp3`/`.wav`) and valid `midi`.
+  2. Start session and listen to playback.
+  3. Temporarily rename/remove same song audio file.
+  4. Restart session.
 - Expected:
-  - Con audio presente: viene usato il backing track WAV/MP3.
-  - Senza audio: il playback passa al MIDI senza bloccare la sessione.
+  - With audio present: WAV/MP3 backing track is used.
+  - Without audio: playback falls back to MIDI without blocking session.
 
-## 5. Test cases Android
+## 5. Android Test Cases
 
-### AND-01 - Avvio app e permission mic
+### AND-01 - App Startup and Mic Permission
 
-- Obiettivo: validare bootstrap Android e prompt runtime.
-- Passi:
-  1. Installa/apri APK debug.
-  2. Avvia sessione.
-  3. Quando richiesto, concedi permesso microfono.
+- Objective: validate Android bootstrap and runtime permission prompt.
+- Steps:
+  1. Install/open debug APK.
+  2. Start session.
+  3. When prompted, grant microphone permission.
 - Expected:
-  - Nessun crash all'avvio.
-  - Permesso richiesto correttamente.
-  - Sessione inizia con audio e UI attivi.
+  - No crash on startup.
+  - Permission is requested correctly.
+  - Session starts with active audio and UI.
 
-### AND-02 - Gameplay base con mic abilitato
+### AND-02 - Core Gameplay with Mic Enabled
 
-- Obiettivo: verificare gating e hit detection su device.
-- Passi:
-  1. Raggiungi `WaitingForHit`.
-  2. Suona nota valida.
-  3. Ripeti con nota non valida.
+- Objective: verify gating and hit detection on device.
+- Steps:
+  1. Reach `WaitingForHit`.
+  2. Play a valid note.
+  3. Repeat with an invalid note.
 - Expected:
-  - Con nota valida avanza.
-  - Con nota non valida resta in attesa.
+  - Valid note advances progression.
+  - Invalid note keeps waiting state.
 
-### AND-03 - Mic negato e fallback resiliente
+### AND-03 - Mic Denied and Resilient Fallback
 
-- Obiettivo: validare degradazione controllata.
-- Passi:
-  1. Revoca permesso mic all'app nelle impostazioni Android.
-  2. Riavvia app e sessione.
+- Objective: validate controlled degradation.
+- Steps:
+  1. Revoke app mic permission in Android settings.
+  2. Restart app and session.
 - Expected:
-  - App non crasha.
-  - Messaggio errore mic presente.
-  - Progressione possibile tramite timeout fallback.
+  - App does not crash.
+  - Mic error message is shown.
+  - Progression remains possible via timeout fallback.
 
-### AND-04 - Background/foreground stability
+### AND-04 - Background/Foreground Stability
 
-- Obiettivo: verificare stabilità ciclo vita base.
-- Passi:
-  1. Avvia sessione.
-  2. Manda app in background 5-10 secondi.
-  3. Torna in foreground.
+- Objective: verify baseline lifecycle stability.
+- Steps:
+  1. Start session.
+  2. Send app to background for 5-10 seconds.
+  3. Return to foreground.
 - Expected:
-  - App resta stabile (no crash, no schermata nera).
-  - Sessione resta utilizzabile (anche con eventuale restart manuale).
+  - App remains stable (no crash, no black screen).
+  - Session remains usable (including manual restart if needed).
 
-## 6. Template esecuzione test run
+## 6. Test Run Template
 
-Compila questa tabella ad ogni run:
+Fill this table for each run:
 
-| Campo | Valore |
+| Field | Value |
 | --- | --- |
-| Data |  |
+| Date |  |
 | Tester |  |
 | Commit/Branch |  |
-| Device Desktop |  |
-| Browser Desktop |  |
-| Device Android |  |
-| Build app |  |
+| Desktop Device |  |
+| Desktop Browser |  |
+| Android Device |  |
+| App Build |  |
 
-Risultati test:
+Test results:
 
-| Test ID | Stato (PASS/FAIL/BLOCKED) | Note | Evidence (screenshot/video/log) |
+| Test ID | Status (PASS/FAIL/BLOCKED) | Notes | Evidence (screenshot/video/log) |
 | --- | --- | --- | --- |
 | DSK-01 |  |  |  |
 | DSK-02 |  |  |  |
@@ -228,8 +228,8 @@ Risultati test:
 | AND-03 |  |  |  |
 | AND-04 |  |  |  |
 
-## 7. Exit criteria suggeriti
+## 7. Suggested Exit Criteria
 
-- Nessun `FAIL` nei test critici: `DSK-02`, `DSK-03`, `DSK-07`, `AND-01`, `AND-02`.
-- Almeno un run completo su desktop e un run completo su Android.
-- Tutte le regressioni documentate con riproduzione e evidence.
+- No `FAIL` in critical tests: `DSK-02`, `DSK-03`, `DSK-07`, `AND-01`, `AND-02`.
+- At least one complete run on desktop and one complete run on Android.
+- All regressions documented with reproduction steps and evidence.
