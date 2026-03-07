@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { JzzTinySynth } from '../../../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../../../audio/midiScrubPlayer';
 import { PitchDetectorService } from '../../../audio/pitchDetector';
+import { loadPitchCalibrationProfile } from '../../../audio/pitchCalibration';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import {
   resolveResumeSongSeconds,
@@ -137,7 +138,10 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   try {
     const micSource = await createMicNode(audioCtx);
     this.micStream = micSource.mediaStream;
-    const detector = new PitchDetectorService(audioCtx, { smoothingAlpha: 0.32 });
+    const detector = new PitchDetectorService(audioCtx, {
+      smoothingAlpha: 0.32,
+      calibrationProfile: loadPitchCalibrationProfile()
+    });
     await detector.init();
     detector.onPitch((frame) => {
       if (this.pauseOverlay) return;

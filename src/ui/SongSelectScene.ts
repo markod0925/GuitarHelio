@@ -7,6 +7,16 @@ import {
   saveSessionSettingsPreference
 } from '../app/sessionPersistence';
 import { createMicNode } from '../audio/micInput';
+import {
+  buildPitchCalibrationProfile,
+  clearPitchCalibrationProfile,
+  DEFAULT_PITCH_CALIBRATION_REFERENCE_MIDI,
+  estimatePitchCalibrationMeasurement,
+  loadPitchCalibrationProfile,
+  savePitchCalibrationProfile,
+  type PitchCalibrationMeasurement,
+  type PitchCalibrationProfile
+} from '../audio/pitchCalibration';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { TunerPitchStabilizer } from '../audio/tunerPitchStabilizer';
 import { STANDARD_TUNING } from '../guitar/tuning';
@@ -113,8 +123,13 @@ type TunerPanel = {
   panel: RoundedBox;
   targetLabel: Phaser.GameObjects.Text;
   detectedLabel: Phaser.GameObjects.Text;
+  calibrationStatus: Phaser.GameObjects.Text;
   startButton: RoundedBox;
   startLabel: Phaser.GameObjects.Text;
+  calibrateButton: RoundedBox;
+  calibrateLabel: Phaser.GameObjects.Text;
+  resetCalibrationButton: RoundedBox;
+  resetCalibrationLabel: Phaser.GameObjects.Text;
   closeButton: RoundedBox;
   closeLabel: Phaser.GameObjects.Text;
   meterNeedle: RoundedBox;
@@ -171,6 +186,9 @@ const ASSET_NEGATIVE_CACHE_TTL_MS = 30_000;
 const DEFAULT_COVER_LOAD_CONCURRENCY = 3;
 const SONG_REMOVE_LONG_PRESS_MS = 560;
 const SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+const TUNER_IN_TUNE_CENTS = 5;
+const TUNER_AUTO_ADVANCE_HOLD_SECONDS = 2;
+const TUNER_SEQUENCE: ReadonlyArray<number> = [6, 5, 4, 3, 2, 1];
 
 const WEB_STARTUP_CATALOG_POLICY: SongCatalogLoadPolicy = {
   validateAssetsOnStartup: false,
@@ -208,6 +226,11 @@ export class SongSelectScene extends Phaser.Scene {
   private tunerPanel?: TunerPanel;
   private tunerOpen = false;
   private readonly tunerPitchStabilizer = new TunerPitchStabilizer();
+  private tunerCalibrating = false;
+  private readonly tunerTunedStrings = new Set<number>();
+  private tunerInTuneStreakStartSeconds: number | null = null;
+  private pitchCalibrationProfile: PitchCalibrationProfile | null = loadPitchCalibrationProfile();
+  private refreshSongSelectUi?: () => void;
   private importInput?: HTMLInputElement;
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
@@ -593,8 +616,12 @@ export class SongSelectScene extends Phaser.Scene {
       tunerButton.setStrokeStyle(2, this.tunerOpen ? 0x60a5fa : 0x3b82f6, 0.52);
       tunerLabel.setColor(this.tunerOpen ? '#e0f2fe' : '#f1f5f9');
       tunerIcon?.setAlpha(this.tunerOpen ? 1 : 0.94);
-      tunerSummary.setText(`String ${this.tunerTargetString} • ${this.tunerActive ? 'ON' : 'OFF'}`);
-      tunerSummary.setColor(this.tunerActive ? '#86efac' : '#a5b4fc');
+      const calibrationBadge = this.pitchCalibrationProfile ? `CAL ${this.pitchCalibrationProfile.points.length}pt` : 'CAL OFF';
+      const tunedBadge = `${this.tunerTunedStrings.size}/${TUNER_SEQUENCE.length} tuned`;
+      tunerSummary.setText(
+        `String ${this.tunerTargetString} • ${this.tunerActive ? 'ON' : 'OFF'}${this.tunerCalibrating ? ' • CAL...' : ''} • ${tunedBadge} • ${calibrationBadge}`
+      );
+      tunerSummary.setColor(this.tunerCalibrating ? '#fde68a' : this.tunerActive ? '#86efac' : '#a5b4fc');
 
       importButton.setFillStyle(this.importInProgress || quitPromptOpen ? 0x334155 : 0x1a2a53, this.importInProgress || quitPromptOpen ? 0.9 : 0.74);
       importButton.setStrokeStyle(2, this.importInProgress ? 0xf59e0b : 0x3b82f6, this.importInProgress || quitPromptOpen ? 0.82 : 0.52);
@@ -659,21 +686,60 @@ export class SongSelectScene extends Phaser.Scene {
 
       const tuner = this.tunerPanel;
       if (tuner) {
+        const tunerBusy = this.tunerCalibrating;
         const targetMidi = STANDARD_TUNING[this.tunerTargetString];
         tuner.targetLabel.setText(`Target: String ${this.tunerTargetString} • ${midiToNoteName(targetMidi)}`);
-        tuner.startButton.setFillStyle(this.tunerActive ? 0x7f1d1d : 0x2563eb, 1);
-        tuner.startButton.setStrokeStyle(2, this.tunerActive ? 0xfca5a5 : 0x93c5fd, 0.8);
-        tuner.startLabel.setText(this.tunerActive ? 'Stop Tuner' : 'Start Tuner');
-        tuner.startLabel.setColor(this.tunerActive ? '#ffe4e6' : '#eff6ff');
+        tuner.startButton.setFillStyle(
+          tunerBusy ? 0x334155 : this.tunerActive ? 0x7f1d1d : 0x2563eb,
+          1
+        );
+        tuner.startButton.setStrokeStyle(
+          2,
+          tunerBusy ? 0x94a3b8 : this.tunerActive ? 0xfca5a5 : 0x93c5fd,
+          0.8
+        );
+        tuner.startLabel.setText(tunerBusy ? 'Tuner Locked' : this.tunerActive ? 'Stop Tuner' : 'Start Tuner');
+        tuner.startLabel.setColor(tunerBusy ? '#cbd5e1' : this.tunerActive ? '#ffe4e6' : '#eff6ff');
+
+        tuner.calibrateButton.setFillStyle(tunerBusy ? 0x7c2d12 : 0x0f766e, 1);
+        tuner.calibrateButton.setStrokeStyle(2, tunerBusy ? 0xfdba74 : 0x5eead4, 0.82);
+        tuner.calibrateLabel.setText(tunerBusy ? 'Calibrating...' : 'Calibrate');
+        tuner.calibrateLabel.setColor(tunerBusy ? '#ffedd5' : '#ecfeff');
+
+        const hasCalibration = Boolean(this.pitchCalibrationProfile);
+        tuner.resetCalibrationButton.setFillStyle(hasCalibration ? 0x7f1d1d : 0x334155, 1);
+        tuner.resetCalibrationButton.setStrokeStyle(2, hasCalibration ? 0xfca5a5 : 0x64748b, 0.8);
+        tuner.resetCalibrationLabel.setColor(hasCalibration ? '#ffe4e6' : '#cbd5e1');
+        tuner.resetCalibrationButton.setAlpha(hasCalibration ? 1 : 0.75);
+        tuner.resetCalibrationLabel.setAlpha(hasCalibration ? 1 : 0.75);
+        tuner.calibrationStatus.setText(
+          tunerBusy
+            ? 'Calibration in progress... keep the phone still.'
+            : this.pitchCalibrationProfile
+              ? `Calibration active • ${this.pitchCalibrationProfile.points.length} points`
+              : 'Calibration inactive'
+        );
+        tuner.calibrationStatus.setColor(tunerBusy ? '#fde68a' : this.pitchCalibrationProfile ? '#86efac' : '#94a3b8');
 
         tuner.stringToggles.forEach((option) => {
           const active = option.value === this.tunerTargetString;
-          option.background.setFillStyle(active ? 0x2563eb : 0x1a2a53, active ? 0.92 : 0.68);
-          option.background.setStrokeStyle(2, active ? 0x93c5fd : 0x334155, active ? 0.75 : 0.45);
-          option.label.setColor(active ? '#ffffff' : '#cbd5e1');
+          const tuned = this.tunerTunedStrings.has(option.value);
+          if (tuned) {
+            option.background.setFillStyle(active ? 0x15803d : 0x166534, active ? 0.94 : 0.82);
+            option.background.setStrokeStyle(2, active ? 0xbbf7d0 : 0x86efac, active ? 0.9 : 0.78);
+            option.label.setColor('#ecfdf5');
+          } else {
+            option.background.setFillStyle(active ? 0x2563eb : 0x1a2a53, active ? 0.92 : 0.68);
+            option.background.setStrokeStyle(2, active ? 0x93c5fd : 0x334155, active ? 0.75 : 0.45);
+            option.label.setColor(active ? '#ffffff' : '#cbd5e1');
+          }
+          option.background.setAlpha(tunerBusy ? 0.65 : 1);
+          option.label.setAlpha(tunerBusy ? 0.65 : 1);
         });
       }
     };
+
+    this.refreshSongSelectUi = refreshSelections;
 
     const setImportOverlayProgress = (stage: string, progress: number): void => {
       this.setSongImportOverlayProgress(importOverlay, stage, progress);
@@ -749,6 +815,7 @@ export class SongSelectScene extends Phaser.Scene {
     };
 
     const closeTuner = (): void => {
+      if (this.tunerCalibrating) return;
       this.tunerOpen = false;
       this.tunerPanel?.container.setVisible(false);
       void this.stopTuner(false).then(() => refreshSelections());
@@ -918,22 +985,48 @@ export class SongSelectScene extends Phaser.Scene {
     difficultyDropdown.trigger.on('pointerdown', cycleDifficulty);
     difficultyDropdown.label.on('pointerdown', cycleDifficulty);
     const toggleTunerState = (): void => {
+      if (this.tunerCalibrating) return;
       if (this.tunerActive) {
         void this.stopTuner(true).then(() => refreshSelections());
       } else {
         void this.startTuner().then(() => refreshSelections());
       }
     };
+    const calibrateTuner = (): void => {
+      if (this.tunerCalibrating) return;
+      void this.runTunerCalibration()
+        .then(() => refreshSelections())
+        .catch(() => refreshSelections());
+      refreshSelections();
+    };
+    const resetTunerCalibration = (): void => {
+      if (this.tunerCalibrating) return;
+      if (!this.pitchCalibrationProfile) return;
+      clearPitchCalibrationProfile();
+      this.pitchCalibrationProfile = null;
+      this.tunerPanel?.detectedLabel.setText('Detected: calibration reset');
+      this.setTunerNeedleFromCents(null);
+      if (this.tunerActive) {
+        void this.stopTuner(false).then(() => refreshSelections());
+      }
+      refreshSelections();
+    };
     this.tunerPanel?.startButton.on('pointerdown', toggleTunerState);
     this.tunerPanel?.startLabel.on('pointerdown', toggleTunerState);
+    this.tunerPanel?.calibrateButton.on('pointerdown', calibrateTuner);
+    this.tunerPanel?.calibrateLabel.on('pointerdown', calibrateTuner);
+    this.tunerPanel?.resetCalibrationButton.on('pointerdown', resetTunerCalibration);
+    this.tunerPanel?.resetCalibrationLabel.on('pointerdown', resetTunerCalibration);
     this.tunerPanel?.closeButton.on('pointerdown', closeTuner);
     this.tunerPanel?.closeLabel.on('pointerdown', closeTuner);
     this.tunerPanel?.backdrop.on('pointerdown', closeTuner);
     this.tunerPanel?.panel.on('pointerdown', () => undefined);
     this.tunerPanel?.stringToggles.forEach((option) => {
       const selectTunerString = (): void => {
+        if (this.tunerCalibrating) return;
         this.tunerTargetString = option.value;
         this.tunerPitchStabilizer.reset();
+        this.tunerInTuneStreakStartSeconds = null;
         if (this.tunerActive) {
           this.tunerPanel?.detectedLabel.setText('Detected: listening...');
           this.setTunerNeedleFromCents(null);
@@ -1163,6 +1256,7 @@ export class SongSelectScene extends Phaser.Scene {
       this.coverLoadGeneration += 1;
       this.catalogLoadGeneration += 1;
       this.reloadSongsTask = undefined;
+      this.refreshSongSelectUi = undefined;
       this.tunerOpen = false;
       this.tunerPanel = undefined;
       this.quitConfirmOverlay?.container.destroy(true);
@@ -1516,11 +1610,19 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const calibrationStatus = this.add
+      .text(panelX, panelY + panelHeight * 0.3, 'Calibration inactive', {
+        color: '#94a3b8',
+        fontFamily: 'Montserrat, sans-serif',
+        fontSize: `${Math.max(11, labelSize - 4)}px`
+      })
+      .setOrigin(0.5);
+
     const startButton = new RoundedBox(
       this,
-      panelX - panelWidth * 0.16,
+      panelX - panelWidth * 0.29,
       panelY + panelHeight * 0.38,
-      Math.min(170, panelWidth * 0.34),
+      Math.min(150, panelWidth * 0.26),
       40,
       0x2563eb,
       1
@@ -1537,12 +1639,54 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
+    const calibrateButton = new RoundedBox(
+      this,
+      panelX,
+      panelY + panelHeight * 0.38,
+      Math.min(160, panelWidth * 0.3),
+      40,
+      0x0f766e,
+      1
+    )
+      .setStrokeStyle(2, 0x5eead4, 0.82)
+      .setInteractive({ useHandCursor: true });
+    const calibrateLabel = this.add
+      .text(calibrateButton.x, calibrateButton.y, 'Calibrate', {
+        color: '#ecfeff',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, labelSize - 3)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    const resetCalibrationButton = new RoundedBox(
+      this,
+      panelX + panelWidth * 0.28,
+      panelY + panelHeight * 0.38,
+      Math.min(150, panelWidth * 0.26),
+      40,
+      0x7f1d1d,
+      1
+    )
+      .setStrokeStyle(2, 0xfca5a5, 0.8)
+      .setInteractive({ useHandCursor: true });
+    const resetCalibrationLabel = this.add
+      .text(resetCalibrationButton.x, resetCalibrationButton.y, 'Reset Cal', {
+        color: '#ffe4e6',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, labelSize - 3)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
     const closeButton = new RoundedBox(
       this,
-      panelX + panelWidth * 0.2,
-      panelY + panelHeight * 0.38,
-      Math.min(140, panelWidth * 0.28),
-      40,
+      panelX + panelWidth * 0.37,
+      panelY - panelHeight * 0.4,
+      86,
+      32,
       0x1e293b,
       1
     )
@@ -1566,8 +1710,13 @@ export class SongSelectScene extends Phaser.Scene {
       meterCenter,
       meterNeedle,
       detectedLabel,
+      calibrationStatus,
       startButton,
       startLabel,
+      calibrateButton,
+      calibrateLabel,
+      resetCalibrationButton,
+      resetCalibrationLabel,
       closeButton,
       closeLabel,
       ...stringToggles.flatMap((toggle) => [toggle.background, toggle.label])
@@ -1580,8 +1729,13 @@ export class SongSelectScene extends Phaser.Scene {
       panel,
       targetLabel,
       detectedLabel,
+      calibrationStatus,
       startButton,
       startLabel,
+      calibrateButton,
+      calibrateLabel,
+      resetCalibrationButton,
+      resetCalibrationLabel,
       closeButton,
       closeLabel,
       meterNeedle,
@@ -1995,12 +2149,230 @@ export class SongSelectScene extends Phaser.Scene {
     needle.x = this.tunerPanel.meterCenterX + (clamped / 50) * this.tunerPanel.meterHalfWidth;
 
     const abs = Math.abs(clamped);
-    const color = abs <= 5 ? 0x22c55e : abs <= 15 ? 0xf59e0b : 0xef4444;
+    const color = abs <= TUNER_IN_TUNE_CENTS ? 0x22c55e : abs <= 15 ? 0xf59e0b : 0xef4444;
     needle.setFillStyle(color, 1);
   }
 
+  private resolveNextTunerString(current: number): number | null {
+    const currentIndex = TUNER_SEQUENCE.indexOf(current);
+    if (currentIndex >= 0) {
+      for (let i = currentIndex + 1; i < TUNER_SEQUENCE.length; i += 1) {
+        const candidate = TUNER_SEQUENCE[i];
+        if (!this.tunerTunedStrings.has(candidate)) return candidate;
+      }
+    }
+
+    for (const candidate of TUNER_SEQUENCE) {
+      if (!this.tunerTunedStrings.has(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  private async runTunerCalibration(): Promise<void> {
+    if (this.tunerCalibrating) return;
+    const panel = this.tunerPanel;
+    if (!panel) return;
+
+    this.tunerCalibrating = true;
+    const wasTunerActive = this.tunerActive;
+    let calibrationCtx: AudioContext | undefined;
+    let calibrationMicStream: MediaStream | undefined;
+    let calibrationDetector: PitchDetectorService | undefined;
+    let offPitch: (() => void) | undefined;
+
+    try {
+      panel.detectedLabel.setText('Calibration: preparing...');
+      panel.calibrationStatus.setText('Requesting microphone and preparing reference tones...');
+      this.setTunerNeedleFromCents(null);
+      await this.stopTuner(false);
+
+      const ctx = new AudioContext();
+      calibrationCtx = ctx;
+      if (ctx.state !== 'running') {
+        await ctx.resume();
+      }
+
+      const micSource = await createMicNode(ctx, {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      });
+      calibrationMicStream = micSource.mediaStream;
+
+      const detector = new PitchDetectorService(ctx, {
+        roundMidi: false,
+        smoothingAlpha: 0
+      });
+      await detector.init();
+      calibrationDetector = detector;
+
+      let collecting = false;
+      let currentSamples: number[] = [];
+      offPitch = detector.onPitch((frame) => {
+        if (!collecting) return;
+        if (frame.midi_estimate === null || frame.confidence < 0.55) return;
+        currentSamples.push(frame.midi_estimate);
+      });
+      detector.start(micSource);
+
+      const measurements: PitchCalibrationMeasurement[] = [];
+      const points = DEFAULT_PITCH_CALIBRATION_REFERENCE_MIDI;
+
+      for (let i = 0; i < points.length; i += 1) {
+        const midi = points[i];
+        panel.detectedLabel.setText(`Calibration: ${midiToNoteName(midi)} (${i + 1}/${points.length})`);
+        panel.calibrationStatus.setText('Listening to reference tone...');
+        this.setTunerNeedleFromCents(null);
+
+        currentSamples = [];
+        collecting = true;
+        await waitMs(120);
+        await this.playCalibrationReferenceTone(ctx, midi, 1150);
+        collecting = false;
+
+        const measurement = estimatePitchCalibrationMeasurement(currentSamples, midi);
+        if (measurement) {
+          measurements.push(measurement);
+          panel.calibrationStatus.setText(
+            `${midiToNoteName(midi)}: offset ${measurement.offsetCents >= 0 ? '+' : ''}${Math.round(measurement.offsetCents)}c`
+          );
+        } else {
+          panel.calibrationStatus.setText(`${midiToNoteName(midi)}: sample rejected`);
+        }
+        await waitMs(160);
+      }
+
+      const profile = buildPitchCalibrationProfile(measurements);
+      if (!profile || profile.points.length < 4) {
+        throw new Error('Calibration quality too low. Keep device still and retry.');
+      }
+
+      this.pitchCalibrationProfile = profile;
+      savePitchCalibrationProfile(profile);
+      panel.detectedLabel.setText(`Detected: calibration saved (${profile.points.length} points)`);
+      panel.calibrationStatus.setText('Calibration active.');
+      this.showCalibrationSummaryPopup(profile);
+    } catch (error) {
+      console.error('Tuner calibration failed', error);
+      panel.detectedLabel.setText('Detected: calibration failed');
+      panel.calibrationStatus.setText(truncateLabel(toErrorMessage(error), 64));
+    } finally {
+      offPitch?.();
+      calibrationDetector?.stop();
+      releaseMicStream(calibrationMicStream);
+      if (calibrationCtx && calibrationCtx.state !== 'closed') {
+        try {
+          await calibrationCtx.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+      this.tunerCalibrating = false;
+      if (wasTunerActive && this.scene.isActive()) {
+        await this.startTuner();
+      }
+    }
+  }
+
+  private showCalibrationSummaryPopup(profile: PitchCalibrationProfile): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const panelWidth = Math.min(700, width * 0.9);
+    const panelHeight = Math.min(520, height * 0.84);
+    const panelX = width / 2;
+    const panelY = height / 2;
+
+    const createdAtText = new Date(profile.createdAtMs).toLocaleString();
+    const avgAbsOffset =
+      profile.points.reduce((sum, point) => sum + Math.abs(point.offsetCents), 0) / Math.max(1, profile.points.length);
+    const avgScatter =
+      profile.points.reduce((sum, point) => sum + point.scatterCents, 0) / Math.max(1, profile.points.length);
+    const rows = profile.points.map((point) => {
+      const note = midiToNoteName(point.midi).padEnd(3, ' ');
+      const offset = `${point.offsetCents >= 0 ? '+' : ''}${Math.round(point.offsetCents)}c`.padStart(5, ' ');
+      const samples = `${point.sampleCount}`.padStart(2, ' ');
+      const scatter = `${Math.round(point.scatterCents)}c`.padStart(4, ' ');
+      return `${note}  ${offset}  samples:${samples}  scatter:${scatter}`;
+    });
+    const bodyText = [
+      `Created: ${createdAtText}`,
+      `Points: ${profile.points.length}`,
+      `Avg |offset|: ${avgAbsOffset.toFixed(1)}c`,
+      `Avg scatter: ${avgScatter.toFixed(1)}c`,
+      '',
+      ...rows,
+      '',
+      'Tap anywhere to close'
+    ].join('\n');
+
+    const backdrop = new RoundedBox(this, panelX, panelY, width, height, 0x020617, 0.72, 0).setDepth(1410);
+    const panel = new RoundedBox(this, panelX, panelY, panelWidth, panelHeight, 0x101c3c, 0.98)
+      .setStrokeStyle(2, 0x3b82f6, 0.55)
+      .setDepth(1411);
+    const title = this.add
+      .text(panelX, panelY - panelHeight * 0.42, 'Calibration Summary', {
+        color: '#e2e8f0',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(20, Math.floor(width * 0.028))}px`
+      })
+      .setOrigin(0.5)
+      .setDepth(1412);
+    const body = this.add
+      .text(panelX, panelY - panelHeight * 0.34, bodyText, {
+        color: '#cbd5e1',
+        fontFamily: 'monospace',
+        fontSize: `${Math.max(12, Math.floor(width * 0.014))}px`,
+        align: 'left',
+        lineSpacing: 4
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(1412);
+
+    const close = (): void => {
+      this.input.off('pointerdown', onAnyPointerDown);
+      backdrop.destroy();
+      panel.destroy();
+      title.destroy();
+      body.destroy();
+    };
+
+    const onAnyPointerDown = (): void => {
+      close();
+    };
+    this.input.on('pointerdown', onAnyPointerDown);
+  }
+
+  private async playCalibrationReferenceTone(ctx: AudioContext, midi: number, durationMs: number): Promise<void> {
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = midiToHz(midi);
+    gain.gain.value = 0;
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+
+    const startAt = ctx.currentTime + 0.02;
+    const durationSeconds = Math.max(0.2, durationMs / 1000);
+    const peak = 0.048;
+    const attackEnd = startAt + 0.05;
+    const releaseStart = startAt + Math.max(0.08, durationSeconds - 0.08);
+    const stopAt = startAt + durationSeconds;
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(peak, attackEnd);
+    gain.gain.setValueAtTime(peak, releaseStart);
+    gain.gain.linearRampToValueAtTime(0, stopAt);
+
+    oscillator.start(startAt);
+    oscillator.stop(stopAt + 0.02);
+    await waitMs(Math.round(durationSeconds * 1000 + 110));
+    oscillator.disconnect();
+    gain.disconnect();
+  }
+
   private async startTuner(): Promise<void> {
-    if (this.tunerActive) return;
+    if (this.tunerActive || this.tunerCalibrating) return;
     const panel = this.tunerPanel;
     if (!panel) return;
 
@@ -2015,20 +2387,56 @@ export class SongSelectScene extends Phaser.Scene {
 
       const micSource = await createMicNode(ctx);
       this.tunerMicStream = micSource.mediaStream;
-      const detector = new PitchDetectorService(ctx, { roundMidi: false });
+      const detector = new PitchDetectorService(ctx, {
+        roundMidi: false,
+        calibrationProfile: this.pitchCalibrationProfile
+      });
       await detector.init();
       this.tunerDetector = detector;
+      this.tunerTunedStrings.clear();
+      this.tunerInTuneStreakStartSeconds = null;
       this.tunerPitchStabilizer.reset();
       this.tunerOffPitch = detector.onPitch((frame) => {
         const targetMidi = STANDARD_TUNING[this.tunerTargetString];
         const stabilized = this.tunerPitchStabilizer.update(frame, targetMidi);
         if (!stabilized) {
+          this.tunerInTuneStreakStartSeconds = null;
           panel.detectedLabel.setText('Detected: --');
           this.setTunerNeedleFromCents(null);
           return;
         }
 
         const cents = stabilized.cents;
+        const inTuneZone = Math.abs(cents) <= TUNER_IN_TUNE_CENTS;
+        if (inTuneZone) {
+          if (this.tunerInTuneStreakStartSeconds === null) {
+            this.tunerInTuneStreakStartSeconds = frame.t_seconds;
+          }
+          const heldInTuneSeconds = Math.max(0, frame.t_seconds - this.tunerInTuneStreakStartSeconds);
+          if (
+            heldInTuneSeconds >= TUNER_AUTO_ADVANCE_HOLD_SECONDS &&
+            !this.tunerTunedStrings.has(this.tunerTargetString)
+          ) {
+            const tunedString = this.tunerTargetString;
+            this.tunerTunedStrings.add(tunedString);
+            this.tunerInTuneStreakStartSeconds = null;
+            const nextString = this.resolveNextTunerString(tunedString);
+            if (nextString !== null) {
+              this.tunerTargetString = nextString;
+              this.tunerPitchStabilizer.reset();
+              panel.detectedLabel.setText(`Detected: String ${tunedString} tuned OK -> String ${nextString}`);
+              this.setTunerNeedleFromCents(null);
+            } else {
+              panel.detectedLabel.setText('Detected: all strings tuned');
+              this.setTunerNeedleFromCents(0);
+            }
+            this.refreshSongSelectUi?.();
+            return;
+          }
+        } else {
+          this.tunerInTuneStreakStartSeconds = null;
+        }
+
         const sign = cents >= 0 ? '+' : '';
         const detected = midiToNoteName(stabilized.detectedMidi);
         panel.detectedLabel.setText(`Detected: ${detected} (${sign}${Math.round(cents)}c)`);
@@ -2053,6 +2461,7 @@ export class SongSelectScene extends Phaser.Scene {
   private async stopTuner(clearDetectedText: boolean): Promise<void> {
     this.tunerDetector?.stop();
     this.tunerDetector = undefined;
+    this.tunerInTuneStreakStartSeconds = null;
     this.tunerPitchStabilizer.reset();
     this.tunerOffPitch?.();
     this.tunerOffPitch = undefined;
@@ -3020,6 +3429,10 @@ function midiToNoteName(midi: number): string {
   const note = names[((midi % 12) + 12) % 12];
   const octave = Math.floor(midi / 12) - 1;
   return `${note}${octave}`;
+}
+
+function midiToHz(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 function nextDifficulty(difficulty: Difficulty): Difficulty {

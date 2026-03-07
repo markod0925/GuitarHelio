@@ -779,6 +779,19 @@ The tuner display (detected note + cents + needle) MUST apply temporal stabiliza
 * note-label hysteresis (do not flip note name on single-frame boundary crossings)
 * short dropout hold before clearing the detected value
 
+The tuner MUST also provide a microphone calibration workflow based on multi-point reference tones:
+
+* calibration MUST sample multiple known notes (at least across guitar range E2→E4)
+* each point MUST estimate cents offset using robust statistics (outlier-resistant)
+* the final correction MUST be represented as a piecewise-linear cents curve over MIDI pitch
+* calibration profile MUST persist locally and be reusable in future sessions
+* the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene), not only tuner display
+* when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
+* this summary popup MUST close on any click/tap anywhere on screen
+* while tuner is active, if current target string stays inside in-tune green band (`±5c`) for at least `2` continuous seconds:
+  - current string toggle MUST be marked as tuned (green)
+  - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
+
 ---
 
 ## 11.12 Global visual theme
@@ -1005,16 +1018,16 @@ Speed control requirements:
 * strings: [6,5,4,3]
 * frets: 0–5
 * fingers: [1,2,3]
-* avg_seconds_per_note: 1.2
-* pitch_tolerance: ±2
+* avg_seconds_per_note: 0.5 (1 note every 0.5s)
+* pitch_tolerance: ±1
 
 ## Hard
 
 * strings: [1–6]
 * frets: 0–12
 * fingers: [1–4]
-* avg_seconds_per_note: 0.6
-* pitch_tolerance: ±1
+* avg_seconds_per_note: 0.0666666667 (3 notes every 0.2s)
+* pitch_tolerance: ±0.5
 
 ---
 

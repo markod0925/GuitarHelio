@@ -1,4 +1,6 @@
 import type { PitchFrame } from '../types/models';
+import type { PitchCalibrationProfile } from './pitchCalibration';
+import { applyPitchCalibration } from './pitchCalibration';
 import pitchWorkletUrl from './pitchWorklet.js?url';
 
 export type PitchListener = (frame: PitchFrame) => void;
@@ -6,6 +8,7 @@ export type PitchListener = (frame: PitchFrame) => void;
 type PitchDetectorOptions = {
   roundMidi?: boolean;
   smoothingAlpha?: number;
+  calibrationProfile?: PitchCalibrationProfile | null;
 };
 
 export class PitchDetectorService {
@@ -19,11 +22,13 @@ export class PitchDetectorService {
   private initialized = false;
   private readonly roundMidi: boolean;
   private readonly smoothingAlpha: number;
+  private readonly calibrationProfile: PitchCalibrationProfile | null;
   private smoothedMidiEstimate: number | null = null;
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
     this.smoothingAlpha = clamp01(options.smoothingAlpha ?? 0);
+    this.calibrationProfile = options.calibrationProfile ?? null;
   }
 
   async init(): Promise<void> {
@@ -63,10 +68,12 @@ export class PitchDetectorService {
           const payload = event.data;
           if (!payload) return;
           const midi = this.normalizeMidiEstimate(payload.midi_estimate);
+          const correctedMidi =
+            midi === null || !Number.isFinite(midi) ? null : applyPitchCalibration(midi, this.calibrationProfile);
           const frame: PitchFrame = {
             t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
-            midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
-            confidence: midi === null ? 0 : clamp01(payload.confidence)
+            midi_estimate: correctedMidi === null ? null : this.roundMidi ? Math.round(correctedMidi) : correctedMidi,
+            confidence: correctedMidi === null ? 0 : clamp01(payload.confidence)
           };
           for (const listener of this.listeners) listener(frame);
         };
@@ -118,10 +125,12 @@ export class PitchDetectorService {
       this.analyser.getFloatTimeDomainData(this.analyserBuffer as any);
       const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate);
       const midi = this.normalizeMidiEstimate(estimation.midiEstimate);
+      const correctedMidi =
+        midi === null || !Number.isFinite(midi) ? null : applyPitchCalibration(midi, this.calibrationProfile);
       const frame: PitchFrame = {
         t_seconds: this.ctx.currentTime,
-        midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
-        confidence: midi === null ? 0 : estimation.confidence
+        midi_estimate: correctedMidi === null ? null : this.roundMidi ? Math.round(correctedMidi) : correctedMidi,
+        confidence: correctedMidi === null ? 0 : estimation.confidence
       };
       for (const listener of this.listeners) listener(frame);
       this.scheduleAnalyserFrame();
