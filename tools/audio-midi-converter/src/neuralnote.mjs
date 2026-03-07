@@ -31,7 +31,7 @@ const BALANCED_PRESET = {
 const NEURALNOTE_CLI_PRESET_DEFAULTS = {
   noteSensitivity: 0.671,
   splitSensitivity: 0.825,
-  minNoteDurationMs: 8,
+  minNoteDurationMs: 24,
   melodiaTrick: false,
   minPitchHz: 1,
   maxPitchHz: 3000,

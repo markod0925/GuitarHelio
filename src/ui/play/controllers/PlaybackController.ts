@@ -10,6 +10,7 @@ import {
   resolveSongSecondsForRuntime,
   sanitizeSongSeconds
 } from '../../playbackResumeState';
+import { DEFAULT_GATING_TIMEOUT_SECONDS } from '../../../app/config';
 import {
   getSongSecondsFromClock as getSongSecondsFromClockValue,
   pausePlaybackClock as pausePlaybackClockState,
@@ -148,11 +149,14 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   } catch (error) {
     console.error('Microphone setup failed', error);
     if (this.profile.gating_timeout_seconds === undefined) {
-      this.fallbackTimeoutSeconds = 2.5;
+      this.fallbackTimeoutSeconds = DEFAULT_GATING_TIMEOUT_SECONDS;
     }
-    this.feedbackText = this.fallbackTimeoutSeconds
-      ? 'Microphone unavailable. Auto-miss timeout active.'
-      : 'Microphone unavailable.';
+    const resolvedTimeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
+    const reason = describeMicFailure(error);
+    const baseMessage = reason ? `Microphone unavailable (${reason}).` : 'Microphone unavailable.';
+    this.feedbackText = resolvedTimeoutSeconds !== undefined
+      ? `${baseMessage} Auto-miss timeout active.`
+      : baseMessage;
     this.feedbackUntilMs = Number.POSITIVE_INFINITY;
   }
 
@@ -528,4 +532,49 @@ function getCurrentPlaybackBpmImpl(this: PlaySceneContext, songSeconds: number |
 
   if (!Number.isFinite(selected.usPerQuarter) || selected.usPerQuarter <= 0) return undefined;
   return 60_000_000 / selected.usPerQuarter;
+}
+
+function describeMicFailure(error: unknown): string | null {
+  const name = extractErrorName(error);
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'permission denied';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'no microphone device found';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'microphone is already in use by another app';
+    case 'OverconstrainedError':
+    case 'ConstraintNotSatisfiedError':
+      return 'unsupported audio constraints';
+    case 'SecurityError':
+      return 'microphone blocked by runtime security policy';
+    case 'AbortError':
+      return 'microphone start aborted by the system';
+    default: {
+      const message = extractErrorMessage(error);
+      if (message) return message;
+      return name ? name : null;
+    }
+  }
+}
+
+function extractErrorName(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  if (!('name' in error)) return null;
+  const rawName = (error as { name?: unknown }).name;
+  if (typeof rawName !== 'string') return null;
+  const normalized = rawName.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  if (!('message' in error)) return null;
+  const rawMessage = (error as { message?: unknown }).message;
+  if (typeof rawMessage !== 'string') return null;
+  const normalized = rawMessage.replace(/\s+/g, ' ').trim();
+  return normalized.length > 0 ? normalized : null;
 }

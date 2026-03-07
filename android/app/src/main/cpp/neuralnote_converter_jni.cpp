@@ -86,6 +86,77 @@ bool writeTranscriptionAndTempoJson(const std::string& outputPath,
 
     return true;
 }
+
+bool writeCoreEventsJsonLocal(const std::string& outputPath,
+                              const std::vector<CoreNoteEvent>& events,
+                              std::string& outError)
+{
+    std::ofstream out(outputPath, std::ios::binary);
+    if (!out.is_open()) {
+        outError = "Could not open output JSON path: " + outputPath;
+        return false;
+    }
+
+    out << "{\n";
+    out << "  \"events\": [\n";
+
+    for (size_t i = 0; i < events.size(); ++i) {
+        const auto& event = events[i];
+        out << "    {\"startTimeSeconds\":" << std::fixed << std::setprecision(9) << event.startTimeSeconds
+            << ",\"durationSeconds\":" << std::fixed << std::setprecision(9) << event.durationSeconds
+            << ",\"pitchMidi\":" << event.pitchMidi
+            << ",\"amplitude\":" << std::fixed << std::setprecision(9) << event.amplitude
+            << "}";
+        if (i + 1 < events.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+
+    out << "  ]\n";
+    out << "}\n";
+
+    if (!out.good()) {
+        outError = "Failed writing NeuralNote events JSON output";
+        return false;
+    }
+    return true;
+}
+
+bool writeTempoEstimateJson(const std::string& outputPath,
+                            const TempoEstimateResult& tempo,
+                            std::string& outError)
+{
+    std::ofstream out(outputPath, std::ios::binary);
+    if (!out.is_open()) {
+        outError = "Could not open output JSON path: " + outputPath;
+        return false;
+    }
+
+    out << "{\n";
+    out << "  \"tempoBpm\": " << std::fixed << std::setprecision(6) << tempo.bpm << ",\n";
+    out << "  \"tempoMap\": [\n";
+
+    for (size_t i = 0; i < tempo.tempoMap.size(); ++i) {
+        const auto& point = tempo.tempoMap[i];
+        out << "    {\"timeSeconds\":" << std::fixed << std::setprecision(6) << point.timeSeconds
+            << ",\"bpm\":" << std::fixed << std::setprecision(6) << point.bpm
+            << "}";
+        if (i + 1 < tempo.tempoMap.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+
+    out << "  ]\n";
+    out << "}\n";
+
+    if (!out.good()) {
+        outError = "Failed writing Tempo-CNN JSON output";
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -141,6 +212,84 @@ Java_com_guitarhelio_app_converter_NeuralNoteConverterPlugin_runTranscription(
             return makeJavaString(env, ioError);
         }
 
+        return nullptr;
+    } catch (const std::exception& e) {
+        return makeJavaString(env, e.what());
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_guitarhelio_app_converter_NeuralNoteConverterPlugin_runNeuralNoteEvents(
+    JNIEnv* env,
+    jclass,
+    jstring pcmPath,
+    jstring modelDirPath,
+    jstring outputJsonPath)
+{
+    try {
+        const std::string pcm = fromJString(env, pcmPath);
+        const std::string modelDir = fromJString(env, modelDirPath);
+        const std::string outputPath = fromJString(env, outputJsonPath);
+
+        if (pcm.empty() || modelDir.empty() || outputPath.empty()) {
+            return makeJavaString(env, "Invalid JNI parameters for NeuralNote transcription.");
+        }
+
+        std::vector<float> nnSamples;
+        std::string ioError;
+        if (!readFloat32LeFile(pcm, nnSamples, ioError)) {
+            return makeJavaString(env, ioError);
+        }
+        if (nnSamples.empty()) {
+            return makeJavaString(env, "Input NeuralNote audio is empty");
+        }
+
+        NeuralNoteTranscriber transcriber(modelDir);
+        auto nnEvents = transcriber.transcribe(nnSamples);
+        auto coreEvents = toCoreEvents(nnEvents);
+        if (!writeCoreEventsJsonLocal(outputPath, coreEvents, ioError)) {
+            return makeJavaString(env, ioError);
+        }
+        return nullptr;
+    } catch (const std::exception& e) {
+        return makeJavaString(env, e.what());
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_guitarhelio_app_converter_NeuralNoteConverterPlugin_runTempoEstimation(
+    JNIEnv* env,
+    jclass,
+    jstring tempoPcmPath,
+    jstring tempoModelOnnxPath,
+    jstring outputJsonPath)
+{
+    try {
+        const std::string tempoPcm = fromJString(env, tempoPcmPath);
+        const std::string tempoModelPath = fromJString(env, tempoModelOnnxPath);
+        const std::string outputPath = fromJString(env, outputJsonPath);
+
+        if (tempoPcm.empty() || tempoModelPath.empty() || outputPath.empty()) {
+            return makeJavaString(env, "Invalid JNI parameters for tempo estimation.");
+        }
+
+        std::vector<float> tempoSamples;
+        std::string ioError;
+        if (!readFloat32LeFile(tempoPcm, tempoSamples, ioError)) {
+            return makeJavaString(env, ioError);
+        }
+        if (tempoSamples.empty()) {
+            return makeJavaString(env, "Input Tempo-CNN audio is empty");
+        }
+
+        TempoCnn tempoEstimator(tempoModelPath);
+        TempoEstimateOptions tempoOptions;
+        tempoOptions.interpolate = true;
+        tempoOptions.localTempo = false;
+        auto tempoEstimate = tempoEstimator.estimate(tempoSamples, tempoOptions);
+        if (!writeTempoEstimateJson(outputPath, tempoEstimate, ioError)) {
+            return makeJavaString(env, ioError);
+        }
         return nullptr;
     } catch (const std::exception& e) {
         return makeJavaString(env, e.what());

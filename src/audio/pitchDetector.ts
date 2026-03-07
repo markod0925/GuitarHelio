@@ -25,8 +25,14 @@ export class PitchDetectorService {
   async init(): Promise<void> {
     this.workletReady = false;
     if (typeof AudioWorkletNode !== 'undefined' && this.ctx.audioWorklet) {
-      await this.ctx.audioWorklet.addModule(pitchWorkletUrl);
-      this.workletReady = true;
+      try {
+        await this.ctx.audioWorklet.addModule(pitchWorkletUrl);
+        this.workletReady = true;
+      } catch (error) {
+        // Some Android WebView builds fail to load worklet modules.
+        // Continue with the analyser fallback instead of failing mic setup.
+        console.warn('Pitch worklet unavailable, using analyser fallback.', error);
+      }
     }
     this.initialized = true;
   }
@@ -41,27 +47,32 @@ export class PitchDetectorService {
     this.sink = sink;
 
     if (this.workletReady) {
-      const workletNode = new AudioWorkletNode(this.ctx, 'gh-pitch-processor', {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        channelCount: 1,
-        outputChannelCount: [1]
-      });
-      workletNode.port.onmessage = (event: MessageEvent<PitchFrame>) => {
-        const payload = event.data;
-        if (!payload) return;
-        const midi = payload.midi_estimate;
-        const frame: PitchFrame = {
-          t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
-          midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
-          confidence: midi === null ? 0 : clamp01(payload.confidence)
+      try {
+        const workletNode = new AudioWorkletNode(this.ctx, 'gh-pitch-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: 1,
+          outputChannelCount: [1]
+        });
+        workletNode.port.onmessage = (event: MessageEvent<PitchFrame>) => {
+          const payload = event.data;
+          if (!payload) return;
+          const midi = payload.midi_estimate;
+          const frame: PitchFrame = {
+            t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
+            midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
+            confidence: midi === null ? 0 : clamp01(payload.confidence)
+          };
+          for (const listener of this.listeners) listener(frame);
         };
-        for (const listener of this.listeners) listener(frame);
-      };
-      source.connect(workletNode);
-      workletNode.connect(sink);
-      this.workletNode = workletNode;
-      return;
+        source.connect(workletNode);
+        workletNode.connect(sink);
+        this.workletNode = workletNode;
+        return;
+      } catch (error) {
+        console.warn('Pitch worklet node failed, using analyser fallback.', error);
+        this.workletReady = false;
+      }
     }
 
     // Fallback path for environments without AudioWorklet support.

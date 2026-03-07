@@ -70,6 +70,7 @@ Like Yousician:
 - Web application (desktop first)
 - Static deployable
 - Real-time audio
+- Electron Windows desktop packaging (compiled `.exe`) is supported
 - Capacitor Android runtime MUST be locked to landscape orientation (`sensorLandscape`)
 
 ## 2.2 Required stack
@@ -192,6 +193,8 @@ type DifficultyProfile = {
   gating_timeout_seconds?: number
 }
 ```
+
+If `gating_timeout_seconds` is omitted, runtime MUST use a default timeout of `2.5` seconds.
 
 ---
 
@@ -424,7 +427,12 @@ late_hit_window_seconds = 0.5
 
 In this case, target index advances without pausing transport.
 
-Optional timeout:
+Timeout:
+
+`WaitingForHit` MUST always use a timeout. Resolve it as:
+
+* `profile.gating_timeout_seconds` when provided
+* otherwise default `2.5s`
 
 If exceeded:
 
@@ -627,7 +635,12 @@ All pause menu actions MUST be clickable both on button backgrounds and on their
 
 While this menu is open, runtime progression and playback MUST remain paused.
 
-On `SongSelectScene` in Capacitor Android runtime, smartphone `Back` MUST exit/close the app directly (unless a local overlay such as settings/tuner is open, in which case it closes that overlay first).
+On `SongSelectScene`, pressing `Esc` (desktop/server/Windows) or smartphone `Back` (Capacitor Android) MUST open a quit confirmation popup with exactly two actions:
+
+* `Cancel` → close the popup and keep the app running
+* `Quit` → close the application when runtime supports it (Capacitor native app and Electron desktop app)
+
+On web/server browser runtime, if window closing is not supported by the browser, `Quit` MUST fall back to closing only the popup.
 
 ---
 
@@ -724,6 +737,12 @@ On Capacitor Android runtime, system back navigation (hardware/gesture back) dur
 * if pause menu is closed, open `Pause Menu`
 * if pause menu is open, close it
 * while gameplay is active, back navigation MUST NOT background/exit the app directly
+
+On Capacitor Android runtime, app lifecycle transitions MUST be battery-safe:
+
+* when app goes to background during `PlayScene`, gameplay MUST auto-pause and runtime audio processing MUST be suspended
+* when app returns to foreground, gameplay MUST remain paused until explicit user resume
+* when app goes to background while tuner is active in `SongSelectScene`, tuner microphone capture MUST stop
 
 In debug sessions, gameplay MUST also provide a central debug overlay (toggle key: `F3`) showing at least:
 
@@ -857,7 +876,10 @@ When a source file is selected:
 * for MP3/OGG input: save the original uploaded audio as song backing track in that folder
 * for MP3/OGG input: convert the uploaded audio into MIDI (`song.mid`) using the local converter
 * for MIDI input: save the uploaded MIDI as `song.mid` directly (no audio conversion)
-* show an import progress bar in start screen while the job is running
+* show the original import popup in start screen while the job is running (stage text, progress bar, percentage)
+* the import popup MUST close only on tap/click outside the import window (not on tap inside the window)
+* in native Android audio import, conversion progress MUST expose distinct stages for `Estimating tempo (Tempo-CNN ONNX)` and `Running NeuralNote transcription`
+* native Android conversion stages (`Tempo-CNN` / `NeuralNote`) MUST fail with an explicit timeout error if a single stage exceeds its configured timeout budget (derived from input duration and capped at 20 minutes)
 * for MP3/OGG input: inspect embedded metadata artwork and, when available, extract and save it as the song cover in the same folder
 * for MIDI input: no audio (`audio`) and no cover (`cover`) are required
 * append/update the song manifest with the new song entry (`id`, `name`, `folder`, `midi`, optional `audio`, optional `cover`)
@@ -866,12 +888,15 @@ When a source file is selected:
 Manifest/storage target by platform:
 
 * web dev/preview mode: `public/songs/manifest.json`
+* Electron Windows desktop runtime: `%APPDATA%/GuitarHelio/songs/manifest.json`
 * Capacitor native mode (Android standalone): `Directory.Data/songs/manifest.json`
 
 Implementation constraints for import paths:
 
 * web dev/preview import default MUST run through the C++/ONNX converter wrapper
+* Electron Windows desktop import default MUST run through the same server-side C++/ONNX converter wrapper used by web preview
 * Capacitor Android import default MUST run through the native C++/ONNX plugin bridge
+* Capacitor Android native converter builds (including debug variants) MUST compile NeuralNote/Tempo-CNN C++ code with optimized native flags (release-grade optimization, debug symbols allowed)
 * server/native import MUST estimate constant tempo via Tempo-CNN ONNX and inject MIDI tempo metadata using only `tempoBpm` (no local `tempoMap`) for MP3/OGG sources
 * debug converter labels `legacy` and `neuralnote` MUST remain accepted as aliases for the same backend
 * debug converter mode `ab` MUST be rejected explicitly (server HTTP `400`, native import error)
@@ -895,7 +920,7 @@ Debug/testing support:
 * `legacy` and `neuralnote` labels MUST execute the same C++/ONNX pipeline
 * selecting `ab` MUST fail immediately with an explicit message
 * default mode is `Auto`:
-  * `Server` on web dev/preview
+  * `Server` on web dev/preview and Electron Windows desktop runtime
   * `Native` on Capacitor native runtime
 
 ---
@@ -950,7 +975,7 @@ Speed control requirements:
 * frets: 0–3
 * fingers: [1]
 * avg_seconds_per_note: 2.0
-* pitch_tolerance: ±2
+* pitch_tolerance: ±3
 
 ## Medium
 
@@ -958,7 +983,7 @@ Speed control requirements:
 * frets: 0–5
 * fingers: [1,2,3]
 * avg_seconds_per_note: 1.2
-* pitch_tolerance: ±1
+* pitch_tolerance: ±2
 
 ## Hard
 
@@ -966,7 +991,7 @@ Speed control requirements:
 * frets: 0–12
 * fingers: [1–4]
 * avg_seconds_per_note: 0.6
-* pitch_tolerance: 0
+* pitch_tolerance: ±1
 
 ---
 
@@ -995,6 +1020,8 @@ The MVP is complete when:
 * scoring accumulates
 * song completes with results screen
 * project builds and deploys statically
+* Windows desktop package (`.exe`) builds successfully via Electron pipeline
+* GitHub Actions tag release pipeline (`v*`) publishes both Android debug APK and Windows desktop release artifacts in the same GitHub Release
 
 ---
 

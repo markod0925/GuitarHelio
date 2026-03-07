@@ -4,6 +4,7 @@ export const APPROACH_THRESHOLD_TICKS = 120;
 export const DEFAULT_HOLD_MS = 80;
 export const DEFAULT_MIN_CONFIDENCE = 0.7;
 export const TARGET_HIT_GRACE_SECONDS = 0.5;
+export const DEFAULT_GATING_TIMEOUT_SECONDS = 2.5;
 export const SCHEDULER_LOOKAHEAD_SECONDS = 0.15;
 export const SCHEDULER_UPDATE_MS = 25;
 export const PLAY_SCENE_NOTE_START_CUTOFF_SECONDS = 3;
@@ -24,7 +25,7 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
     allowed_frets: { min: 0, max: 3 },
     allowed_fingers: [1],
     avg_seconds_per_note: 2.0,
-    pitch_tolerance_semitones: 2,
+    pitch_tolerance_semitones: 3,
     max_simultaneous_notes: 1
   },
   Medium: {
@@ -32,7 +33,7 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
     allowed_frets: { min: 0, max: 5 },
     allowed_fingers: [1, 2, 3],
     avg_seconds_per_note: 1.2,
-    pitch_tolerance_semitones: 1,
+    pitch_tolerance_semitones: 2,
     max_simultaneous_notes: 1
   },
   Hard: {
@@ -40,7 +41,7 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
     allowed_frets: { min: 0, max: 12 },
     allowed_fingers: [1, 2, 3, 4],
     avg_seconds_per_note: 0.6,
-    pitch_tolerance_semitones: 0,
+    pitch_tolerance_semitones: 1,
     max_simultaneous_notes: 1
   }
 };

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import {
   DEFAULT_HOLD_MS,
-  DEFAULT_MIN_CONFIDENCE
+  DEFAULT_MIN_CONFIDENCE,
+  DEFAULT_GATING_TIMEOUT_SECONDS
 } from '../../../app/config';
 import { createInitialRuntimeState } from '../../../game/stateMachine';
 import { releaseMicStream } from '../../AudioController';
@@ -43,7 +44,8 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.pausedSongSeconds = 0;
   this.feedbackText = '';
   this.feedbackUntilMs = 0;
-  this.fallbackTimeoutSeconds = undefined;
+  this.fallbackTimeoutSeconds =
+    this.profile.gating_timeout_seconds === undefined ? DEFAULT_GATING_TIMEOUT_SECONDS : undefined;
   this.playbackMode = 'midi';
   this.backingTrackBuffer = undefined;
   this.backingTrackSource = undefined;
@@ -108,6 +110,10 @@ function cleanupImpl(this: PlaySceneContext): void {
   if (this.nativeBackButtonListener) {
     void this.nativeBackButtonListener.remove();
     this.nativeBackButtonListener = undefined;
+  }
+  if (this.nativeAppStateListener) {
+    void this.nativeAppStateListener.remove();
+    this.nativeAppStateListener = undefined;
   }
 
   this.pauseOverlay?.destroy(true);

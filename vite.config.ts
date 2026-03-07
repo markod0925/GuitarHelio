@@ -119,6 +119,7 @@ const PUBLIC_SONGS_DIR = path.resolve(PROJECT_ROOT, 'public/songs');
 let runtimeSongsDir = PUBLIC_SONGS_DIR;
 let runtimeSongManifestPath = path.resolve(PUBLIC_SONGS_DIR, 'manifest.json');
 
+const RUNTIME_SONGS_DIR_ENV = 'GH_RUNTIME_SONGS_DIR';
 const IMPORT_START_PATH = '/api/song-import/start';
 const IMPORT_STATUS_PATH_PREFIX = '/api/song-import/status/';
 const SONG_REMOVE_PATH = '/api/song-remove';
@@ -136,17 +137,23 @@ const importJobs = new Map<string, SongImportJob>();
 const converterPromises = new Map<ConverterMode, Promise<AudioToMidiConverter>>();
 let coverExtractorPromise: Promise<CoverExtractorModule> | null = null;
 
+function resolveRuntimeSongsDirFromEnv(): string | null {
+  const rawValue = String(process.env[RUNTIME_SONGS_DIR_ENV] ?? '').trim();
+  if (!rawValue) return null;
+  return path.resolve(rawValue);
+}
+
 function createSongImportApiPlugin(): Plugin {
   return {
     name: 'song-import-api',
     configureServer(server) {
-      runtimeSongsDir = PUBLIC_SONGS_DIR;
+      runtimeSongsDir = resolveRuntimeSongsDirFromEnv() ?? PUBLIC_SONGS_DIR;
       runtimeSongManifestPath = path.resolve(runtimeSongsDir, 'manifest.json');
       registerImportApiMiddleware(server.middlewares.use.bind(server.middlewares));
     },
     configurePreviewServer(server) {
       const outDir = path.resolve(PROJECT_ROOT, server.config.build.outDir || 'dist');
-      runtimeSongsDir = path.resolve(outDir, 'songs');
+      runtimeSongsDir = resolveRuntimeSongsDirFromEnv() ?? path.resolve(outDir, 'songs');
       runtimeSongManifestPath = path.resolve(runtimeSongsDir, 'manifest.json');
       registerImportApiMiddleware(server.middlewares.use.bind(server.middlewares));
     }

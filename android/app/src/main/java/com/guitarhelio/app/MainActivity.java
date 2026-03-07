@@ -12,8 +12,8 @@ import com.guitarhelio.app.converter.NeuralNoteConverterPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
         registerPlugin(NeuralNoteConverterPlugin.class);
+        super.onCreate(savedInstanceState);
         enterImmersiveMode();
     }
 

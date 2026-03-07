@@ -27,11 +27,17 @@ export function buildNativeSongAssetPath(folder: string, fileName: string): stri
 }
 
 export async function ensureNativeSongsRoot(): Promise<void> {
-  await Filesystem.mkdir({
-    path: NATIVE_SONGS_ROOT_PATH,
-    directory: Directory.Data,
-    recursive: true
-  });
+  try {
+    await Filesystem.mkdir({
+      path: NATIVE_SONGS_ROOT_PATH,
+      directory: Directory.Data,
+      recursive: true
+    });
+  } catch (error) {
+    if (!isAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
 }
 
 export async function readNativeSongsManifest(): Promise<NativeSongManifestEntry[]> {
@@ -65,7 +71,6 @@ export async function writeNativeSongsManifest(entries: NativeSongManifestEntry[
     path: NATIVE_MANIFEST_PATH,
     directory: Directory.Data,
     encoding: Encoding.UTF8,
-    recursive: true,
     data: payload
   });
 }
@@ -156,22 +161,35 @@ export async function createUniqueNativeSongFolder(baseName: string): Promise<st
     suffix += 1;
   }
 
+  // Extra safety: if readdir was stale/failed, avoid reusing an existing folder.
+  while (await nativeSongAssetExists(`${NATIVE_SONGS_ROOT_PATH}/${candidate}`)) {
+    candidate = `${baseName} (${suffix})`;
+    suffix += 1;
+  }
+
   return candidate;
 }
 
 export async function ensureNativeSongFolder(folder: string): Promise<void> {
-  await Filesystem.mkdir({
-    path: `${NATIVE_SONGS_ROOT_PATH}/${folder}`,
-    directory: Directory.Data,
-    recursive: true
-  });
+  const folderPath = `${NATIVE_SONGS_ROOT_PATH}/${folder}`;
+  try {
+    await Filesystem.mkdir({
+      path: folderPath,
+      directory: Directory.Data,
+      recursive: false
+    });
+  } catch (error) {
+    if (isAlreadyExistsError(error)) {
+      throw new Error(`Song folder already exists: ${folderPath}`);
+    }
+    throw error;
+  }
 }
 
 export async function writeNativeSongBinaryFile(pathValue: string, bytes: Uint8Array): Promise<void> {
   await Filesystem.writeFile({
     path: pathValue,
     directory: Directory.Data,
-    recursive: true,
     data: bytesToBase64(bytes)
   });
 }
@@ -180,7 +198,6 @@ export async function writeNativeSongTextFile(pathValue: string, text: string): 
   await Filesystem.writeFile({
     path: pathValue,
     directory: Directory.Data,
-    recursive: true,
     encoding: Encoding.UTF8,
     data: text
   });
@@ -263,4 +280,12 @@ async function removeNativeSongFolder(folder: string): Promise<void> {
   } catch {
     // Ignore removal failures to keep manifest cleanup resilient.
   }
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  const message =
+    typeof (error as { message?: unknown })?.message === 'string'
+      ? String((error as { message: string }).message)
+      : String(error ?? '');
+  return /already exists|exists, cannot be overwritten|EEXIST/i.test(message);
 }

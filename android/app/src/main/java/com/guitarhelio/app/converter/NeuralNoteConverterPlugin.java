@@ -21,9 +21,14 @@ import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @CapacitorPlugin(name = "NeuralNoteConverter")
 public class NeuralNoteConverterPlugin extends Plugin {
@@ -32,12 +37,30 @@ public class NeuralNoteConverterPlugin extends Plugin {
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService nativeExecutor = Executors.newCachedThreadPool();
     private final Map<String, JobState> jobs = new ConcurrentHashMap<>();
+    private static final long NATIVE_STAGE_TIMEOUT_MIN_MS = 60L * 1000L;
+    private static final long NATIVE_STAGE_TIMEOUT_MAX_MS = 20L * 60L * 1000L;
+    private static final long DEFAULT_TEMPO_TIMEOUT_MS = 2L * 60L * 1000L;
+    private static final long DEFAULT_NEURAL_TIMEOUT_MS = 8L * 60L * 1000L;
+    private static final long NATIVE_PROGRESS_TICK_MS = 1000L;
 
     private static native String runTranscription(
         String pcmPath,
         String tempoPcmPath,
         String modelDirPath,
+        String tempoModelOnnxPath,
+        String outputJsonPath
+    );
+
+    private static native String runNeuralNoteEvents(
+        String pcmPath,
+        String modelDirPath,
+        String outputJsonPath
+    );
+
+    private static native String runTempoEstimation(
+        String tempoPcmPath,
         String tempoModelOnnxPath,
         String outputJsonPath
     );
@@ -63,6 +86,14 @@ public class NeuralNoteConverterPlugin extends Plugin {
             return;
         }
 
+        final long tempoStageTimeoutMs = clampStageTimeoutMs(
+            call.getInt("tempoTimeoutMs", (int) DEFAULT_TEMPO_TIMEOUT_MS),
+            DEFAULT_TEMPO_TIMEOUT_MS
+        );
+        final long neuralStageTimeoutMs = clampStageTimeoutMs(
+            call.getInt("neuralTimeoutMs", (int) DEFAULT_NEURAL_TIMEOUT_MS),
+            DEFAULT_NEURAL_TIMEOUT_MS
+        );
         final String pcmPath = resolveFilePath(pcmPathRaw);
         final String tempoPcmPath = resolveFilePath(tempoPcmPathRaw);
         final String jobId = UUID.randomUUID().toString();
@@ -78,7 +109,7 @@ public class NeuralNoteConverterPlugin extends Plugin {
         result.put("jobId", jobId);
         call.resolve(result);
 
-        executor.execute(() -> runJob(jobId, pcmPath, tempoPcmPath));
+        executor.execute(() -> runJob(jobId, pcmPath, tempoPcmPath, tempoStageTimeoutMs, neuralStageTimeoutMs));
     }
 
     @PluginMethod
@@ -98,7 +129,7 @@ public class NeuralNoteConverterPlugin extends Plugin {
         call.resolve(state.toJsObject());
     }
 
-    private void runJob(String jobId, String pcmPath, String tempoPcmPath) {
+    private void runJob(String jobId, String pcmPath, String tempoPcmPath, long tempoStageTimeoutMs, long neuralStageTimeoutMs) {
         JobState state = jobs.get(jobId);
         if (state == null) {
             return;
@@ -111,29 +142,54 @@ public class NeuralNoteConverterPlugin extends Plugin {
 
             String modelDir = ensureNeuralNoteModelDirectory();
             String tempoModelPath = ensureTempoModelPath();
+            File tempoJson = new File(getContext().getCacheDir(), "tempo-estimate-" + jobId + ".json");
+            File notesJson = new File(getContext().getCacheDir(), "nn-events-" + jobId + ".json");
 
-            state.stage = "Running NeuralNote + Tempo-CNN transcription...";
-            state.progress = 0.45;
-
-            File outJson = new File(getContext().getCacheDir(), "nn-events-" + jobId + ".json");
-            String nativeError = runTranscription(
-                pcmPath,
-                tempoPcmPath,
-                modelDir,
-                tempoModelPath,
-                outJson.getAbsolutePath()
+            state.stage = "Estimating tempo (Tempo-CNN ONNX)...";
+            state.progress = 0.34;
+            String tempoError = runNativeStageWithWatchdog(
+                state,
+                () -> runTempoEstimation(
+                    tempoPcmPath,
+                    tempoModelPath,
+                    tempoJson.getAbsolutePath()
+                ),
+                tempoStageTimeoutMs,
+                "Estimating tempo (Tempo-CNN ONNX)...",
+                0.34,
+                0.56,
+                "Tempo-CNN estimation timed out. Try a shorter track."
             );
-            if (nativeError != null && !nativeError.trim().isEmpty()) {
-                throw new RuntimeException(nativeError.trim());
+            if (tempoError != null && !tempoError.trim().isEmpty()) {
+                throw new RuntimeException(tempoError.trim());
             }
 
-            state.stage = "Building note events...";
+            state.stage = "Running NeuralNote transcription...";
+            state.progress = 0.58;
+            String neuralError = runNativeStageWithWatchdog(
+                state,
+                () -> runNeuralNoteEvents(
+                    pcmPath,
+                    modelDir,
+                    notesJson.getAbsolutePath()
+                ),
+                neuralStageTimeoutMs,
+                "Running NeuralNote transcription...",
+                0.58,
+                0.9,
+                "NeuralNote transcription timed out. Try a shorter track."
+            );
+            if (neuralError != null && !neuralError.trim().isEmpty()) {
+                throw new RuntimeException(neuralError.trim());
+            }
+
+            state.stage = "Building note events and tempo metadata...";
             state.progress = 0.92;
 
-            String jsonContent = readFileUtf8(outJson);
-            JSONObject parsed = new JSONObject(jsonContent);
+            JSONObject parsedNotes = new JSONObject(readFileUtf8(notesJson));
+            JSONObject parsedTempo = new JSONObject(readFileUtf8(tempoJson));
 
-            JSONArray events = parsed.optJSONArray("events");
+            JSONArray events = parsedNotes.optJSONArray("events");
             if (events == null) {
                 events = new JSONArray();
             }
@@ -146,13 +202,13 @@ public class NeuralNoteConverterPlugin extends Plugin {
             JSObject result = new JSObject();
             result.put("events", jsEvents);
 
-            if (parsed.has("tempoBpm")) {
-                result.put("tempoBpm", parsed.optDouble("tempoBpm", 120.0));
+            if (parsedTempo.has("tempoBpm")) {
+                result.put("tempoBpm", parsedTempo.optDouble("tempoBpm", 120.0));
             }
 
-            JSONArray tempoMap = parsed.optJSONArray("tempoMap");
+            JSONArray tempoMap = parsedTempo.optJSONArray("tempoMap");
             if (tempoMap == null) {
-                tempoMap = parsed.optJSONArray("tempo_map");
+                tempoMap = parsedTempo.optJSONArray("tempo_map");
             }
             if (tempoMap != null) {
                 JSArray jsTempoMap = new JSArray();
@@ -169,13 +225,58 @@ public class NeuralNoteConverterPlugin extends Plugin {
             state.error = null;
 
             //noinspection ResultOfMethodCallIgnored
-            outJson.delete();
+            notesJson.delete();
+            //noinspection ResultOfMethodCallIgnored
+            tempoJson.delete();
         } catch (Exception error) {
             state.status = "failed";
             state.stage = "Import failed.";
             state.progress = 1.0;
             state.error = error.getMessage() != null ? error.getMessage() : "Audio import failed.";
             state.result = null;
+        }
+    }
+
+    private String runNativeStageWithWatchdog(
+        JobState state,
+        Callable<String> nativeCall,
+        long timeoutMs,
+        String stageLabel,
+        double progressStart,
+        double progressEnd,
+        String timeoutMessage
+    ) throws Exception {
+        Future<String> future = nativeExecutor.submit(nativeCall);
+        final long startedAtMs = System.currentTimeMillis();
+        try {
+            while (true) {
+                long elapsedMs = System.currentTimeMillis() - startedAtMs;
+                if (elapsedMs > timeoutMs) {
+                    future.cancel(true);
+                    throw new RuntimeException(timeoutMessage);
+                }
+
+                try {
+                    return future.get(NATIVE_PROGRESS_TICK_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ignored) {
+                    double ratio = Math.min(1.0, Math.max(0.0, (double) elapsedMs / (double) timeoutMs));
+                    state.progress = progressStart + (progressEnd - progressStart) * ratio;
+                    long elapsedSeconds = Math.max(1L, elapsedMs / 1000L);
+                    long timeoutSeconds = Math.max(1L, timeoutMs / 1000L);
+                    state.stage = stageLabel + " (" + elapsedSeconds + "s/" + timeoutSeconds + "s)";
+                } catch (ExecutionException execError) {
+                    Throwable cause = execError.getCause();
+                    if (cause instanceof Exception) {
+                        throw (Exception) cause;
+                    }
+                    throw new RuntimeException(cause != null ? cause.getMessage() : "Native conversion failed.");
+                }
+            }
+        }
+        catch (InterruptedException interrupted) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Native conversion interrupted.");
         }
     }
 
@@ -186,6 +287,14 @@ public class NeuralNoteConverterPlugin extends Plugin {
             return parsed != null ? parsed : raw;
         }
         return raw;
+    }
+
+    private long clampStageTimeoutMs(int timeoutMs, long fallbackMs) {
+        long safe = Math.max(0L, timeoutMs);
+        if (safe <= 0L) {
+            return Math.max(NATIVE_STAGE_TIMEOUT_MIN_MS, Math.min(NATIVE_STAGE_TIMEOUT_MAX_MS, fallbackMs));
+        }
+        return Math.max(NATIVE_STAGE_TIMEOUT_MIN_MS, Math.min(NATIVE_STAGE_TIMEOUT_MAX_MS, safe));
     }
 
     private String ensureNeuralNoteModelDirectory() throws IOException {
@@ -265,5 +374,12 @@ public class NeuralNoteConverterPlugin extends Plugin {
             }
             return out;
         }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        super.handleOnDestroy();
+        executor.shutdownNow();
+        nativeExecutor.shutdownNow();
     }
 }

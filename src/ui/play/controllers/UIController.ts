@@ -308,21 +308,43 @@ function attachBackHandlersImpl(this: PlaySceneContext): void {
     void this.nativeBackButtonListener.remove();
     this.nativeBackButtonListener = undefined;
   }
+  if (this.nativeAppStateListener) {
+    void this.nativeAppStateListener.remove();
+    this.nativeAppStateListener = undefined;
+  }
 
   if (Capacitor.isNativePlatform()) {
     void import('@capacitor/app')
-      .then(({ App }) =>
-        App.addListener('backButton', () => {
+      .then(async ({ App }) => {
+        const backListener = await App.addListener('backButton', () => {
           if (!this.scene.isActive()) return;
           if (this.runtime.state === PlayState.Finished) return;
           this.onBackRequested();
-        })
-      )
-      .then((listener) => {
-        this.nativeBackButtonListener = listener;
+        });
+        const appStateListener = await App.addListener('appStateChange', ({ isActive }) => {
+          if (!this.scene.isActive()) return;
+          if (!isActive) {
+            if (this.runtime.state !== PlayState.Finished && this.playbackStarted && !this.pauseOverlay && !this.playbackPausedByButton) {
+              this.pauseGameplayFromButton();
+            }
+            if (this.audioCtx?.state === 'running') {
+              void this.audioCtx.suspend().catch((error) => {
+                console.warn('Failed to suspend audio context on background', error);
+              });
+            }
+            return;
+          }
+          if (this.audioCtx?.state === 'suspended') {
+            void this.audioCtx.resume().catch((error) => {
+              console.warn('Failed to resume audio context on foreground', error);
+            });
+          }
+        });
+        this.nativeBackButtonListener = backListener;
+        this.nativeAppStateListener = appStateListener;
       })
       .catch((error) => {
-        console.warn('Failed to register native back button handler', error);
+        console.warn('Failed to register native app handlers', error);
       });
     return;
   }

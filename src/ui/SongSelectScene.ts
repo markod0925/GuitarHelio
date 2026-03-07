@@ -9,6 +9,7 @@ import {
 import { createMicNode } from '../audio/micInput';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { STANDARD_TUNING } from '../guitar/tuning';
+import { releaseMicStream } from './AudioController';
 import { RoundedBox } from './RoundedBox';
 
 type Difficulty = 'Easy' | 'Medium' | 'Hard';
@@ -123,6 +124,7 @@ type TunerPanel = {
 
 type SongImportOverlay = {
   container: Phaser.GameObjects.Container;
+  backdrop: RoundedBox;
   panel: RoundedBox;
   stageLabel: Phaser.GameObjects.Text;
   percentLabel: Phaser.GameObjects.Text;
@@ -130,6 +132,16 @@ type SongImportOverlay = {
   progressTrackLeft: number;
   progressTrackWidth: number;
   progressTrackHeight: number;
+};
+
+type QuitConfirmOverlay = {
+  container: Phaser.GameObjects.Container;
+  backdrop: RoundedBox;
+  panel: RoundedBox;
+  cancelButton: RoundedBox;
+  cancelLabel: Phaser.GameObjects.Text;
+  quitButton: RoundedBox;
+  quitLabel: Phaser.GameObjects.Text;
 };
 
 type SongImportJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
@@ -189,6 +201,7 @@ export class SongSelectScene extends Phaser.Scene {
   private tunerTargetString = 6;
   private tunerActive = false;
   private tunerCtx?: AudioContext;
+  private tunerMicStream?: MediaStream;
   private tunerDetector?: PitchDetectorService;
   private tunerOffPitch?: () => void;
   private tunerPanel?: TunerPanel;
@@ -197,7 +210,9 @@ export class SongSelectScene extends Phaser.Scene {
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
   private debugConverterMode: DebugConverterMode = 'legacy';
+  private quitConfirmOverlay?: QuitConfirmOverlay;
   private nativeBackButtonListener?: { remove: () => Promise<void> };
+  private nativeAppStateListener?: { remove: () => Promise<void> };
   private reloadSongsTask?: () => Promise<void>;
   private coverLoadGeneration = 0;
   private catalogLoadGeneration = 0;
@@ -394,6 +409,29 @@ export class SongSelectScene extends Phaser.Scene {
     let importSummaryColor = '#a5b4fc';
     const importOverlay = this.createSongImportOverlay(width, height, labelSize);
 
+    const closeImportOverlay = (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData
+    ): void => {
+      event.stopPropagation();
+      importOverlay.container.setVisible(false);
+    };
+
+    importOverlay.backdrop.on('pointerdown', closeImportOverlay);
+    importOverlay.panel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+      }
+    );
+
     const hint = this.add
       .text(width / 2, height * 0.84, '', {
         color: '#fca5a5',
@@ -433,18 +471,87 @@ export class SongSelectScene extends Phaser.Scene {
 
     const settingsOverlay = this.createSettingsOverlay(width, height, labelSize);
     this.tunerPanel = this.createTunerOverlay(width, height, labelSize);
+    this.quitConfirmOverlay = this.createQuitConfirmOverlay(width, height, labelSize);
+
+    const isQuitConfirmOpen = (): boolean => this.quitConfirmOverlay?.container.visible === true;
+    const closeQuitConfirm = (): void => {
+      if (!this.quitConfirmOverlay) return;
+      this.quitConfirmOverlay.container.setVisible(false);
+    };
+    const openQuitConfirm = (): void => {
+      if (this.importInProgress) return;
+      if (!this.quitConfirmOverlay) return;
+      this.hideSongRemovePrompt();
+      this.quitConfirmOverlay.container.setVisible(true);
+      refreshSelections();
+    };
+    const requestQuitConfirm = (): void => {
+      if (this.importInProgress) return;
+      if (isQuitConfirmOpen()) {
+        closeQuitConfirm();
+        refreshSelections();
+        return;
+      }
+      openQuitConfirm();
+    };
+    const quitApplication = async (): Promise<void> => {
+      const quitTriggered = await requestQuitApplication();
+      if (quitTriggered) return;
+      closeQuitConfirm();
+      refreshSelections();
+    };
+
+    this.quitConfirmOverlay?.cancelButton.on('pointerdown', () => {
+      closeQuitConfirm();
+      refreshSelections();
+    });
+    this.quitConfirmOverlay?.cancelLabel.on('pointerdown', () => {
+      closeQuitConfirm();
+      refreshSelections();
+    });
+    this.quitConfirmOverlay?.quitButton.on('pointerdown', () => {
+      void quitApplication();
+    });
+    this.quitConfirmOverlay?.quitLabel.on('pointerdown', () => {
+      void quitApplication();
+    });
+    this.quitConfirmOverlay?.backdrop.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        closeQuitConfirm();
+        refreshSelections();
+      }
+    );
+    this.quitConfirmOverlay?.panel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+      }
+    );
 
     const cycleDifficulty = (): void => {
-      if (this.settingsOpen || this.importInProgress) return;
+      if (this.settingsOpen || this.importInProgress || isQuitConfirmOpen()) return;
       this.selectedDifficulty = nextDifficulty(this.selectedDifficulty);
       this.persistSessionSettingsPreference();
       refreshSelections();
     };
 
     const refreshSelections = (): void => {
+      const quitPromptOpen = isQuitConfirmOpen();
       const settingsValid = this.selectedStrings.size > 0 && this.selectedFingers.size > 0 && this.selectedFrets.size > 0;
       const hasPlayableSongs = songs.length > 0;
-      const canStartSession = settingsValid && hasPlayableSongs && !this.importInProgress && !isCatalogLoading;
+      const canStartSession = settingsValid && hasPlayableSongs && !this.importInProgress && !isCatalogLoading && !quitPromptOpen;
       const difficultyColors: Record<Difficulty, { fill: number; stroke: number }> = {
         Easy: { fill: 0x166534, stroke: 0x4ade80 },
         Medium: { fill: 0x1a2a53, stroke: 0x3b82f6 },
@@ -487,21 +594,21 @@ export class SongSelectScene extends Phaser.Scene {
       tunerSummary.setText(`String ${this.tunerTargetString} • ${this.tunerActive ? 'ON' : 'OFF'}`);
       tunerSummary.setColor(this.tunerActive ? '#86efac' : '#a5b4fc');
 
-      importButton.setFillStyle(this.importInProgress ? 0x334155 : 0x1a2a53, this.importInProgress ? 0.9 : 0.74);
-      importButton.setStrokeStyle(2, this.importInProgress ? 0xf59e0b : 0x3b82f6, this.importInProgress ? 0.82 : 0.52);
-      importLabel.setColor(this.importInProgress ? '#fef3c7' : '#f1f5f9');
+      importButton.setFillStyle(this.importInProgress || quitPromptOpen ? 0x334155 : 0x1a2a53, this.importInProgress || quitPromptOpen ? 0.9 : 0.74);
+      importButton.setStrokeStyle(2, this.importInProgress ? 0xf59e0b : 0x3b82f6, this.importInProgress || quitPromptOpen ? 0.82 : 0.52);
+      importLabel.setColor(this.importInProgress || quitPromptOpen ? '#fef3c7' : '#f1f5f9');
       importSummary.setText(
         truncateLabel(this.importInProgress ? 'Import in progress...' : importSummaryMessage, Math.max(28, Math.floor(width * 0.036)))
       );
       importSummary.setColor(this.importInProgress ? '#fde68a' : importSummaryColor);
-      importSourceTitle?.setColor(this.importInProgress ? '#fcd34d' : '#94a3b8');
+      importSourceTitle?.setColor(this.importInProgress || quitPromptOpen ? '#fcd34d' : '#94a3b8');
       importSourceToggleOptions.forEach((option) => {
         const active = option.mode === this.importSourceMode;
         option.background.setFillStyle(active ? 0x2563eb : 0x1a2a53, active ? 0.92 : 0.72);
         option.background.setStrokeStyle(1, active ? 0x93c5fd : 0x334155, active ? 0.82 : 0.46);
-        option.background.setAlpha(this.importInProgress ? 0.7 : 1);
+        option.background.setAlpha(this.importInProgress || quitPromptOpen ? 0.7 : 1);
         option.label.setColor(active ? '#eff6ff' : '#94a3b8');
-        option.label.setAlpha(this.importInProgress ? 0.75 : 1);
+        option.label.setAlpha(this.importInProgress || quitPromptOpen ? 0.75 : 1);
       });
 
       settingsOverlay.stringToggles.forEach((option) => {
@@ -536,7 +643,9 @@ export class SongSelectScene extends Phaser.Scene {
       startLabel.setText(this.importInProgress ? 'Import in progress...' : canStartSession ? 'Start Session' : 'Fix Song Setup');
       playIcon?.setAlpha(canStartSession ? 0.98 : 0.72);
 
-      if (isCatalogLoading) {
+      if (quitPromptOpen) {
+        hint.setText('Quit confirmation is open.');
+      } else if (isCatalogLoading) {
         hint.setText('Loading songs...');
       } else if (!hasPlayableSongs) {
         hint.setText('No songs with a valid MIDI file found in /public/songs.');
@@ -572,6 +681,7 @@ export class SongSelectScene extends Phaser.Scene {
       if (this.importInProgress) return;
 
       const importRoute = this.resolveImportRoute();
+      let importSucceeded = false;
       this.importInProgress = true;
       importSummaryMessage = `Importing ${file.name} (${importRoute})`;
       importSummaryColor = '#fde68a';
@@ -591,27 +701,29 @@ export class SongSelectScene extends Phaser.Scene {
         setImportOverlayProgress('Import completed.', 1);
         refreshSelections();
 
+        importSucceeded = true;
         await waitMs(480);
         await this.refreshSongListAfterImport();
         return;
       } catch (error) {
         const message = toErrorMessage(error);
-        importSummaryMessage = truncateLabel(message, 46);
+        importSummaryMessage = message;
         importSummaryColor = '#fca5a5';
-        setImportOverlayProgress('Import failed.', 1);
+        setImportOverlayProgress(`Import failed: ${message}`, 1);
         refreshSelections();
-        await waitMs(900);
       } finally {
         this.importInProgress = false;
         if (this.scene.isActive()) {
-          importOverlay.container.setVisible(false);
+          if (importSucceeded) {
+            importOverlay.container.setVisible(false);
+          }
           refreshSelections();
         }
       }
     };
 
     const openSettings = (): void => {
-      if (this.importInProgress) return;
+      if (this.importInProgress || isQuitConfirmOpen()) return;
       this.hideSongRemovePrompt();
       closeTuner();
       this.settingsOpen = true;
@@ -626,7 +738,7 @@ export class SongSelectScene extends Phaser.Scene {
     };
 
     const openTuner = (): void => {
-      if (this.importInProgress) return;
+      if (this.importInProgress || isQuitConfirmOpen()) return;
       if (this.settingsOpen) return;
       this.hideSongRemovePrompt();
       this.tunerOpen = true;
@@ -650,7 +762,7 @@ export class SongSelectScene extends Phaser.Scene {
     };
 
     const openImportPicker = (): void => {
-      if (this.importInProgress) return;
+      if (this.importInProgress || isQuitConfirmOpen()) return;
       this.hideSongRemovePrompt();
       if (this.settingsOpen) closeSettings();
       if (this.tunerOpen) closeTuner();
@@ -660,7 +772,7 @@ export class SongSelectScene extends Phaser.Scene {
     };
 
     const startGame = async (): Promise<void> => {
-      if (this.importInProgress) return;
+      if (this.importInProgress || isQuitConfirmOpen()) return;
       this.hideSongRemovePrompt();
       if (this.settingsOpen) return;
       if (isCatalogLoading) {
@@ -711,7 +823,7 @@ export class SongSelectScene extends Phaser.Scene {
     };
 
     const removeSong = async (song: SongEntry): Promise<void> => {
-      if (this.importInProgress) return;
+      if (this.importInProgress || isQuitConfirmOpen()) return;
       this.cancelSongLongPress();
       this.hideSongRemovePrompt();
       hint.setText(`Removing "${song.name}"...`);
@@ -731,12 +843,16 @@ export class SongSelectScene extends Phaser.Scene {
       _deltaX: number,
       deltaY: number
     ): void => {
+      if (isQuitConfirmOpen()) return;
+      if (importOverlay.container.visible) return;
       if (!this.songViewportRect || this.songScrollMax <= 0) return;
       if (!this.songViewportRect.contains(pointer.worldX, pointer.worldY)) return;
       this.setSongScrollOffset(this.songScrollOffset + deltaY * 0.8);
       refreshSelections();
     };
     const onSongPointerDown = (pointer: Phaser.Input.Pointer): void => {
+      if (isQuitConfirmOpen()) return;
+      if (importOverlay.container.visible) return;
       if (this.songRemovePrompt && !this.isPointerInsideObject(pointer, this.songRemovePrompt.button)) {
         this.hideSongRemovePrompt();
       }
@@ -747,6 +863,7 @@ export class SongSelectScene extends Phaser.Scene {
       this.songScrollDragStartOffset = this.songScrollOffset;
     };
     const onSongPointerMove = (pointer: Phaser.Input.Pointer): void => {
+      if (isQuitConfirmOpen()) return;
       if (
         this.songLongPressPointerId === pointer.id &&
         Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.songLongPressStartX, this.songLongPressStartY) >
@@ -760,6 +877,7 @@ export class SongSelectScene extends Phaser.Scene {
       refreshSelections();
     };
     const onSongPointerUp = (pointer: Phaser.Input.Pointer): void => {
+      if (isQuitConfirmOpen()) return;
       if (this.songLongPressPointerId === pointer.id) {
         this.cancelSongLongPress();
       }
@@ -870,30 +988,31 @@ export class SongSelectScene extends Phaser.Scene {
     playIcon?.on('pointerdown', () => void startGame());
 
     this.input.keyboard?.on('keydown-LEFT', () => {
-      if (this.settingsOpen || songs.length === 0) return;
+      if (isQuitConfirmOpen() || this.settingsOpen || songs.length === 0) return;
       this.selectedSongIndex = Math.max(0, this.selectedSongIndex - 1);
       this.ensureSelectedSongVisible();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-RIGHT', () => {
-      if (this.settingsOpen || songs.length === 0) return;
+      if (isQuitConfirmOpen() || this.settingsOpen || songs.length === 0) return;
       this.selectedSongIndex = Math.min(songs.length - 1, this.selectedSongIndex + 1);
       this.ensureSelectedSongVisible();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-UP', () => {
-      if (this.settingsOpen) return;
+      if (isQuitConfirmOpen() || this.settingsOpen) return;
       this.selectedDifficulty = previousDifficulty(this.selectedDifficulty);
       this.persistSessionSettingsPreference();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-DOWN', () => {
-      if (this.settingsOpen) return;
+      if (isQuitConfirmOpen() || this.settingsOpen) return;
       this.selectedDifficulty = nextDifficulty(this.selectedDifficulty);
       this.persistSessionSettingsPreference();
       refreshSelections();
     });
     this.input.keyboard?.on('keydown-ENTER', () => {
+      if (isQuitConfirmOpen()) return;
       if (this.settingsOpen) {
         closeSettings();
         return;
@@ -901,40 +1020,30 @@ export class SongSelectScene extends Phaser.Scene {
       void startGame();
     });
     this.input.keyboard?.on('keydown-SPACE', () => {
-      if (this.settingsOpen) return;
+      if (isQuitConfirmOpen() || this.settingsOpen) return;
       void startGame();
     });
     this.input.keyboard?.on('keydown-ESC', () => {
-      if (this.settingsOpen) {
-        closeSettings();
-      } else if (this.tunerOpen) {
-        closeTuner();
-      } else {
-        openSettings();
-      }
+      requestQuitConfirm();
     });
     if (Capacitor.isNativePlatform()) {
       void import('@capacitor/app')
-        .then(({ App }) =>
-          App.addListener('backButton', () => {
+        .then(async ({ App }) => {
+          const backListener = await App.addListener('backButton', () => {
             if (!this.scene.isActive()) return;
             if (this.importInProgress) return;
-            if (this.settingsOpen) {
-              closeSettings();
-              return;
-            }
-            if (this.tunerOpen) {
-              closeTuner();
-              return;
-            }
-            App.exitApp();
-          })
-        )
-        .then((listener) => {
-          this.nativeBackButtonListener = listener;
+            requestQuitConfirm();
+          });
+          const appStateListener = await App.addListener('appStateChange', ({ isActive }) => {
+            if (!this.scene.isActive()) return;
+            if (isActive) return;
+            void this.stopTuner(false);
+          });
+          this.nativeBackButtonListener = backListener;
+          this.nativeAppStateListener = appStateListener;
         })
         .catch((error) => {
-          console.warn('Failed to register native back handler in SongSelectScene', error);
+          console.warn('Failed to register native app handlers in SongSelectScene', error);
         });
     }
 
@@ -1040,11 +1149,17 @@ export class SongSelectScene extends Phaser.Scene {
         void this.nativeBackButtonListener.remove();
         this.nativeBackButtonListener = undefined;
       }
+      if (this.nativeAppStateListener) {
+        void this.nativeAppStateListener.remove();
+        this.nativeAppStateListener = undefined;
+      }
       this.coverLoadGeneration += 1;
       this.catalogLoadGeneration += 1;
       this.reloadSongsTask = undefined;
       this.tunerOpen = false;
       this.tunerPanel = undefined;
+      this.quitConfirmOverlay?.container.destroy(true);
+      this.quitConfirmOverlay = undefined;
       this.importInProgress = false;
       this.importInput?.remove();
       this.importInput = undefined;
@@ -1465,15 +1580,95 @@ export class SongSelectScene extends Phaser.Scene {
     };
   }
 
-  private createSongImportOverlay(width: number, height: number, labelSize: number): SongImportOverlay {
-    const panelWidth = Math.min(640, width * 0.7);
-    const panelHeight = Math.min(240, height * 0.38);
+  private createQuitConfirmOverlay(width: number, height: number, labelSize: number): QuitConfirmOverlay {
+    const backdrop = new RoundedBox(this, width / 2, height / 2, width, height, 0x020617, 0.82, 0)
+      .setInteractive({ useHandCursor: true });
+
+    const panelWidth = Math.min(520, width * 0.62);
+    const panelHeight = Math.min(260, height * 0.45);
     const panelX = width / 2;
     const panelY = height / 2;
 
-    const backdrop = new RoundedBox(this, panelX, panelY, width, height, 0x020617, 0.76, 0).setDepth(1300);
+    const panel = new RoundedBox(this, panelX, panelY, panelWidth, panelHeight, 0x101c3c, 0.96)
+      .setStrokeStyle(2, 0x3b82f6, 0.45)
+      .setInteractive({ useHandCursor: true });
+
+    const title = this.add
+      .text(panelX, panelY - panelHeight * 0.27, 'Quit Application?', {
+        color: '#e2e8f0',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(20, labelSize + 5)}px`
+      })
+      .setOrigin(0.5);
+
+    const message = this.add
+      .text(panelX, panelY - panelHeight * 0.08, 'Do you want to close the application?', {
+        color: '#cbd5e1',
+        fontFamily: 'Montserrat, sans-serif',
+        align: 'center',
+        fontSize: `${Math.max(14, labelSize - 1)}px`
+      })
+      .setOrigin(0.5);
+
+    const buttonY = panelY + panelHeight * 0.24;
+    const buttonWidth = Math.min(170, panelWidth * 0.36);
+    const buttonHeight = 50;
+
+    const cancelButton = new RoundedBox(this, panelX - panelWidth * 0.2, buttonY, buttonWidth, buttonHeight, 0x1e293b, 1)
+      .setStrokeStyle(2, 0x64748b, 0.85)
+      .setInteractive({ useHandCursor: true });
+    const cancelLabel = this.add
+      .text(cancelButton.x, cancelButton.y, 'Cancel', {
+        color: '#e2e8f0',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(16, labelSize + 1)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    const quitButton = new RoundedBox(this, panelX + panelWidth * 0.2, buttonY, buttonWidth, buttonHeight, 0xef4444, 1)
+      .setStrokeStyle(2, 0xfca5a5, 0.85)
+      .setInteractive({ useHandCursor: true });
+    const quitLabel = this.add
+      .text(quitButton.x, quitButton.y, 'Quit', {
+        color: '#fff1f2',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(16, labelSize + 1)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    const container = this.add
+      .container(0, 0, [backdrop, panel, title, message, cancelButton, cancelLabel, quitButton, quitLabel])
+      .setDepth(1400)
+      .setVisible(false);
+
+    return {
+      container,
+      backdrop,
+      panel,
+      cancelButton,
+      cancelLabel,
+      quitButton,
+      quitLabel
+    };
+  }
+
+  private createSongImportOverlay(width: number, height: number, labelSize: number): SongImportOverlay {
+    const panelWidth = Math.min(720, width * 0.78);
+    const panelHeight = Math.min(300, height * 0.44);
+    const panelX = width / 2;
+    const panelY = height / 2;
+
+    const backdrop = new RoundedBox(this, panelX, panelY, width, height, 0x020617, 0.76, 0)
+      .setDepth(1300)
+      .setInteractive({ useHandCursor: true });
     const panel = new RoundedBox(this, panelX, panelY, panelWidth, panelHeight, 0x101c3c, 0.97)
-      .setStrokeStyle(2, 0x3b82f6, 0.5);
+      .setStrokeStyle(2, 0x3b82f6, 0.5)
+      .setInteractive({ useHandCursor: true });
 
     const title = this.add
       .text(panelX, panelY - panelHeight * 0.3, 'Import Song', {
@@ -1484,15 +1679,18 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const stageWrapWidth = panelWidth * 0.88;
     const stageLabel = this.add
       .text(panelX, panelY - panelHeight * 0.05, 'Preparing import...', {
         color: '#cbd5e1',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(14, labelSize - 1)}px`
+        fontSize: `${Math.max(14, labelSize - 1)}px`,
+        align: 'center',
+        wordWrap: { width: stageWrapWidth, useAdvancedWrap: true }
       })
       .setOrigin(0.5);
 
-    const progressTrackWidth = Math.min(470, panelWidth * 0.82);
+    const progressTrackWidth = Math.min(520, panelWidth * 0.82);
     const progressTrackHeight = 24;
     const progressTrackY = panelY + panelHeight * 0.08;
     const progressTrackLeft = panelX - progressTrackWidth / 2;
@@ -1518,7 +1716,7 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const tip = this.add
-      .text(panelX, panelY + panelHeight * 0.39, 'Keep this window open during import.', {
+      .text(panelX, panelY + panelHeight * 0.39, 'Tap/click outside this window to close.', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
@@ -1532,6 +1730,7 @@ export class SongSelectScene extends Phaser.Scene {
 
     return {
       container,
+      backdrop,
       panel,
       stageLabel,
       percentLabel,
@@ -1547,7 +1746,7 @@ export class SongSelectScene extends Phaser.Scene {
     const fillWidth = Math.max(10, overlay.progressTrackWidth * clamped);
     overlay.progressFill.setBoxSize(fillWidth, overlay.progressTrackHeight - 6);
     overlay.progressFill.x = overlay.progressTrackLeft + fillWidth / 2;
-    overlay.stageLabel.setText(truncateLabel(stage, 64));
+    overlay.stageLabel.setText(firstNonEmpty(stage, 'Import in progress...') ?? 'Import in progress...');
     overlay.percentLabel.setText(`${Math.round(clamped * 100)}%`);
   }
 
@@ -1795,10 +1994,16 @@ export class SongSelectScene extends Phaser.Scene {
     if (!panel) return;
 
     try {
+      panel.detectedLabel.setText('Detected: requesting mic...');
+      this.setTunerNeedleFromCents(null);
       const ctx = new AudioContext();
       this.tunerCtx = ctx;
+      if (ctx.state !== 'running') {
+        await ctx.resume();
+      }
 
       const micSource = await createMicNode(ctx);
+      this.tunerMicStream = micSource.mediaStream;
       const detector = new PitchDetectorService(ctx, { roundMidi: false });
       await detector.init();
       this.tunerDetector = detector;
@@ -1818,14 +2023,16 @@ export class SongSelectScene extends Phaser.Scene {
       });
       detector.start(micSource);
 
-      await ctx.resume();
       this.tunerActive = true;
       panel.detectedLabel.setText('Detected: listening...');
       this.setTunerNeedleFromCents(null);
     } catch (error) {
       console.error('Failed to start tuner', error);
+      const reason = describeMicFailure(error);
       await this.stopTuner(false);
-      panel.detectedLabel.setText('Mic unavailable');
+      panel.detectedLabel.setText(
+        reason ? `Mic unavailable (${truncateLabel(reason, 26)})` : 'Mic unavailable'
+      );
       this.setTunerNeedleFromCents(null);
     }
   }
@@ -1835,6 +2042,8 @@ export class SongSelectScene extends Phaser.Scene {
     this.tunerDetector = undefined;
     this.tunerOffPitch?.();
     this.tunerOffPitch = undefined;
+    releaseMicStream(this.tunerMicStream);
+    this.tunerMicStream = undefined;
 
     if (this.tunerCtx && this.tunerCtx.state !== 'closed') {
       try {
@@ -2590,6 +2799,31 @@ function waitMs(ms: number): Promise<void> {
   });
 }
 
+async function requestQuitApplication(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { App } = await import('@capacitor/app');
+      App.exitApp();
+      return true;
+    } catch (error) {
+      console.warn('Failed to quit native app', error);
+      return false;
+    }
+  }
+
+  if (isElectronRuntime() && typeof window !== 'undefined') {
+    window.close();
+    return true;
+  }
+
+  return false;
+}
+
+function isElectronRuntime(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /electron/i.test(navigator.userAgent);
+}
+
 function truncateLabel(value: string, maxLength: number): string {
   if (!value) return '';
   if (value.length <= maxLength) return value;
@@ -2636,6 +2870,51 @@ function toErrorMessage(error: unknown): string {
     return error.trim();
   }
   return 'Import failed.';
+}
+
+function describeMicFailure(error: unknown): string | null {
+  const name = extractErrorName(error);
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'permission denied';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'no microphone found';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'microphone busy in another app';
+    case 'OverconstrainedError':
+    case 'ConstraintNotSatisfiedError':
+      return 'unsupported audio constraints';
+    case 'SecurityError':
+      return 'runtime security policy blocked mic';
+    case 'AbortError':
+      return 'microphone start aborted by system';
+    default: {
+      const message = extractErrorMessage(error);
+      if (message) return message;
+      return name ? name : null;
+    }
+  }
+}
+
+function extractErrorName(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  if (!('name' in error)) return null;
+  const rawName = (error as { name?: unknown }).name;
+  if (typeof rawName !== 'string') return null;
+  const normalized = rawName.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  if (!('message' in error)) return null;
+  const rawMessage = (error as { message?: unknown }).message;
+  if (typeof rawMessage !== 'string') return null;
+  const normalized = rawMessage.replace(/\s+/g, ' ').trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function isImportSourceDebugEnabled(): boolean {

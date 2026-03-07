@@ -1,4 +1,4 @@
-name: Android Release
+name: Release Artifacts
 
 on:
   push:
@@ -6,10 +6,8 @@ on:
       - "v*"
 
 jobs:
-  build-and-release:
+  build-android:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -40,8 +38,69 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
-      - name: Create GitHub Release + upload APK
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build Windows release artifacts
+        run: npm run build:windows
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/*.7z
+          if-no-files-found: error
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-android
+      - build-windows
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts/android
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: artifacts/windows
+
+      - name: Create GitHub Release + upload artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            artifacts/android/app-debug.apk
+            artifacts/windows/*.exe
+            artifacts/windows/*.blockmap
+            artifacts/windows/*.yml
+            artifacts/windows/*.7z
+          fail_on_unmatched_files: true
           generate_release_notes: true

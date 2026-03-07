@@ -146,6 +146,7 @@ export class PlayScene extends Phaser.Scene {
   public pauseMenuBackListener?: (event: Event) => void;
   public pauseMenuPopStateListener?: (event: PopStateEvent) => void;
   public nativeBackButtonListener?: { remove: () => Promise<void> };
+  public nativeAppStateListener?: { remove: () => Promise<void> };
   public playbackWasRunningBeforePauseMenu = false;
   public pauseMenuResumeSongSeconds?: number;
   public playbackPausedByButton = false;

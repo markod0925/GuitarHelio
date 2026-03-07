@@ -23,8 +23,22 @@ android {
         }
     }
     buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+                    cppFlags "-O3 -DNDEBUG"
+                }
+            }
+        }
         release {
             minifyEnabled false
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                    cppFlags "-O3 -DNDEBUG"
+                }
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build Windows + Android"
+  short_description: "Compila EXE Windows e APK Android"
+  default_prompt: "Usa $build-windows-android per compilare l'app su Windows (.exe) e Android (APK) in questo repository."

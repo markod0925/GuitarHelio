@@ -2,8 +2,13 @@
   "name": "guitar-helio",
   "version": "0.1.0",
   "private": true,
+  "description": "Child-friendly guitar training game with web, Android, and Windows desktop packaging.",
+  "author": "GuitarHelio Team",
+  "main": "electron/main.mjs",
   "type": "module",
   "scripts": {
+    "install:linux-android": "npm install",
+    "install:windows": "cmd /c \"npm install && npm install --no-save @rollup/rollup-win32-x64-msvc\"",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -22,7 +27,35 @@
     "build:nn:cli": "node tools/audio-midi-converter/scripts/build-neuralnote-cli.mjs",
     "build:tempo:cli": "node tools/audio-midi-converter/scripts/build-tempocnn-cli.mjs",
     "convert:audio:midi": "node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs",
-    "perf:startup": "node scripts/benchmark-startup.mjs --repeat 20"
+    "perf:startup": "node scripts/benchmark-startup.mjs --repeat 20",
+    "desktop:start": "electron electron/main.mjs",
+    "build:windows": "npm run build && electron-builder --win nsis portable",
+    "build:windows:clean": "cmd /c \"taskkill /F /IM GuitarHelio.exe /IM electron.exe /IM app-builder.exe 2>nul & attrib -R release\\win-unpacked\\* /S /D 2>nul & rmdir /S /Q release\\win-unpacked 2>nul & npm run install:windows && npm run build:windows\""
+  },
+  "build": {
+    "appId": "com.guitarhelio.desktop",
+    "productName": "GuitarHelio",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "scripts/**/*",
+      "tools/**/*",
+      "third_party/**/*",
+      "src/platform/converterMode.ts",
+      "vite.config.ts",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "GuitarHelio-${version}-${arch}.${ext}"
+    }
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
@@ -34,13 +67,18 @@
     "audio-decode": "^2.2.3",
     "jzz": "^1.9.6",
     "jzz-synth-tiny": "^1.4.4",
-    "phaser": "^3.80.1"
+    "phaser": "^3.80.1",
+    "vite": "^7.3.1"
   },
   "devDependencies": {
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.6.2",
-    "vite": "^7.3.1",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "tar": "^7.5.10"
   }
 }

@@ -9,17 +9,41 @@
       "cover": "cover.png"
     },
     {
-      "id": "i-residui-di-supposta-di-maria",
-      "name": "I residui di supposta di Maria",
-      "folder": "I residui di supposta di Maria",
+      "id": "poldar-tanz",
+      "name": "Poldar Tanz",
+      "folder": "Poldar Tanz",
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"
     },
     {
-      "id": "poldar-tanz",
-      "name": "Poldar Tanz",
-      "folder": "Poldar Tanz",
+      "id": "deeh",
+      "name": "Deeh",
+      "folder": "Deeh",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "un-cane-una-scoreggia-un-gatto-una-cacca",
+      "name": "Un cane una scoreggia un gatto una cacca",
+      "folder": "Un cane una scoreggia un gatto una cacca",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "raj-datah",
+      "name": "raj DataH",
+      "folder": "raj DataH",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "banana-groove",
+      "name": "Banana Groove",
+      "folder": "Banana Groove",
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"

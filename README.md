@@ -1,5 +1,7 @@
 # Guitar Helio
 
+Current GitHub tag: `v0.1.3`
+
 ## Overview
 
 Guitar Helio is a guitar trainer with:
@@ -16,10 +18,15 @@ Guitar Helio is a guitar trainer with:
 ## Main Commands
 
 ```bash
+npm run install:linux-android # install dipendenze per server Linux + Android flow
+npm run install:windows # install dipendenze in ambiente Windows (include fix Rollup Win-only)
 npm run dev            # local web development
 npm run dev:mobile     # LAN development (phone on the same network)
 npm run build          # typecheck + production build
 npm run preview        # preview production build
+npm run desktop:start  # run desktop app via Electron (local)
+npm run build:windows  # build Windows installer (.exe) + portable package
+npm run build:windows:clean # force clean locked win-unpacked folder, then build Windows artifacts
 npm run test           # unit tests (Vitest)
 npm run lint           # TypeScript typecheck without emit
 ```
@@ -41,6 +48,7 @@ Direct npm packages used by this repository.
 | `jzz` | MIDI I/O and routing toolkit | https://jazz-soft.net/doc/JZZ/ |
 | `jzz-synth-tiny` | Tiny synth used for MIDI playback | https://github.com/jazz-soft/JZZ-synth-Tiny |
 | `phaser` | 2D game framework used for UI/gameplay scenes | https://docs.phaser.io/ |
+| `vite` | Dev server, production bundler, and embedded preview runtime for desktop packaging | https://vite.dev/guide/ |
 
 ### Development Dependencies (`devDependencies`)
 
@@ -48,8 +56,9 @@ Direct npm packages used by this repository.
 | --- | --- | --- |
 | `@capacitor/android` | Android platform package for Capacitor | https://capacitorjs.com/docs/android |
 | `@capacitor/cli` | Capacitor CLI tooling | https://capacitorjs.com/docs/cli |
+| `electron` | Desktop runtime wrapper for packaged Windows builds | https://www.electronjs.org/docs/latest |
+| `electron-builder` | Windows installer/portable package generation | https://www.electron.build/ |
 | `typescript` | TypeScript compiler and type system | https://www.typescriptlang.org/docs/ |
-| `vite` | Dev server and production bundler | https://vite.dev/guide/ |
 | `vitest` | Unit test runner | https://vitest.dev/guide/ |
 
 ### Local Converter Tool (`tools/audio-midi-converter`)
@@ -175,6 +184,29 @@ Expected snippet:
 ```
 
 The permission must also be requested at runtime (Capacitor/Android) before pitch detection starts.
+
+## Windows Desktop Build (Compiled `.exe`)
+
+The project can be packaged as a Windows desktop app via Electron.
+
+### Build artifacts
+
+```bash
+npm install
+npm run build:windows
+```
+
+Artifacts are generated in:
+`release/`
+
+Expected outputs:
+- NSIS installer (`.exe`)
+- Portable executable (`.exe`)
+
+Notes:
+- The desktop app runs an embedded local preview server internally (no manual terminal server required).
+- Runtime imported songs are stored in the Electron user-data folder (`.../AppData/Roaming/GuitarHelio/songs`) instead of the installation directory.
+- If `electron-builder` reports "Access is denied" while removing `release/win-unpacked/*`, run `npm run build:windows:clean`.
 
 ## QA
 

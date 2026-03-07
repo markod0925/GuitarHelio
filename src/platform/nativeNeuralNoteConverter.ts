@@ -39,7 +39,13 @@ type TranscriptionStatus = {
 };
 
 type NeuralNoteConverterPlugin = {
-  startTranscription: (options: { pcmPath: string; tempoPcmPath: string; preset?: 'balanced' }) => Promise<StartTranscriptionResult>;
+  startTranscription: (options: {
+    pcmPath: string;
+    tempoPcmPath: string;
+    preset?: 'balanced';
+    tempoTimeoutMs?: number;
+    neuralTimeoutMs?: number;
+  }) => Promise<StartTranscriptionResult>;
   getTranscriptionStatus: (options: { jobId: string }) => Promise<TranscriptionStatus>;
 };
 
@@ -52,6 +58,8 @@ const TEMPO_BPM_MIN = 20;
 const TEMPO_BPM_MAX = 300;
 const IMPORT_STATUS_POLL_MS = 450;
 const IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
+const NATIVE_STAGE_TIMEOUT_MIN_MS = 60 * 1000;
+const NATIVE_STAGE_TIMEOUT_MAX_MS = 20 * 60 * 1000;
 
 const BALANCED_PRESET = {
   midiTempo: 120,
@@ -127,7 +135,9 @@ export async function convertAudioBufferToMidiNativeCxx(
     const start = await NeuralNoteConverter.startTranscription({
       pcmPath: neuralUri.uri,
       tempoPcmPath: tempoUri.uri,
-      preset: 'balanced'
+      preset: 'balanced',
+      tempoTimeoutMs: estimateTempoStageTimeoutMs(audioDurationSeconds),
+      neuralTimeoutMs: estimateNeuralStageTimeoutMs(audioDurationSeconds)
     });
 
     const jobId = String(start?.jobId || '').trim();
@@ -476,6 +486,29 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
+}
+
+function estimateTempoStageTimeoutMs(audioDurationSeconds: number): number {
+  return estimateNativeStageTimeoutMs(audioDurationSeconds, {
+    baseMs: 90 * 1000,
+    perAudioSecondMs: 350
+  });
+}
+
+function estimateNeuralStageTimeoutMs(audioDurationSeconds: number): number {
+  return estimateNativeStageTimeoutMs(audioDurationSeconds, {
+    baseMs: 180 * 1000,
+    perAudioSecondMs: 1800
+  });
+}
+
+function estimateNativeStageTimeoutMs(
+  audioDurationSeconds: number,
+  options: { baseMs: number; perAudioSecondMs: number }
+): number {
+  const durationSeconds = Math.max(0, toFiniteNumber(audioDurationSeconds, 0));
+  const estimatedMs = options.baseMs + durationSeconds * options.perAudioSecondMs;
+  return Math.round(clamp(estimatedMs, NATIVE_STAGE_TIMEOUT_MIN_MS, NATIVE_STAGE_TIMEOUT_MAX_MS));
 }
 
 function clamp(value: number, min: number, max: number): number {
