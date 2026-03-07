@@ -77,7 +77,6 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/*.yml
-            release/*.7z
           if-no-files-found: error
 
   publish-release:
@@ -109,6 +108,5 @@ jobs:
             artifacts/windows/*.exe
             artifacts/windows/*.blockmap
             artifacts/windows/*.yml
-            artifacts/windows/*.7z
           fail_on_unmatched_files: true
           generate_release_notes: true
