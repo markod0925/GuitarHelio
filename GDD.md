@@ -479,6 +479,13 @@ hold_ms = 80
 min_confidence = 0.7
 ```
 
+## 9.4 Temporal stabilization
+
+To reduce frame-to-frame jitter from raw pitch estimation:
+
+* gameplay pitch frames MAY apply a light temporal smoothing on `midi_estimate` before hit validation
+* smoothing MUST preserve responsive hit timing (no large extra latency) and MUST keep `confidence`-gated validation semantics
+
 ---
 
 # 10. Scoring System
@@ -762,8 +769,15 @@ Inside this tuner menu, show a tuner panel that:
 * lets the user select which string to tune (1–6)
 * starts/stops microphone listening
 * shows a tuning slider/needle that moves based on cents distance from the target string pitch
+* shows a centered green target band representing the in-tune zone `-5c .. +5c`
 
 The tuner must update in real time while active.
+The tuner display (detected note + cents + needle) MUST apply temporal stabilization to avoid noisy oscillation:
+
+* confidence gating for unreliable frames
+* smoothing/quantization of cents for the needle
+* note-label hysteresis (do not flip note name on single-frame boundary crossings)
+* short dropout hold before clearing the detected value
 
 ---
 

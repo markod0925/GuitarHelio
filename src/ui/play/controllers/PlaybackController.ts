@@ -137,7 +137,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   try {
     const micSource = await createMicNode(audioCtx);
     this.micStream = micSource.mediaStream;
-    const detector = new PitchDetectorService(audioCtx);
+    const detector = new PitchDetectorService(audioCtx, { smoothingAlpha: 0.32 });
     await detector.init();
     detector.onPitch((frame) => {
       if (this.pauseOverlay) return;

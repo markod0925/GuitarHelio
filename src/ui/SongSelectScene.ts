@@ -8,6 +8,7 @@ import {
 } from '../app/sessionPersistence';
 import { createMicNode } from '../audio/micInput';
 import { PitchDetectorService } from '../audio/pitchDetector';
+import { TunerPitchStabilizer } from '../audio/tunerPitchStabilizer';
 import { STANDARD_TUNING } from '../guitar/tuning';
 import { releaseMicStream } from './AudioController';
 import { RoundedBox } from './RoundedBox';
@@ -206,6 +207,7 @@ export class SongSelectScene extends Phaser.Scene {
   private tunerOffPitch?: () => void;
   private tunerPanel?: TunerPanel;
   private tunerOpen = false;
+  private readonly tunerPitchStabilizer = new TunerPitchStabilizer();
   private importInput?: HTMLInputElement;
   private importInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
@@ -931,6 +933,11 @@ export class SongSelectScene extends Phaser.Scene {
     this.tunerPanel?.stringToggles.forEach((option) => {
       const selectTunerString = (): void => {
         this.tunerTargetString = option.value;
+        this.tunerPitchStabilizer.reset();
+        if (this.tunerActive) {
+          this.tunerPanel?.detectedLabel.setText('Detected: listening...');
+          this.setTunerNeedleFromCents(null);
+        }
         refreshSelections();
       };
       option.background.on('pointerdown', selectTunerString);
@@ -1493,8 +1500,11 @@ export class SongSelectScene extends Phaser.Scene {
     const meterCenterX = panelX;
     const meterY = panelY + panelHeight * 0.08;
     const meterHalfWidth = panelWidth * 0.33;
+    const meterGreenBandHalfWidth = (5 / 50) * meterHalfWidth;
 
     const meterBase = new RoundedBox(this, meterCenterX, meterY, meterHalfWidth * 2, 12, 0x1f2937, 0.95).setStrokeStyle(1, 0x60a5fa, 0.35);
+    const meterGreenBand = new RoundedBox(this, meterCenterX, meterY, meterGreenBandHalfWidth * 2, 16, 0x22c55e, 0.45)
+      .setStrokeStyle(1, 0x86efac, 0.75);
     const meterCenter = new RoundedBox(this, meterCenterX, meterY, 2, 22, 0xbfdbfe, 0.75);
     const meterNeedle = new RoundedBox(this, meterCenterX, meterY, 8, 24, 0x9ca3af, 1).setStrokeStyle(1, 0x0f172a);
 
@@ -1552,6 +1562,7 @@ export class SongSelectScene extends Phaser.Scene {
       title,
       targetLabel,
       meterBase,
+      meterGreenBand,
       meterCenter,
       meterNeedle,
       detectedLabel,
@@ -2007,17 +2018,19 @@ export class SongSelectScene extends Phaser.Scene {
       const detector = new PitchDetectorService(ctx, { roundMidi: false });
       await detector.init();
       this.tunerDetector = detector;
+      this.tunerPitchStabilizer.reset();
       this.tunerOffPitch = detector.onPitch((frame) => {
         const targetMidi = STANDARD_TUNING[this.tunerTargetString];
-        if (frame.midi_estimate === null) {
+        const stabilized = this.tunerPitchStabilizer.update(frame, targetMidi);
+        if (!stabilized) {
           panel.detectedLabel.setText('Detected: --');
           this.setTunerNeedleFromCents(null);
           return;
         }
 
-        const cents = (frame.midi_estimate - targetMidi) * 100;
+        const cents = stabilized.cents;
         const sign = cents >= 0 ? '+' : '';
-        const detected = midiToNoteName(Math.round(frame.midi_estimate));
+        const detected = midiToNoteName(stabilized.detectedMidi);
         panel.detectedLabel.setText(`Detected: ${detected} (${sign}${Math.round(cents)}c)`);
         this.setTunerNeedleFromCents(cents);
       });
@@ -2040,6 +2053,7 @@ export class SongSelectScene extends Phaser.Scene {
   private async stopTuner(clearDetectedText: boolean): Promise<void> {
     this.tunerDetector?.stop();
     this.tunerDetector = undefined;
+    this.tunerPitchStabilizer.reset();
     this.tunerOffPitch?.();
     this.tunerOffPitch = undefined;
     releaseMicStream(this.tunerMicStream);

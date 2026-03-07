@@ -5,6 +5,7 @@ export type PitchListener = (frame: PitchFrame) => void;
 
 type PitchDetectorOptions = {
   roundMidi?: boolean;
+  smoothingAlpha?: number;
 };
 
 export class PitchDetectorService {
@@ -17,9 +18,12 @@ export class PitchDetectorService {
   private workletReady = false;
   private initialized = false;
   private readonly roundMidi: boolean;
+  private readonly smoothingAlpha: number;
+  private smoothedMidiEstimate: number | null = null;
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
+    this.smoothingAlpha = clamp01(options.smoothingAlpha ?? 0);
   }
 
   async init(): Promise<void> {
@@ -40,6 +44,7 @@ export class PitchDetectorService {
   start(source: AudioNode): void {
     if (!this.initialized) throw new Error('PitchDetectorService not initialized');
     this.stop();
+    this.smoothedMidiEstimate = null;
 
     const sink = this.ctx.createGain();
     sink.gain.value = 0;
@@ -57,7 +62,7 @@ export class PitchDetectorService {
         workletNode.port.onmessage = (event: MessageEvent<PitchFrame>) => {
           const payload = event.data;
           if (!payload) return;
-          const midi = payload.midi_estimate;
+          const midi = this.normalizeMidiEstimate(payload.midi_estimate);
           const frame: PitchFrame = {
             t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
             midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
@@ -98,6 +103,7 @@ export class PitchDetectorService {
     }
     this.sink?.disconnect();
     this.sink = null;
+    this.smoothedMidiEstimate = null;
   }
 
   onPitch(listener: PitchListener): () => void {
@@ -111,19 +117,32 @@ export class PitchDetectorService {
       if (!this.analyser || !this.analyserBuffer) return;
       this.analyser.getFloatTimeDomainData(this.analyserBuffer as any);
       const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate);
+      const midi = this.normalizeMidiEstimate(estimation.midiEstimate);
       const frame: PitchFrame = {
         t_seconds: this.ctx.currentTime,
-        midi_estimate:
-          estimation.midiEstimate === null
-            ? null
-            : this.roundMidi
-              ? Math.round(estimation.midiEstimate)
-              : estimation.midiEstimate,
-        confidence: estimation.confidence
+        midi_estimate: midi === null ? null : this.roundMidi ? Math.round(midi) : midi,
+        confidence: midi === null ? 0 : estimation.confidence
       };
       for (const listener of this.listeners) listener(frame);
       this.scheduleAnalyserFrame();
     });
+  }
+
+  private normalizeMidiEstimate(midiEstimate: number | null): number | null {
+    if (midiEstimate === null || !Number.isFinite(midiEstimate)) {
+      this.smoothedMidiEstimate = null;
+      return null;
+    }
+    if (this.smoothingAlpha <= 0) {
+      this.smoothedMidiEstimate = midiEstimate;
+      return midiEstimate;
+    }
+    if (this.smoothedMidiEstimate === null) {
+      this.smoothedMidiEstimate = midiEstimate;
+      return midiEstimate;
+    }
+    this.smoothedMidiEstimate += this.smoothingAlpha * (midiEstimate - this.smoothedMidiEstimate);
+    return this.smoothedMidiEstimate;
   }
 }
 
