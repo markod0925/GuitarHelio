@@ -952,6 +952,17 @@ Debug/testing support:
 * in debug builds, the start screen MUST expose an `Import Source` selector (`Auto`, `Server`, `Native`) to force the import path for validation
 * the debug `Import Source` selector MUST be positioned in the top-left zone of the start screen, above the `Song` section
 * the debug `Import Source` selector MUST NOT overlap song cards/thumbnails
+* Capacitor Android native import MUST keep debug timeline logging instrumentation in code, but it MUST be disabled by default in production builds.
+* when debug timeline logging is explicitly enabled, it MUST write a persistent file for each run at:
+  * primary: `<external-files>/import-debug/song-import-debug.log`
+  * fallback when external files dir is unavailable: `<internal-files>/import-debug/song-import-debug.log`
+  * the file MUST include:
+    * JS pre-native import checkpoints (`decode`, `downmix`, `resample`, `base64 encode`, temp file write/URI resolution)
+    * native stage start/completion markers and watchdog heartbeats
+    * resolved paths/sizes and full failure stack traces
+* Capacitor Android start screen MUST expose an in-app `Share Log` action near import controls when debug timeline logging is enabled:
+  * it MUST open the native Android share sheet (`ACTION_SEND`) so Quick Share or any installed share target can be used
+  * it MUST share `song-import-debug.log`; if missing/empty, fallback to `song-import-debug.prev.log`
 * debug converter mode selector MUST keep backward-compatible labels (`legacy` / `neuralnote` / `ab`)
 * `legacy` and `neuralnote` labels MUST execute the same C++/ONNX pipeline
 * selecting `ab` MUST fail immediately with an explicit message

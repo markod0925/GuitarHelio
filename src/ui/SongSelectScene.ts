@@ -20,6 +20,7 @@ import {
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { TunerPitchStabilizer } from '../audio/tunerPitchStabilizer';
 import { STANDARD_TUNING } from '../guitar/tuning';
+import { IMPORT_DEBUG_LOG_ENABLED } from '../platform/importDebugConfig';
 import { releaseMicStream } from './AudioController';
 import { RoundedBox } from './RoundedBox';
 
@@ -233,6 +234,7 @@ export class SongSelectScene extends Phaser.Scene {
   private refreshSongSelectUi?: () => void;
   private importInput?: HTMLInputElement;
   private importInProgress = false;
+  private importDebugShareInProgress = false;
   private importSourceMode: ImportSourceMode = 'auto';
   private debugConverterMode: DebugConverterMode = 'legacy';
   private quitConfirmOverlay?: QuitConfirmOverlay;
@@ -392,6 +394,30 @@ export class SongSelectScene extends Phaser.Scene {
         fontSize: `${Math.max(12, labelSize - 3)}px`
       })
       .setOrigin(0.5);
+    const importLogShareButton = Capacitor.isNativePlatform() && IMPORT_DEBUG_LOG_ENABLED
+      ? new RoundedBox(
+          this,
+          importButton.x + sideButtonWidth * 0.295,
+          importButtonY - sideButtonHeight * 0.28,
+          Math.min(102, sideButtonWidth * 0.34),
+          22,
+          0x0f766e,
+          0.96
+        )
+          .setStrokeStyle(1, 0x5eead4, 0.86)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
+    const importLogShareLabel = importLogShareButton
+      ? this.add
+          .text(importLogShareButton.x, importLogShareButton.y, 'Share Log', {
+            color: '#ecfeff',
+            fontFamily: 'Montserrat, sans-serif',
+            fontStyle: 'bold',
+            fontSize: `${Math.max(10, labelSize - 5)}px`
+          })
+          .setOrigin(0.5)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
     const showImportSourceDebug = isImportSourceDebugEnabled();
     this.importSourceMode = showImportSourceDebug ? loadImportSourceModePreference() : 'auto';
     this.debugConverterMode = showImportSourceDebug ? loadDebugConverterModePreference() : 'legacy';
@@ -630,6 +656,15 @@ export class SongSelectScene extends Phaser.Scene {
         truncateLabel(this.importInProgress ? 'Import in progress...' : importSummaryMessage, Math.max(28, Math.floor(width * 0.036)))
       );
       importSummary.setColor(this.importInProgress ? '#fde68a' : importSummaryColor);
+      if (importLogShareButton && importLogShareLabel) {
+        const shareDisabled = this.importInProgress || quitPromptOpen || this.importDebugShareInProgress;
+        importLogShareButton.setFillStyle(shareDisabled ? 0x334155 : 0x0f766e, shareDisabled ? 0.86 : 0.96);
+        importLogShareButton.setStrokeStyle(1, shareDisabled ? 0x64748b : 0x5eead4, shareDisabled ? 0.64 : 0.86);
+        importLogShareButton.setAlpha(shareDisabled ? 0.76 : 1);
+        importLogShareLabel.setText(this.importDebugShareInProgress ? 'Sharing...' : 'Share Log');
+        importLogShareLabel.setColor(shareDisabled ? '#cbd5e1' : '#ecfeff');
+        importLogShareLabel.setAlpha(shareDisabled ? 0.8 : 1);
+      }
       importSourceTitle?.setColor(this.importInProgress || quitPromptOpen ? '#fcd34d' : '#94a3b8');
       importSourceToggleOptions.forEach((option) => {
         const active = option.mode === this.importSourceMode;
@@ -785,6 +820,32 @@ export class SongSelectScene extends Phaser.Scene {
           if (importSucceeded) {
             importOverlay.container.setVisible(false);
           }
+          refreshSelections();
+        }
+      }
+    };
+
+    const shareImportDebugLog = async (): Promise<void> => {
+      if (!Capacitor.isNativePlatform()) return;
+      if (this.importInProgress || isQuitConfirmOpen() || this.importDebugShareInProgress) return;
+
+      this.importDebugShareInProgress = true;
+      importSummaryMessage = 'Opening Android share...';
+      importSummaryColor = '#fde68a';
+      refreshSelections();
+
+      try {
+        const { shareNativeImportDebugLog } = await import('../platform/nativeNeuralNoteConverter');
+        const shared = await shareNativeImportDebugLog();
+        const sharedName = shared.logPath ? shared.logPath.split(/[\\/]/).pop() : null;
+        importSummaryMessage = sharedName ? `Shared log: ${sharedName}` : 'Import debug log shared.';
+        importSummaryColor = '#86efac';
+      } catch (error) {
+        importSummaryMessage = `Share log failed: ${toErrorMessage(error)}`;
+        importSummaryColor = '#fca5a5';
+      } finally {
+        this.importDebugShareInProgress = false;
+        if (this.scene.isActive()) {
           refreshSelections();
         }
       }
@@ -968,6 +1029,30 @@ export class SongSelectScene extends Phaser.Scene {
     tunerIcon?.on('pointerdown', openTuner);
     importButton.on('pointerdown', openImportPicker);
     importLabel.on('pointerdown', openImportPicker);
+    importLogShareButton?.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        void shareImportDebugLog();
+      }
+    );
+    importLogShareLabel?.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        void shareImportDebugLog();
+      }
+    );
     importSourceToggleOptions.forEach((option) => {
       const applyImportSourceMode = (): void => {
         if (this.importInProgress) return;

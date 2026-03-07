@@ -1,7 +1,8 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { decodeAudioBuffer, type DecodedAudioBuffer } from '../audio/decodeAudioBuffer';
 import { Midi } from '@tonejs/midi';
+import { IMPORT_DEBUG_LOG_ENABLED } from './importDebugConfig';
 
 export type NativeAudioToMidiProgress = {
   stage: string;
@@ -22,7 +23,15 @@ type CoreTempoPoint = {
   bpm?: number;
 };
 
-type StartTranscriptionResult = { jobId: string };
+type StartTranscriptionResult = {
+  jobId: string;
+  debugLogPath?: string;
+};
+
+type ShareImportDebugLogResult = {
+  shared?: boolean;
+  logPath?: string;
+};
 
 type NativeTranscriptionResult = {
   events?: CoreNoteEvent[];
@@ -47,6 +56,7 @@ type NeuralNoteConverterPlugin = {
     neuralTimeoutMs?: number;
   }) => Promise<StartTranscriptionResult>;
   getTranscriptionStatus: (options: { jobId: string }) => Promise<TranscriptionStatus>;
+  shareImportDebugLog: () => Promise<ShareImportDebugLogResult>;
 };
 
 const NeuralNoteConverter = registerPlugin<NeuralNoteConverterPlugin>('NeuralNoteConverter');
@@ -60,6 +70,10 @@ const IMPORT_STATUS_POLL_MS = 450;
 const IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
 const NATIVE_STAGE_TIMEOUT_MIN_MS = 60 * 1000;
 const NATIVE_STAGE_TIMEOUT_MAX_MS = 20 * 60 * 1000;
+const IMPORT_DEBUG_DIR_PATH = 'import-debug';
+const IMPORT_DEBUG_LOG_PATH = `${IMPORT_DEBUG_DIR_PATH}/song-import-debug.log`;
+const PCM_WRITE_CHUNK_BYTES = 2 * 1024 * 1024;
+const PCM_WRITE_LOG_EVERY_N_CHUNKS = 4;
 
 const BALANCED_PRESET = {
   midiTempo: 120,
@@ -78,60 +92,108 @@ export function isNativeNeuralNoteConverterAvailable(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+export async function shareNativeImportDebugLog(): Promise<{ logPath: string | null }> {
+  if (!isNativeNeuralNoteConverterAvailable()) {
+    throw new Error('Import debug log sharing is available only on native runtime.');
+  }
+
+  const result = await NeuralNoteConverter.shareImportDebugLog();
+  return {
+    logPath: firstNonEmpty(result?.logPath) ?? null
+  };
+}
+
 export async function convertAudioBufferToMidiNativeCxx(
   sourceBuffer: ArrayBuffer,
   mimeOrExtension: string,
   onProgress?: (update: NativeAudioToMidiProgress) => void
 ): Promise<Uint8Array> {
+  const jsRunId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  debugImportLog(
+    `JS converter start | run=${jsRunId} | sourceBytes=${sourceBuffer.byteLength} | mimeOrExtension=${mimeOrExtension}`
+  );
+
   if (sourceBuffer.byteLength <= 0) {
+    debugImportLog(`JS converter rejected empty buffer | run=${jsRunId}`);
     throw new Error('Uploaded audio is empty.');
   }
 
   const sourceType = detectUploadSourceType(mimeOrExtension);
   if (sourceType && sourceType !== 'audio') {
+    debugImportLog(`JS converter rejected non-audio source | run=${jsRunId} | sourceType=${sourceType}`);
     throw new Error('Only WAV, MP3, and OGG can be converted to MIDI.');
   }
 
   if (!isNativeNeuralNoteConverterAvailable()) {
+    debugImportLog(`JS converter rejected non-native runtime | run=${jsRunId}`);
     throw new Error('NeuralNote native converter is available only on native runtime.');
   }
 
   reportProgress(onProgress, 'Decoding audio...', 0.16);
+  const decodeStartedAt = Date.now();
+  debugImportLog(`Decoding audio started | run=${jsRunId}`);
   const decoded = await decodeAudioBuffer(sourceBuffer);
+  debugImportLog(
+    `Decoding audio completed | run=${jsRunId} | elapsedMs=${Date.now() - decodeStartedAt} | channels=${decoded.numberOfChannels} | sampleRate=${decoded.sampleRate} | frames=${decoded.length}`
+  );
   const sourceSampleRate = Math.max(1, Number(decoded.sampleRate) || NEURALNOTE_SAMPLE_RATE);
+  const downmixStartedAt = Date.now();
+  debugImportLog(`Downmix to mono started | run=${jsRunId} | sourceSampleRate=${sourceSampleRate}`);
   const mono = downmixToMono(decoded);
   const audioDurationSeconds = Math.max(0, mono.length / sourceSampleRate);
+  debugImportLog(
+    `Downmix to mono completed | run=${jsRunId} | elapsedMs=${Date.now() - downmixStartedAt} | monoSamples=${mono.length} | durationSec=${audioDurationSeconds.toFixed(3)}`
+  );
 
+  const neuralResampleStartedAt = Date.now();
+  debugImportLog(`NeuralNote resampling started | run=${jsRunId}`);
   const neuralNoteResampled = resampleMonoSignal(mono, sourceSampleRate, NEURALNOTE_SAMPLE_RATE);
   const neuralNoteNormalized = BALANCED_PRESET.normalizeInput
     ? normalizeMonoSignal(neuralNoteResampled, BALANCED_PRESET)
     : neuralNoteResampled;
-  const tempoResampled = resampleMonoSignal(mono, sourceSampleRate, TEMPO_CNN_SAMPLE_RATE);
+  debugImportLog(
+    `NeuralNote resampling completed | run=${jsRunId} | elapsedMs=${Date.now() - neuralResampleStartedAt} | samples=${neuralNoteNormalized.length} | bytes=${neuralNoteNormalized.byteLength}`
+  );
 
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const neuralTmpPath = `converter-tmp/neuralnote-import-${suffix}.f32`;
   const tempoTmpPath = `converter-tmp/tempocnn-import-${suffix}.f32`;
+  let debugLogPath: string | null = null;
 
   try {
     reportProgress(onProgress, 'Preparing NeuralNote native job...', 0.24);
-    await Filesystem.writeFile({
-      path: neuralTmpPath,
-      directory: Directory.Data,
-      recursive: true,
-      data: bytesToBase64(float32ToBytes(neuralNoteNormalized))
+    debugImportLog(
+      `Preparing temp PCM files | run=${jsRunId} | neuralTmpPath=${neuralTmpPath} | tempoTmpPath=${tempoTmpPath}`
+    );
+
+    await writeFloat32PcmFileChunked(neuralTmpPath, neuralNoteNormalized, {
+      runId: jsRunId,
+      label: 'NeuralNote'
     });
-    await Filesystem.writeFile({
-      path: tempoTmpPath,
-      directory: Directory.Data,
-      recursive: true,
-      data: bytesToBase64(float32ToBytes(tempoResampled))
+    debugImportLog(`NeuralNote temp PCM written | run=${jsRunId} | path=${neuralTmpPath}`);
+
+    const tempoResampleStartedAt = Date.now();
+    debugImportLog(`Tempo resampling started | run=${jsRunId}`);
+    const tempoResampled = resampleMonoSignal(mono, sourceSampleRate, TEMPO_CNN_SAMPLE_RATE);
+    debugImportLog(
+      `Tempo resampling completed | run=${jsRunId} | elapsedMs=${Date.now() - tempoResampleStartedAt} | samples=${tempoResampled.length} | bytes=${tempoResampled.byteLength}`
+    );
+
+    await writeFloat32PcmFileChunked(tempoTmpPath, tempoResampled, {
+      runId: jsRunId,
+      label: 'Tempo'
     });
+    debugImportLog(`Tempo temp PCM written | run=${jsRunId} | path=${tempoTmpPath}`);
 
     const [neuralUri, tempoUri] = await Promise.all([
       Filesystem.getUri({ path: neuralTmpPath, directory: Directory.Data }),
       Filesystem.getUri({ path: tempoTmpPath, directory: Directory.Data })
     ]);
+    debugImportLog(
+      `Temp PCM URIs resolved | run=${jsRunId} | neuralUri=${neuralUri.uri} | tempoUri=${tempoUri.uri}`
+    );
 
+    debugImportLog(`Native startTranscription requested | run=${jsRunId}`);
     const start = await NeuralNoteConverter.startTranscription({
       pcmPath: neuralUri.uri,
       tempoPcmPath: tempoUri.uri,
@@ -139,6 +201,13 @@ export async function convertAudioBufferToMidiNativeCxx(
       tempoTimeoutMs: estimateTempoStageTimeoutMs(audioDurationSeconds),
       neuralTimeoutMs: estimateNeuralStageTimeoutMs(audioDurationSeconds)
     });
+    debugLogPath = firstNonEmpty(start?.debugLogPath);
+    debugImportLog(
+      `Native startTranscription resolved | run=${jsRunId} | jobId=${firstNonEmpty(start?.jobId) ?? '<missing>'} | nativeLogPath=${debugLogPath ?? '<none>'}`
+    );
+    if (debugLogPath) {
+      console.info('[native-import-debug] log file:', debugLogPath);
+    }
 
     const jobId = String(start?.jobId || '').trim();
     if (!jobId) {
@@ -147,6 +216,7 @@ export async function convertAudioBufferToMidiNativeCxx(
 
     const transcription = await pollNativeTranscription(jobId, onProgress);
     const events = Array.isArray(transcription.events) ? transcription.events : [];
+    debugImportLog(`Native transcription completed | run=${jsRunId} | jobId=${jobId} | events=${events.length}`);
     if (events.length === 0) {
       throw new Error('No notes detected in uploaded audio.');
     }
@@ -184,9 +254,19 @@ export async function convertAudioBufferToMidiNativeCxx(
 
     reportProgress(onProgress, 'Finalizing MIDI file...', 0.98);
     const bytes = midi.toArray();
+    debugImportLog(`MIDI finalized | run=${jsRunId} | outputBytes=${bytes.byteLength}`);
     reportProgress(onProgress, 'Conversion complete.', 1);
+    debugImportLog(`JS converter completed successfully | run=${jsRunId}`);
     return new Uint8Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  } catch (error) {
+    debugImportLog(`JS converter failed | run=${jsRunId} | error=${toErrorLine(error)}`);
+    if (debugLogPath) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`${reason} (import debug log: ${debugLogPath})`);
+    }
+    throw error;
   } finally {
+    debugImportLog(`Cleaning temp files | run=${jsRunId}`);
     await Filesystem.deleteFile({
       path: neuralTmpPath,
       directory: Directory.Data
@@ -195,6 +275,7 @@ export async function convertAudioBufferToMidiNativeCxx(
       path: tempoTmpPath,
       directory: Directory.Data
     }).catch(() => undefined);
+    debugImportLog(`Temp cleanup completed | run=${jsRunId}`);
   }
 }
 
@@ -475,7 +556,7 @@ function normalizeMonoSignal(samples: Float32Array, settings: { targetPeak: numb
 }
 
 function float32ToBytes(value: Float32Array): Uint8Array {
-  return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+  return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -538,4 +619,109 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function debugImportLog(message: string): void {
+  if (!IMPORT_DEBUG_LOG_ENABLED) return;
+  void appendRealtimeImportDebugLog(message);
+}
+
+async function appendRealtimeImportDebugLog(message: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+
+  const timestamp = new Date().toISOString();
+  const line = `${timestamp} [js] ${message}\n`;
+  const directories: Directory[] = [Directory.External, Directory.Data];
+
+  for (const directory of directories) {
+    try {
+      await Filesystem.mkdir({
+        path: IMPORT_DEBUG_DIR_PATH,
+        directory,
+        recursive: true
+      }).catch(() => undefined);
+
+      await Filesystem.appendFile({
+        path: IMPORT_DEBUG_LOG_PATH,
+        directory,
+        data: line,
+        encoding: Encoding.UTF8
+      });
+      return;
+    } catch {
+      // Try next target directory.
+    }
+  }
+}
+
+async function writeFloat32PcmFileChunked(
+  path: string,
+  samples: Float32Array,
+  options: { runId: string; label: string }
+): Promise<void> {
+  const bytes = float32ToBytes(samples);
+  const totalBytes = bytes.byteLength;
+  debugImportLog(
+    `${options.label} PCM chunked write started | run=${options.runId} | totalBytes=${totalBytes} | chunkBytes=${PCM_WRITE_CHUNK_BYTES}`
+  );
+
+  if (totalBytes <= 0) {
+    await Filesystem.writeFile({
+      path,
+      directory: Directory.Data,
+      recursive: true,
+      data: ''
+    });
+    debugImportLog(`${options.label} PCM empty file written | run=${options.runId}`);
+    return;
+  }
+
+  let offset = 0;
+  let chunkIndex = 0;
+
+  const firstEnd = Math.min(totalBytes, PCM_WRITE_CHUNK_BYTES);
+  await Filesystem.writeFile({
+    path,
+    directory: Directory.Data,
+    recursive: true,
+    data: bytesToBase64(bytes.subarray(0, firstEnd))
+  });
+  offset = firstEnd;
+  chunkIndex = 1;
+  debugImportLog(
+    `${options.label} PCM chunk written | run=${options.runId} | chunk=${chunkIndex} | writtenBytes=${offset}/${totalBytes}`
+  );
+
+  while (offset < totalBytes) {
+    const end = Math.min(totalBytes, offset + PCM_WRITE_CHUNK_BYTES);
+    await Filesystem.appendFile({
+      path,
+      directory: Directory.Data,
+      data: bytesToBase64(bytes.subarray(offset, end))
+    });
+    offset = end;
+    chunkIndex += 1;
+
+    if (offset >= totalBytes || chunkIndex % PCM_WRITE_LOG_EVERY_N_CHUNKS === 0) {
+      debugImportLog(
+        `${options.label} PCM chunk written | run=${options.runId} | chunk=${chunkIndex} | writtenBytes=${offset}/${totalBytes}`
+      );
+    }
+  }
+
+  debugImportLog(
+    `${options.label} PCM chunked write completed | run=${options.runId} | chunks=${chunkIndex} | totalBytes=${totalBytes}`
+  );
+}
+
+function toErrorLine(error: unknown): string {
+  if (error instanceof Error) {
+    const stack = error.stack ? ` | stack=${sanitizeErrorStack(error.stack)}` : '';
+    return `${error.message}${stack}`;
+  }
+  return String(error);
+}
+
+function sanitizeErrorStack(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 1200);
 }

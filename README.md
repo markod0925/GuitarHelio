@@ -315,6 +315,16 @@ Persistence by platform:
 Import source debug selector:
 - In debug/dev builds, the `Import Source` selector (`Auto`, `Server`, `Native`) is visible below the import button.
 - `Auto` uses the correct path by platform (server on web, native on Capacitor).
+- On Capacitor Android native import, debug file-log instrumentation is available but disabled by default (`IMPORT_DEBUG_LOG_ENABLED = false` in TS + Android plugin).
+- When debug logging is re-enabled, a persistent debug file log is written during conversion:
+  - primary path: `<external-files>/import-debug/song-import-debug.log`
+  - fallback path: `<internal-files>/import-debug/song-import-debug.log`
+  - file contains JS pre-native checkpoints (`decode/downmix/resample/base64/temp-write`) plus native stage transitions.
+  - file also contains watchdog heartbeats, resolved input/model paths, and full stack traces on failure.
+- Start Screen includes a native-only `Share Log` action next to import controls when debug logging is enabled:
+  - opens Android share sheet (`ACTION_SEND`) to share the latest import debug log
+  - Quick Share can be selected directly from the standard Android chooser
+  - fallback order: `song-import-debug.log` -> `song-import-debug.prev.log`
 
 ## Startup Benchmark CLI
 
