@@ -1,6 +1,6 @@
 {
   "name": "guitar-helio",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": true,
   "description": "Child-friendly guitar training game with web, Android, and Windows desktop packaging.",
   "author": "GuitarHelio Team",
@@ -29,7 +29,7 @@
     "convert:audio:midi": "node tools/audio-midi-converter/bin/convert-audio-to-midi.mjs",
     "perf:startup": "node scripts/benchmark-startup.mjs --repeat 20",
     "desktop:start": "electron electron/main.mjs",
-    "build:windows": "npm run build && electron-builder --win nsis portable",
+    "build:windows": "npm run build && electron-builder --win nsis portable --publish never",
     "build:windows:clean": "cmd /c \"taskkill /F /IM GuitarHelio.exe /IM electron.exe /IM app-builder.exe 2>nul & attrib -R release\\win-unpacked\\* /S /D 2>nul & rmdir /S /Q release\\win-unpacked 2>nul & npm run install:windows && npm run build:windows\""
   },
   "build": {

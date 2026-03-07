@@ -38,11 +38,19 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
+      - name: Rename APK with app version
+        shell: bash
+        run: |
+          APP_VERSION="$(node -p 'require("./package.json").version')"
+          APK_SRC="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK_DST="android/app/build/outputs/apk/debug/GuitarHelio-${APP_VERSION}-android-debug.apk"
+          cp "$APK_SRC" "$APK_DST"
+
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/GuitarHelio-*-android-debug.apk
           if-no-files-found: error
 
   build-windows:
@@ -97,7 +105,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/android/app-debug.apk
+            artifacts/android/*.apk
             artifacts/windows/*.exe
             artifacts/windows/*.blockmap
             artifacts/windows/*.yml
