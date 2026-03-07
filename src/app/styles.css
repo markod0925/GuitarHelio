@@ -30,6 +30,24 @@ body {
   box-shadow: 0 20px 70px rgba(2, 6, 23, 0.7), 0 0 0 1px rgba(147, 197, 253, 0.2);
 }
 
+#startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  opacity: 1;
+  background-color: #030712;
+  background-image: url('/guitarhelio_splash_landscape_bg_1920x1080.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: opacity 350ms ease;
+}
+
+#startup-splash.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 html.platform-native #app {
   padding: 0;
 }

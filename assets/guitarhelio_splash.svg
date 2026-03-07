@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="barGrad1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+
+    <linearGradient id="barGrad2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7DD3FC"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+
+    <linearGradient id="barGrad3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+
+    <radialGradient id="haloGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.20"/>
+      <stop offset="70%" stop-color="#F59E0B" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="solarGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="cyanGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feColorMatrix
+        in="blur"
+        type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.9 0"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Ambient glow centered on pick -->
+  <circle cx="512" cy="526" r="280" fill="url(#haloGlow)"/>
+
+  <!-- Guitar pick -->
+  <g>
+    <path
+      d="
+      M512 212
+      C650 212 760 320 760 440
+      C760 640 610 770 512 840
+      C414 770 264 640 264 440
+      C264 320 374 212 512 212
+      Z"
+      fill="#1A2230"
+    />
+
+    <path
+      d="
+      M512 244
+      C632 244 726 338 726 444
+      C726 612 599 723 512 785
+      C425 723 298 612 298 444
+      C298 338 392 244 512 244
+      Z"
+      fill="none"
+      stroke="#2B3647"
+      stroke-width="8"
+      opacity="0.85"
+    />
+  </g>
+
+  <!-- Solar arc system -->
+  <g filter="url(#solarGlow)" opacity="0.98">
+    <!-- Top main arc -->
+    <path
+      d="M281 414
+         A233 220 0 0 1 743 414"
+      fill="none"
+      stroke="#F59E0B"
+      stroke-width="24"
+      stroke-linecap="round"
+    />
+
+    <!-- Left lower side arc -->
+    <path
+      d="M281 494
+         A356 356 0 0 0 336 642"
+      fill="none"
+      stroke="#F59E0B"
+      stroke-width="24"
+      stroke-linecap="round"
+    />
+
+    <!-- Right lower side arc -->
+    <path
+      d="M745 494
+         A356 356 0 0 1 688 642"
+      fill="none"
+      stroke="#F59E0B"
+      stroke-width="28"
+      stroke-linecap="round"
+    />
+  </g>
+
+  <!-- Accent nodes -->
+  <g filter="url(#softGlow)">
+    <circle cx="430" cy="380" r="20" fill="#FFF27A"/>
+    <circle cx="490" cy="340" r="20" fill="#E9B3FF"/>
+    <circle cx="550" cy="360" r="20" fill="#8FE8FF"/>
+    <circle cx="610" cy="410" r="20" fill="#FFA0A0"/>
+  </g>
+
+  <!-- Bars -->
+  <g filter="url(#cyanGlow)">
+    <rect x="430" y="560" width="36" height="150" rx="8" fill="url(#barGrad1)"/>
+    <rect x="478" y="530" width="36" height="180" rx="8" fill="url(#barGrad2)"/>
+    <rect x="526" y="500" width="36" height="210" rx="8" fill="url(#barGrad3)"/>
+    <rect x="574" y="540" width="36" height="170" rx="8" fill="url(#barGrad2)"/>
+    <rect x="622" y="575" width="36" height="135" rx="8" fill="url(#barGrad1)"/>
+  </g>
+
+  <!-- Curved signal line -->
+  <path
+    d="M360 706 C404 678, 434 648, 458 626 C478 608, 490 600, 512 600 C534 600, 546 608, 566 626 C590 648, 620 678, 664 706"
+    fill="none"
+    stroke="#3EEBFF"
+    stroke-width="10"
+    stroke-linecap="round"
+    opacity="0.9"
+  />
+</svg>

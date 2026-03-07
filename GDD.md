@@ -786,6 +786,15 @@ Start-screen layout constraints:
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
 * in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`) and `Start Session` CTA MUST keep non-overlapping spacing
 
+### 11.12.1 App icon and startup splash assets
+
+Branding assets MUST be wired consistently across runtime targets:
+
+* Windows desktop packaging MUST use `assets/guitarhelio.ico` as application icon
+* Android launcher icon MUST be generated from `assets/ic_launcher_background.png` + `assets/ic_launcher_foreground.png` for adaptive and legacy mipmap assets
+* Server/web build MUST expose favicon from `public/favicon.ico` sourced from `assets/favicon.ico`
+* all platforms (web/server, Windows desktop, Android) MUST show startup splash `guitarhelio_splash_landscape_bg_1920x1080.png` for about 2 seconds at app launch while the app bootstrap continues in background
+
 ---
 
 ## 11.13 Song catalog structure and fallback rules

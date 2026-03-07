@@ -50,6 +50,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "assets/guitarhelio.ico",
       "target": [
         "nsis",
         "portable"

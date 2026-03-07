@@ -102,6 +102,9 @@ function createMainWindow() {
     throw new Error('Missing desktop app URL.');
   }
 
+  const iconPath = path.join(app.getAppPath(), 'assets', 'guitarhelio.ico');
+  const windowIcon = fsSync.existsSync(iconPath) ? iconPath : undefined;
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -109,6 +112,7 @@ function createMainWindow() {
     minHeight: 640,
     autoHideMenuBar: true,
     show: false,
+    icon: windowIcon,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

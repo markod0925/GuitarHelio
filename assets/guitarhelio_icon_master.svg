@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+  <!-- Guitar Pick -->
+  <path
+    d="
+    M512 212
+    C650 212 760 320 760 440
+    C760 640 610 770 512 840
+    C414 770 264 640 264 440
+    C264 320 374 212 512 212
+    Z"
+    fill="#1A2230"/>
+
+  <!-- Halo -->
+  <circle
+    cx="512"
+    cy="430"
+    r="220"
+    fill="none"
+    stroke="#F59E0B"
+    stroke-width="32"/>
+
+  <!-- Spectrum Bars -->
+  <rect x="430" y="560" width="36" height="150" rx="8" fill="#22D3EE"/>
+  <rect x="478" y="530" width="36" height="180" rx="8" fill="#38BDF8"/>
+  <rect x="526" y="500" width="36" height="210" rx="8" fill="#60A5FA"/>
+  <rect x="574" y="540" width="36" height="170" rx="8" fill="#38BDF8"/>
+  <rect x="622" y="575" width="36" height="135" rx="8" fill="#22D3EE"/>
+
+    <!-- accent node on the arc center 512px -->
+    <circle cx="440" cy="380" r="20" fill="#FFE05C"/> <!-- index -->
+    <circle cx="490" cy="340" r="20" fill="#C084FC"/> <!-- middle -->
+    <circle cx="540" cy="360" r="20" fill="#60A5FA"/> <!-- ring -->
+    <circle cx="590" cy="410" r="20" fill="#F87171"/> <!-- pinky -->
+  
+</svg>

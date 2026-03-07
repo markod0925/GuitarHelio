@@ -27,6 +27,10 @@ export class BootScene extends Phaser.Scene {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('guitarhelio:boot-ready'));
+    }
+
     this.scene.start('SongSelectScene');
   }
 }
