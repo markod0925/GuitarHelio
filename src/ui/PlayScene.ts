@@ -105,6 +105,7 @@ export class PlayScene extends Phaser.Scene {
   public hasLastBallTrailPoint = false;
   public lastBallTrailX = 0;
   public lastBallTrailY = 0;
+  public lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
   public readonly fretboardRenderer = new FretboardRenderer(this);
   public readonly minimapRenderer = new MinimapRenderer(this);
   public readonly noteRenderer = new NoteRenderer(this);
@@ -112,6 +113,9 @@ export class PlayScene extends Phaser.Scene {
   public statusText?: Phaser.GameObjects.Text;
   public feedbackMessageText?: Phaser.GameObjects.Text;
   public liveScoreText?: Phaser.GameObjects.Text;
+  public lastHudStatusText = '';
+  public lastHudFeedbackText = '';
+  public lastHudLiveScoreText = '';
   public debugButton?: RoundedBox;
   public debugButtonLabel?: Phaser.GameObjects.Text;
   public resultsOverlay?: Phaser.GameObjects.Container;

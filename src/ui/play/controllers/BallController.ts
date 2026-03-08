@@ -11,6 +11,7 @@ import { PlayState, type TargetNote } from '../../../types/models';
 import type { Layout, MutablePoint } from '../../playSceneTypes';
 import type { PlaySceneContext } from './PlaySceneContext';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
+const BALL_TRAIL_REDRAW_MIN_INTERVAL_MS = 33;
 
 export class BallController {
   constructor(private readonly scene: PlaySceneContext) {}
@@ -285,6 +286,7 @@ function destroyBallTrailImpl(this: PlaySceneContext): void {
   this.hasLastBallTrailPoint = false;
   this.lastBallTrailX = 0;
   this.lastBallTrailY = 0;
+  this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
 }
 
 function pushBallTrailPointImpl(this: PlaySceneContext, x: number, y: number): void {
@@ -292,11 +294,13 @@ function pushBallTrailPointImpl(this: PlaySceneContext, x: number, y: number): v
 }
 
 function updateBallTrailImpl(this: PlaySceneContext, x: number, y: number, laneSpacing: number): void {
+  let forceRedraw = false;
   if (!this.hasLastBallTrailPoint) {
     this.pushBallTrailPoint(x, y);
     this.hasLastBallTrailPoint = true;
     this.lastBallTrailX = x;
     this.lastBallTrailY = y;
+    forceRedraw = true;
   } else {
     const distance = Phaser.Math.Distance.Between(this.lastBallTrailX, this.lastBallTrailY, x, y);
     if (distance > laneSpacing * 4) {
@@ -304,6 +308,7 @@ function updateBallTrailImpl(this: PlaySceneContext, x: number, y: number, laneS
       this.pushBallTrailPoint(x, y);
       this.lastBallTrailX = x;
       this.lastBallTrailY = y;
+      forceRedraw = true;
     } else if (distance > 0.15) {
       const interpolationSteps = distance > laneSpacing * 0.7 ? BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS : 1;
       for (let i = 1; i <= interpolationSteps; i += 1) {
@@ -318,7 +323,11 @@ function updateBallTrailImpl(this: PlaySceneContext, x: number, y: number, laneS
     }
   }
 
-  this.drawBallDashedTrail(laneSpacing);
+  const now = performance.now();
+  if (forceRedraw || now - this.lastBallTrailRedrawAtMs >= BALL_TRAIL_REDRAW_MIN_INTERVAL_MS) {
+    this.drawBallDashedTrail(laneSpacing);
+    this.lastBallTrailRedrawAtMs = now;
+  }
 }
 
 function resetBallTrailHistoryImpl(this: PlaySceneContext): void {
@@ -326,6 +335,7 @@ function resetBallTrailHistoryImpl(this: PlaySceneContext): void {
   this.hasLastBallTrailPoint = false;
   this.lastBallTrailX = 0;
   this.lastBallTrailY = 0;
+  this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
   this.hideUnusedTrailSegments(0);
 }
 
@@ -446,6 +456,7 @@ function setBallAndTrailVisibleImpl(this: PlaySceneContext, visible: boolean): v
     this.hasLastBallTrailPoint = false;
     this.lastBallTrailX = 0;
     this.lastBallTrailY = 0;
+    this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
     this.hideUnusedTrailSegments(0);
   } else {
     for (const segment of this.ballTrailSegments) {

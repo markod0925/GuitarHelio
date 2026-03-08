@@ -11,6 +11,11 @@ export class MinimapRenderer {
   private progressFill?: Phaser.GameObjects.Rectangle;
   private progressCursor?: Phaser.GameObjects.Line;
   private layout?: SongMinimapLayout;
+  private cachedTargets?: TargetNote[];
+  private cachedTargetTicks: number[] = [];
+  private lastProgressTick = Number.NaN;
+  private lastPassedTargetIndex = -1;
+  private lastCorrectHitCount = -1;
 
   constructor(private readonly scene: Phaser.Scene) {}
 
@@ -94,6 +99,7 @@ export class MinimapRenderer {
     this.staticLayer?.setVisible(true);
     this.progressFill?.setVisible(true);
     this.progressCursor?.setVisible(true);
+    this.resetProgressCache();
   }
 
   redrawStatic(targets: TargetNote[], ticksPerQuarter: number): void {
@@ -148,13 +154,37 @@ export class MinimapRenderer {
       .setTo(0, 0, 0, layout.innerHeight + 2)
       .setVisible(true);
 
-    for (let i = 0; i < targets.length; i += 1) {
-      const overlay = this.hitOverlays[i];
-      if (!overlay) continue;
-      const target = targets[i];
-      const show = target.tick <= clampedTick && correctlyHitTargetIds.has(target.id);
-      overlay.setVisible(show);
+    const correctHitCount = correctlyHitTargetIds.size;
+    if (clampedTick === this.lastProgressTick && correctHitCount === this.lastCorrectHitCount) {
+      return;
     }
+
+    const targetCacheChanged = this.ensureTargetTickCache(targets);
+    const passedTargetIndex = this.findLastTargetIndexAtOrBeforeTick(clampedTick);
+    const isForwardTick = Number.isFinite(this.lastProgressTick) && clampedTick >= this.lastProgressTick;
+    const canApplyIncremental =
+      !targetCacheChanged &&
+      isForwardTick &&
+      correctHitCount === this.lastCorrectHitCount;
+
+    if (canApplyIncremental && passedTargetIndex > this.lastPassedTargetIndex) {
+      for (let i = this.lastPassedTargetIndex + 1; i <= passedTargetIndex; i += 1) {
+        const overlay = this.hitOverlays[i];
+        if (!overlay) continue;
+        overlay.setVisible(correctlyHitTargetIds.has(targets[i].id));
+      }
+    } else {
+      for (let i = 0; i < targets.length; i += 1) {
+        const overlay = this.hitOverlays[i];
+        if (!overlay) continue;
+        const show = i <= passedTargetIndex && correctlyHitTargetIds.has(targets[i].id);
+        overlay.setVisible(show);
+      }
+    }
+
+    this.lastProgressTick = clampedTick;
+    this.lastPassedTargetIndex = passedTargetIndex;
+    this.lastCorrectHitCount = correctHitCount;
   }
 
   destroy(): void {
@@ -171,6 +201,7 @@ export class MinimapRenderer {
     this.progressCursor?.destroy();
     this.progressCursor = undefined;
     this.layout = undefined;
+    this.resetProgressCache();
   }
 
   private getSongMinimapNoteRect(
@@ -213,6 +244,7 @@ export class MinimapRenderer {
     for (let i = targets.length; i < this.hitOverlays.length; i += 1) {
       this.hitOverlays[i].setVisible(false);
     }
+    this.resetProgressCache();
   }
 
   private getOrCreateHitOverlay(index: number): Phaser.GameObjects.Rectangle {
@@ -226,5 +258,40 @@ export class MinimapRenderer {
       .setVisible(false);
     this.hitOverlays.push(overlay);
     return overlay;
+  }
+
+  private ensureTargetTickCache(targets: TargetNote[]): boolean {
+    if (this.cachedTargets === targets && this.cachedTargetTicks.length === targets.length) {
+      return false;
+    }
+    this.cachedTargets = targets;
+    this.cachedTargetTicks = new Array(targets.length);
+    for (let i = 0; i < targets.length; i += 1) {
+      this.cachedTargetTicks[i] = targets[i].tick;
+    }
+    this.lastPassedTargetIndex = -1;
+    return true;
+  }
+
+  private findLastTargetIndexAtOrBeforeTick(tick: number): number {
+    let low = 0;
+    let high = this.cachedTargetTicks.length;
+    while (low < high) {
+      const mid = low + Math.floor((high - low) / 2);
+      if (this.cachedTargetTicks[mid] <= tick) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low - 1;
+  }
+
+  private resetProgressCache(): void {
+    this.cachedTargets = undefined;
+    this.cachedTargetTicks = [];
+    this.lastProgressTick = Number.NaN;
+    this.lastPassedTargetIndex = -1;
+    this.lastCorrectHitCount = -1;
   }
 }

@@ -7,6 +7,9 @@ export class FretboardRenderer {
   private starfield?: Phaser.GameObjects.TileSprite;
   private starfieldTextureWidth = 0;
   private starfieldBand?: { width: number; yMin: number; yMax: number };
+  private lastTileWidth = 0;
+  private lastTileHeight = 0;
+  private lastTileY = 0;
 
   constructor(private readonly scene: Phaser.Scene) {}
 
@@ -29,10 +32,16 @@ export class FretboardRenderer {
     }
 
     if (!this.starfield) return;
+    if (this.lastTileWidth !== width || this.lastTileHeight !== bandHeight || this.lastTileY !== yMin) {
+      this.starfield
+        .setPosition(0, yMin)
+        .setSize(width, bandHeight)
+        .setDisplaySize(width, bandHeight);
+      this.lastTileWidth = width;
+      this.lastTileHeight = bandHeight;
+      this.lastTileY = yMin;
+    }
     this.starfield
-      .setPosition(0, yMin)
-      .setSize(width, bandHeight)
-      .setDisplaySize(width, bandHeight)
       .setTilePosition((runtimeTick * layout.pxPerTick) % Math.max(1, this.starfieldTextureWidth), 0)
       .setVisible(true);
   }
@@ -45,6 +54,9 @@ export class FretboardRenderer {
     }
     this.starfieldTextureWidth = 0;
     this.starfieldBand = undefined;
+    this.lastTileWidth = 0;
+    this.lastTileHeight = 0;
+    this.lastTileY = 0;
   }
 
   private buildOrUpdateStarfieldTexture(width: number, bandHeight: number): void {

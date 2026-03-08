@@ -65,7 +65,6 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     this.drawTopStarfield();
     this.updateSongMinimapProgress();
     this.updateHud();
-    this.updateDebugOverlay();
     return;
   }
   const previousState = this.runtime.state;
@@ -149,7 +148,6 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   this.drawTopStarfield();
   this.updateSongMinimapProgress();
   this.updateHud();
-  this.updateDebugOverlay();
 
   if (!this.targets[this.runtime.active_target_index]) {
     this.queueFinishSong();
@@ -220,7 +218,6 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
     this.feedbackText = 'Resume with Play before debug input';
     this.feedbackUntilMs = performance.now() + 900;
     this.updateHud();
-    this.updateDebugOverlay();
     return;
   }
   if (!this.audioCtx || !this.tempoMap) return;
@@ -228,7 +225,6 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
     this.feedbackText = 'Playback not started yet';
     this.feedbackUntilMs = performance.now() + 700;
     this.updateHud();
-    this.updateDebugOverlay();
     return;
   }
   const previousState = this.runtime.state;
@@ -252,7 +248,6 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
   this.redrawTargetsAndBall();
   this.updateSongMinimapProgress();
   this.updateHud();
-  this.updateDebugOverlay();
   if (!this.targets[this.runtime.active_target_index]) {
     this.queueFinishSong();
   } else {

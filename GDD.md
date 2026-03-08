@@ -750,6 +750,8 @@ On Capacitor Android runtime, app lifecycle transitions MUST be battery-safe:
 * when app goes to background during `PlayScene`, gameplay MUST auto-pause and runtime audio processing MUST be suspended
 * when app returns to foreground, gameplay MUST remain paused until explicit user resume
 * when app goes to background while tuner is active in `SongSelectScene`, tuner microphone capture MUST stop
+* while `PlayScene` is active in foreground, Android runtime MUST keep the screen awake (no automatic dim/standby)
+* when leaving `PlayScene`, Android runtime MUST release keep-awake so non-gameplay screens can dim/standby normally
 
 In debug sessions, gameplay MUST also provide a central debug overlay (toggle key: `F3`) showing at least:
 
@@ -1037,7 +1039,7 @@ Speed control requirements:
 * strings: [1–6]
 * frets: 0–12
 * fingers: [1–4]
-* avg_seconds_per_note: 0.0666666667 (3 notes every 0.2s)
+* avg_seconds_per_note: 0.15 (about 1 note every 0.15s)
 * pitch_tolerance: ±0.5
 
 ---

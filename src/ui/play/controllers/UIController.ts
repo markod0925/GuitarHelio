@@ -704,10 +704,23 @@ function updateHudImpl(this: PlaySceneContext): void {
 
   const topMessage = this.resolveTopFeedbackMessage(now);
   const completed = Math.min(this.runtime.active_target_index, this.targets.length);
+  const liveScoreText = `${this.totalScore}  |  ${completed}/${this.targets.length}`;
 
-  this.statusText.setText(status);
-  this.feedbackMessageText.setText(topMessage).setVisible(topMessage.length > 0);
-  this.liveScoreText.setText(`${this.totalScore}  |  ${completed}/${this.targets.length}`);
+  if (this.lastHudStatusText !== status) {
+    this.statusText.setText(status);
+    this.lastHudStatusText = status;
+  }
+
+  if (this.lastHudFeedbackText !== topMessage) {
+    this.feedbackMessageText.setText(topMessage);
+    this.lastHudFeedbackText = topMessage;
+  }
+  this.feedbackMessageText.setVisible(topMessage.length > 0);
+
+  if (this.lastHudLiveScoreText !== liveScoreText) {
+    this.liveScoreText.setText(liveScoreText);
+    this.lastHudLiveScoreText = liveScoreText;
+  }
   this.updateDebugOverlay();
 }
 

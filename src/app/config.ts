@@ -40,7 +40,7 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
     allowed_strings: [1, 2, 3, 4, 5, 6],
     allowed_frets: { min: 0, max: 12 },
     allowed_fingers: [1, 2, 3, 4],
-    avg_seconds_per_note: 0.0666666667,
+    avg_seconds_per_note: 0.15,
     pitch_tolerance_semitones: 0.5,
     max_simultaneous_notes: 1
   }
