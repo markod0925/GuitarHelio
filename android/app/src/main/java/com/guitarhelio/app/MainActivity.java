@@ -8,11 +8,13 @@ import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 import com.guitarhelio.app.converter.NeuralNoteConverterPlugin;
+import com.guitarhelio.app.display.KeepScreenOnPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NeuralNoteConverterPlugin.class);
+        registerPlugin(KeepScreenOnPlugin.class);
         super.onCreate(savedInstanceState);
         enterImmersiveMode();
     }

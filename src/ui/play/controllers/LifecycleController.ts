@@ -5,6 +5,10 @@ import {
   DEFAULT_GATING_TIMEOUT_SECONDS
 } from '../../../app/config';
 import { createInitialRuntimeState } from '../../../game/stateMachine';
+import {
+  disableKeepScreenOnAfterPlayScene,
+  enableKeepScreenOnDuringPlayScene
+} from '../../../platform/nativeKeepScreenOn';
 import { releaseMicStream } from '../../AudioController';
 import { isGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
@@ -31,6 +35,7 @@ export class LifecycleController {
 }
 
 function initializeSessionStateImpl(this: PlaySceneContext): void {
+  void enableKeepScreenOnDuringPlayScene();
   const sceneClass = this.constructor as PlaySceneStatics;
   this.runtime = createInitialRuntimeState();
   this.scoreEvents = [];
@@ -54,6 +59,10 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.backingTrackSourceStartSongSeconds = 0;
   this.backingTrackIsPlaying = false;
   this.backingTrackAudioUrl = undefined;
+  this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
+  this.lastHudStatusText = '';
+  this.lastHudFeedbackText = '';
+  this.lastHudLiveScoreText = '';
   this.hitDebugSnapshot = {
     isWithinGraceWindow: false,
     canValidateHit: false,
@@ -96,6 +105,7 @@ function startRuntimeLoopImpl(this: PlaySceneContext): void {
 }
 
 function cleanupImpl(this: PlaySceneContext): void {
+  void disableKeepScreenOnAfterPlayScene();
   this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);
   this.input.keyboard?.off('keydown-F3', this.toggleDebugOverlay, this);
 
@@ -165,6 +175,9 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.feedbackMessageText = undefined;
   this.liveScoreText?.destroy();
   this.liveScoreText = undefined;
+  this.lastHudStatusText = '';
+  this.lastHudFeedbackText = '';
+  this.lastHudLiveScoreText = '';
   this.debugOverlayContainer?.destroy(true);
   this.debugOverlayContainer = undefined;
   this.debugOverlayPanel = undefined;
