@@ -794,6 +794,28 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 
+### 11.11.1 Pitch detector debug scene
+
+The start screen MUST expose a dedicated `Pitch Debug` button that opens a separate debug scene.
+
+Pitch debug scene requirements:
+
+* show 6 guitar strings and a full fret grid from fret `0` to fret `12`
+* draw all note positions for each string/fret intersection
+* all note positions MUST be gray by default
+* while microphone detection is active, the scene MUST run a direct A/B compare between:
+  - detector `A`: current project pitch detector (`PitchDetectorService`)
+  - detector `B`: aubiojs pitch detector
+* for each detected pitch, the scene MUST highlight all equivalent fretboard positions (same MIDI across strings/frets)
+* highlighted positions MUST be color-coded in real time:
+  - `A only` -> green
+  - `B only` -> amber/orange
+  - `A + B` (same detected pitch) -> lime/combined highlight
+* include explicit controls for `Start Mic` / `Stop Mic`
+* include `Back to Start` to return to `SongSelectScene`
+* the scene SHOULD show per-detector stable note output and A/B semitone delta
+* both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
+
 ---
 
 ## 11.12 Global visual theme
@@ -813,7 +835,7 @@ Start-screen layout constraints:
 
 * the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
-* in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`) and `Start Session` CTA MUST keep non-overlapping spacing
+* in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`, `Pitch Debug`) and `Start Session` CTA MUST keep non-overlapping spacing
 
 ### 11.12.1 App icon and startup splash assets
 

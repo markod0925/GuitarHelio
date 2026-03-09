@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { JzzTinySynth } from '../../../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../../../audio/midiScrubPlayer';
 import { PitchDetectorService } from '../../../audio/pitchDetector';
+import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { loadPitchCalibrationProfile } from '../../../audio/pitchCalibration';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import {
@@ -134,24 +135,36 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   this.debugSynth = synth;
   const playbackNotes = buildPlaybackNotes(sourceNotes, this.ticksPerQuarter);
   this.scrubPlayer = new MidiScrubPlayer(synth, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
+  this.gameplayPitchStabilizer = undefined;
 
   try {
     const micSource = await createMicNode(audioCtx);
     this.micStream = micSource.mediaStream;
     const detector = new PitchDetectorService(audioCtx, {
-      smoothingAlpha: 0.32,
+      smoothingAlpha: 0,
       calibrationProfile: loadPitchCalibrationProfile()
     });
     await detector.init();
+    const gameplayPitchStabilizer = new PitchStabilityFilter({
+      minConfidence: 0.62,
+      smoothingAlpha: 0.24,
+      maxOutlierDeltaSemitones: 2.6,
+      switchHysteresisSemitones: 0.72,
+      switchConfirmFrames: 4,
+      maxMissedFrames: 4,
+      emitLockedMidiOnMissedFrames: true
+    });
+    this.gameplayPitchStabilizer = gameplayPitchStabilizer;
     detector.onPitch((frame) => {
       if (this.pauseOverlay) return;
       if (this.runtime.state === PlayState.Finished) return;
-      this.latestFrames.push(frame);
+      this.latestFrames.push(gameplayPitchStabilizer.update(frame));
     });
     detector.start(micSource);
     this.detector = detector;
   } catch (error) {
     console.error('Microphone setup failed', error);
+    this.gameplayPitchStabilizer = undefined;
     if (this.profile.gating_timeout_seconds === undefined) {
       this.fallbackTimeoutSeconds = DEFAULT_GATING_TIMEOUT_SECONDS;
     }

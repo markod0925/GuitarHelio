@@ -102,6 +102,7 @@ export class SongSelectScene extends Phaser.Scene {
     const difficultyToImportGap = 86;
     const importToSettingsGap = 92;
     const settingsToTunerGap = 86;
+    const tunerToPitchDebugGap = 86;
     const sideButtonWidth = Math.min(300, width * 0.3);
     const sideButtonHeight = 56;
     const sideButtonsBottomGapFromStart = 14;
@@ -109,14 +110,16 @@ export class SongSelectScene extends Phaser.Scene {
     let importButtonY = difficultyButtonY + difficultyToImportGap;
     let settingsButtonY = importButtonY + importToSettingsGap;
     let tunerButtonY = settingsButtonY + settingsToTunerGap;
-    const maxTunerButtonBottom = startTopY - sideButtonsBottomGapFromStart;
-    const tunerButtonBottom = tunerButtonY + sideButtonHeight / 2;
-    if (tunerButtonBottom > maxTunerButtonBottom) {
-      const shiftUp = tunerButtonBottom - maxTunerButtonBottom;
+    let pitchDebugButtonY = tunerButtonY + tunerToPitchDebugGap;
+    const maxBottomButton = startTopY - sideButtonsBottomGapFromStart;
+    const bottomButtonY = pitchDebugButtonY + sideButtonHeight / 2;
+    if (bottomButtonY > maxBottomButton) {
+      const shiftUp = bottomButtonY - maxBottomButton;
       difficultyButtonY -= shiftUp;
       settingsButtonY -= shiftUp;
       tunerButtonY -= shiftUp;
       importButtonY -= shiftUp;
+      pitchDebugButtonY -= shiftUp;
     }
     const settingsController = new SongSessionController(this, () => refreshSelections());
     settingsController.initialize(width, height, labelSize);
@@ -172,6 +175,33 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setVisible(false);
+    const pitchDebugButton = new RoundedBox(
+      this,
+      width * 0.79,
+      pitchDebugButtonY,
+      sideButtonWidth,
+      sideButtonHeight,
+      0x1a2a53,
+      0.74
+    )
+      .setStrokeStyle(2, 0x3b82f6, 0.35)
+      .setInteractive({ useHandCursor: true });
+    const pitchDebugLabel = this.add
+      .text(pitchDebugButton.x, pitchDebugButtonY, 'Pitch Debug', {
+        color: '#f1f5f9',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(17, labelSize + 2)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const pitchDebugSummary = this.add
+      .text(pitchDebugButton.x, pitchDebugButtonY + 38, '6 strings • frets 0-12', {
+        color: '#a5b4fc',
+        fontFamily: 'Montserrat, sans-serif',
+        fontSize: `${Math.max(12, labelSize - 3)}px`
+      })
+      .setOrigin(0.5);
     const settingsSummary = this.add
       .text(settingsButton.x, settingsButtonY + 39, '', {
         color: '#a5b4fc',
@@ -369,6 +399,12 @@ export class SongSelectScene extends Phaser.Scene {
       );
       tunerSummary.setColor(tunerState.calibrating ? '#fde68a' : tunerState.active ? '#86efac' : '#a5b4fc');
 
+      const pitchDebugDisabled = importState.inProgress || quitPromptOpen;
+      pitchDebugButton.setFillStyle(pitchDebugDisabled ? 0x334155 : 0x1a2a53, pitchDebugDisabled ? 0.9 : 0.74);
+      pitchDebugButton.setStrokeStyle(2, pitchDebugDisabled ? 0x64748b : 0x3b82f6, pitchDebugDisabled ? 0.72 : 0.52);
+      pitchDebugLabel.setColor(pitchDebugDisabled ? '#cbd5e1' : '#f1f5f9');
+      pitchDebugSummary.setColor(pitchDebugDisabled ? '#94a3b8' : '#a5b4fc');
+
       importButton.setFillStyle(importState.inProgress || quitPromptOpen ? 0x334155 : 0x1a2a53, importState.inProgress || quitPromptOpen ? 0.9 : 0.74);
       importButton.setStrokeStyle(2, importState.inProgress ? 0xf59e0b : 0x3b82f6, importState.inProgress || quitPromptOpen ? 0.82 : 0.52);
       importLabel.setColor(importState.inProgress || quitPromptOpen ? '#fef3c7' : '#f1f5f9');
@@ -436,6 +472,16 @@ export class SongSelectScene extends Phaser.Scene {
       songGridController.hideRemovePrompt();
       tunerController.openOverlay();
       refreshSelections();
+    };
+
+    const openPitchDebug = (): void => {
+      if (importController.isInProgress() || isQuitConfirmOpen()) return;
+      if (tunerController.isCalibrating()) return;
+      songGridController.hideRemovePrompt();
+      if (settingsController.isOpen()) closeSettings();
+      if (tunerController.isOpen()) closeTuner();
+      void tunerController.stop(false);
+      this.scene.start('PitchDebugScene');
     };
 
     const closeTuner = (): void => {
@@ -524,6 +570,8 @@ export class SongSelectScene extends Phaser.Scene {
     tunerButton.on('pointerdown', openTuner);
     tunerLabel.on('pointerdown', openTuner);
     tunerIcon?.on('pointerdown', openTuner);
+    pitchDebugButton.on('pointerdown', openPitchDebug);
+    pitchDebugLabel.on('pointerdown', openPitchDebug);
     importButton.on('pointerdown', openImportPicker);
     importLabel.on('pointerdown', openImportPicker);
     importLogShareButton?.on(

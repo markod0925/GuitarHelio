@@ -43,6 +43,7 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.currentComboStreak = 0;
   this.correctlyHitTargetIds.clear();
   this.latestFrames.clear();
+  this.gameplayPitchStabilizer?.reset();
   this.waitingStartMs = null;
   this.playbackStartAudioTime = null;
   this.playbackStartSongSeconds = 0;
@@ -205,6 +206,7 @@ function cleanupImpl(this: PlaySceneContext): void {
 
   this.detector?.stop();
   this.detector = undefined;
+  this.gameplayPitchStabilizer = undefined;
   releaseMicStream(this.micStream);
   this.micStream = undefined;
 

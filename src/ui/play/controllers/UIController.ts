@@ -389,6 +389,7 @@ function openPauseMenuImpl(this: PlaySceneContext): void {
     this.pauseBackingPlayback();
   }
   this.latestFrames.clear();
+  this.gameplayPitchStabilizer?.reset();
 
   const { width, height } = this.scale;
   const panelWidth = Math.min(420, width * 0.84);
@@ -492,6 +493,7 @@ function closePauseMenuImpl(this: PlaySceneContext): void {
     this.resumeBackingPlayback();
   }
   this.latestFrames.clear();
+  this.gameplayPitchStabilizer?.reset();
   this.playbackWasRunningBeforePauseMenu = false;
   this.pauseMenuResumeSongSeconds = undefined;
   this.syncPauseButtonIcon();
@@ -521,6 +523,7 @@ function pauseGameplayFromButtonImpl(this: PlaySceneContext): void {
     this.pauseBackingPlayback();
   }
   this.latestFrames.clear();
+  this.gameplayPitchStabilizer?.reset();
   this.syncPauseButtonIcon();
 }
 
@@ -551,6 +554,7 @@ function resumeGameplayFromButtonPauseImpl(this: PlaySceneContext): void {
   }
   this.playbackWasRunningBeforeButtonPause = false;
   this.latestFrames.clear();
+  this.gameplayPitchStabilizer?.reset();
   this.syncPauseButtonIcon();
 }
 

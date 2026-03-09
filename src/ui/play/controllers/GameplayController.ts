@@ -162,6 +162,7 @@ function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransit
     this.pauseBackingPlayback();
     this.waitingStartMs = performance.now();
     this.latestFrames.clear();
+    this.gameplayPitchStabilizer?.reset();
     this.feedbackText = 'Waiting...';
     this.feedbackUntilMs = performance.now() + 500;
     return;
@@ -180,6 +181,7 @@ function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransit
     }
     this.waitingStartMs = null;
     this.latestFrames.clear();
+    this.gameplayPitchStabilizer?.reset();
     if (signedDeltaMs !== undefined && signedDeltaMs < -50) {
       this.feedbackText = 'Too Soon';
     } else {
@@ -198,6 +200,7 @@ function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransit
     this.recordScoreEvent({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
     this.waitingStartMs = null;
     this.latestFrames.clear();
+    this.gameplayPitchStabilizer?.reset();
     this.feedbackText = 'Too Late';
     this.feedbackUntilMs = performance.now() + 900;
   }

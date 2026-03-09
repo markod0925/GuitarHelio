@@ -7,6 +7,7 @@ import {
   PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
 } from '../app/config';
 import { PitchFrameRingBuffer } from '../audio/PitchFrameRingBuffer';
+import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import type { JzzTinySynth } from '../audio/jzzTinySynth';
 import type { MidiScrubPlayer } from '../audio/midiScrubPlayer';
 import type { PitchDetectorService } from '../audio/pitchDetector';
@@ -144,6 +145,7 @@ export class PlayScene extends Phaser.Scene {
   public debugSynth?: JzzTinySynth;
   public scrubPlayer?: MidiScrubPlayer;
   public detector?: PitchDetectorService;
+  public gameplayPitchStabilizer?: PitchStabilityFilter;
   public micStream?: MediaStream;
   public onResize?: () => void;
   public cachedLayout?: Layout;
