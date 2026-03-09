@@ -7,10 +7,10 @@
 #include "BasicPitch.h"
 
 struct NeuralNoteBalancedPreset {
-    float noteSensitivity = 0.645f;
-    float splitSensitivity = 0.69f;
-    float minNoteDurationMs = 24.0f;
-    bool melodiaTrick = false;
+    float noteSensitivity = 0.65f;
+    float splitSensitivity = 0.7f;
+    float minNoteDurationMs = 120.0f;
+    bool melodiaTrick = true;
     float minPitchHz = 1.0f;
     float maxPitchHz = 3000.0f;
     int energyTolerance = 11;

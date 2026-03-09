@@ -9,10 +9,10 @@ const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.ogg']);
 const BASIC_PITCH_MODEL_SAMPLE_RATE = 22050;
 
 const BALANCED_PRESET = {
-  modelConfidenceThreshold: 0.355,
-  noteSegmentationThreshold: 0.31,
-  minNoteLengthMs: 24,
-  melodiaTrick: false,
+  modelConfidenceThreshold: 0.35,
+  noteSegmentationThreshold: 0.3,
+  minNoteLengthMs: 120,
+  melodiaTrick: true,
   minPitchHz: 1,
   maxPitchHz: 3000,
   midiTempo: 120,
@@ -29,13 +29,13 @@ const BALANCED_PRESET = {
 };
 
 const NEURALNOTE_CLI_PRESET_DEFAULTS = {
-  noteSensitivity: 0.671,
-  splitSensitivity: 0.825,
-  minNoteDurationMs: 24,
-  melodiaTrick: false,
+  noteSensitivity: 0.65,
+  splitSensitivity: 0.7,
+  minNoteDurationMs: 120,
+  melodiaTrick: true,
   minPitchHz: 1,
   maxPitchHz: 3000,
-  energyTolerance: 21
+  energyTolerance: 11
 };
 
 const NEURALNOTE_CLI_ARG_NAMES = {

@@ -907,12 +907,13 @@ Default conversion path MUST use the C++/ONNX pipeline based on:
 
 Balanced conversion defaults MUST remain:
 
-* `modelConfidenceThreshold`: `0.355`
-* `noteSegmentationThreshold`: `0.31`
-* `minNoteLengthMs`: `24`
-* `melodiaTrick`: `false`
+* `noteSensitivity`: `0.65` (equivalent to `modelConfidenceThreshold: 0.35`)
+* `splitSensitivity`: `0.7` (equivalent to `noteSegmentationThreshold: 0.3`)
+* `minNoteLengthMs`: `120`
+* `melodiaTrick`: `true`
 * `minPitchHz`: `1`
 * `maxPitchHz`: `3000`
+* `energyTolerance`: `11`
 * `midiTempo`: `120`
 
 Runtime strategy constraints:
