@@ -3,12 +3,19 @@ import {
   DEFAULT_MIN_CONFIDENCE,
   TARGET_HIT_GRACE_SECONDS
 } from '../../../app/config';
+import { resolveTargetGroup, resolveTargetChordId } from '../../../guitar/targetGrouping';
 import { rateHit } from '../../../game/scoring';
 import { updateRuntimeState, type RuntimeTransition, type RuntimeUpdate } from '../../../game/stateMachine';
 import { PlayState, type ScoreEvent, type TargetNote } from '../../../types/models';
 import { analyzeHeldHit } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
+
+type ChordHitProgress = {
+  requiredCount: number;
+  hitCount: number;
+  valid: boolean;
+};
 
 export class GameplayController {
   constructor(private readonly scene: PlaySceneContext) {}
@@ -17,8 +24,13 @@ export class GameplayController {
     tickRuntimeImpl.call(this.scene);
   }
 
-  handleTransition(transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
-    handleTransitionImpl.call(this.scene, transition, target, previousState);
+  handleTransition(
+    transition: RuntimeTransition,
+    target: TargetNote | undefined,
+    targetGroup: TargetNote[] | undefined,
+    previousState: PlayState
+  ): void {
+    handleTransitionImpl.call(this.scene, transition, target, targetGroup, previousState);
   }
 
   recordScoreEvent(event: ScoreEvent): void {
@@ -78,7 +90,10 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     }
   }
 
-  const active = this.targets[this.runtime.active_target_index];
+  const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
+  const active = activeGroup[0];
+  syncActiveChordTracking(this, active);
+
   const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
   const isWithinGraceWindow =
     active !== undefined &&
@@ -89,7 +104,8 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
   const canValidateHit =
     active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
-  const hitAnalysis =
+
+  const leadHitAnalysis =
     active !== undefined && canValidateHit
       ? analyzeHeldHit(
         this.latestFrames,
@@ -100,7 +116,17 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
         this.heldHitAnalysisScratch
       )
       : this.writeInvalidHeldHitAnalysis();
-  const validHit = active !== undefined && canValidateHit && hitAnalysis.valid;
+
+  const chordProgress =
+    active !== undefined && canValidateHit
+      ? updateChordHitProgress(this, activeGroup)
+      : {
+        requiredCount: activeGroup.length,
+        hitCount: countChordHits(this, activeGroup),
+        valid: false
+      };
+
+  const validHit = active !== undefined && canValidateHit && chordProgress.valid;
   const targetDeltaMs =
     songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined;
 
@@ -121,12 +147,14 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   snapshot.canValidateHit = canValidateHit;
   snapshot.validHit = validHit;
   snapshot.activeTarget = active;
-  snapshot.latestFrame = hitAnalysis.latestFrame;
-  snapshot.holdMs = hitAnalysis.streakMs;
+  snapshot.latestFrame = leadHitAnalysis.latestFrame;
+  snapshot.holdMs = leadHitAnalysis.streakMs;
   snapshot.holdRequiredMs = DEFAULT_HOLD_MS;
   snapshot.minConfidence = DEFAULT_MIN_CONFIDENCE;
-  snapshot.validFrameCount = hitAnalysis.validFrameCount;
-  snapshot.sampleCount = hitAnalysis.sampleCount;
+  snapshot.validFrameCount = leadHitAnalysis.validFrameCount;
+  snapshot.sampleCount = leadHitAnalysis.sampleCount;
+  snapshot.activeChordSize = chordProgress.requiredCount;
+  snapshot.validatedChordNotes = chordProgress.hitCount;
   this.hitDebugSnapshot = snapshot;
 
   const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
@@ -138,7 +166,7 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   }, getRuntimeUpdateScratch(this));
 
   this.runtime = update.state;
-  this.handleTransition(update.transition, update.target, previousState);
+  this.handleTransition(update.transition, update.target, update.targetGroup, previousState);
   if (update.transition !== 'none') {
     this.lastRuntimeTransition = update.transition;
     this.lastRuntimeTransitionAtMs = performance.now();
@@ -156,7 +184,15 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   }
 }
 
-function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
+function handleTransitionImpl(
+  this: PlaySceneContext,
+  transition: RuntimeTransition,
+  target: TargetNote | undefined,
+  targetGroup: TargetNote[] | undefined,
+  previousState: PlayState
+): void {
+  const resolvedGroup = resolveTransitionGroup(target, targetGroup);
+
   if (transition === 'entered_waiting') {
     this.pausePlaybackClock();
     this.pauseBackingPlayback();
@@ -168,36 +204,51 @@ function handleTransitionImpl(this: PlaySceneContext, transition: RuntimeTransit
     return;
   }
 
-  if (transition === 'validated_hit' && target) {
+  if (transition === 'validated_hit' && resolvedGroup.length > 0) {
     if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
       this.resumeBackingPlayback();
     }
-    const signedDeltaMs = this.measureHitSignedDeltaMs(target, previousState);
-    const deltaMs = this.measureHitDeltaMs(target, previousState);
+
+    const leadTarget = resolvedGroup[0];
+    const signedDeltaMs = this.measureHitSignedDeltaMs(leadTarget, previousState);
+    const deltaMs = this.measureHitDeltaMs(leadTarget, previousState);
     const rated = rateHit(deltaMs);
-    this.recordScoreEvent({ targetId: target.id, rating: rated.rating, deltaMs, points: rated.points });
-    if (rated.rating !== 'Miss') {
-      this.correctlyHitTargetIds.add(target.id);
+
+    for (const targetNote of resolvedGroup) {
+      this.recordScoreEvent({ targetId: targetNote.id, rating: rated.rating, deltaMs, points: rated.points });
+      if (rated.rating !== 'Miss') {
+        this.correctlyHitTargetIds.add(targetNote.id);
+      }
     }
+
+    clearChordTracking(this);
     this.waitingStartMs = null;
     this.latestFrames.clear();
     this.gameplayPitchStabilizer?.reset();
+
     if (signedDeltaMs !== undefined && signedDeltaMs < -50) {
       this.feedbackText = 'Too Soon';
+    } else if (rated.rating === 'Miss') {
+      this.feedbackText = 'Too Late';
     } else {
-      this.feedbackText = rated.rating === 'Miss' ? 'Too Late' : rated.rating;
+      this.feedbackText = resolvedGroup.length > 1 ? `${rated.rating} x${resolvedGroup.length}` : rated.rating;
     }
     this.feedbackUntilMs = performance.now() + 700;
     return;
   }
 
-  if (transition === 'timeout_miss' && target) {
+  if (transition === 'timeout_miss' && resolvedGroup.length > 0) {
     if (previousState === PlayState.WaitingForHit && !this.playbackPausedByButton) {
       this.resumeBackingPlayback();
     }
     const fallbackDeltaMs = (this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds ?? 0) * 1000;
     const deltaMs = this.waitingStartMs === null ? fallbackDeltaMs : performance.now() - this.waitingStartMs;
-    this.recordScoreEvent({ targetId: target.id, rating: 'Miss', deltaMs, points: 0 });
+
+    for (const targetNote of resolvedGroup) {
+      this.recordScoreEvent({ targetId: targetNote.id, rating: 'Miss', deltaMs, points: 0 });
+    }
+
+    clearChordTracking(this);
     this.waitingStartMs = null;
     this.latestFrames.clear();
     this.gameplayPitchStabilizer?.reset();
@@ -231,7 +282,8 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
     return;
   }
   const previousState = this.runtime.state;
-  const active = this.targets[this.runtime.active_target_index];
+  const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
+  const active = activeGroup[0];
   const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
   const songTimeSeconds = this.getSongSecondsNow();
   const forceTooLateForWaiting = previousState === PlayState.WaitingForHit;
@@ -243,7 +295,7 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
     finishWhenNoTargets: false
   }, getRuntimeUpdateScratch(this));
   this.runtime = update.state;
-  this.handleTransition(update.transition, update.target, previousState);
+  this.handleTransition(update.transition, update.target, update.targetGroup, previousState);
   if (update.transition !== 'none') {
     this.lastRuntimeTransition = update.transition;
     this.lastRuntimeTransitionAtMs = performance.now();
@@ -309,4 +361,69 @@ function isInsideLiveHitWindowImpl(this: PlaySceneContext, target: TargetNote): 
   const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
   const now = this.getSongSecondsNow();
   return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
+}
+
+function resolveTransitionGroup(target: TargetNote | undefined, targetGroup: TargetNote[] | undefined): TargetNote[] {
+  if (targetGroup && targetGroup.length > 0) return targetGroup;
+  if (target) return [target];
+  return [];
+}
+
+function syncActiveChordTracking(scene: PlaySceneContext, activeTarget: TargetNote | undefined): void {
+  const nextChordId = activeTarget ? resolveTargetChordId(activeTarget) : undefined;
+  if (scene.activeChordTrackingId === nextChordId) {
+    return;
+  }
+
+  scene.activeChordTrackingId = nextChordId;
+  scene.chordHitTargetIds.clear();
+}
+
+function updateChordHitProgress(scene: PlaySceneContext, chordTargets: TargetNote[]): ChordHitProgress {
+  const byMidi = new Map<number, TargetNote[]>();
+  for (const target of chordTargets) {
+    const bucket = byMidi.get(target.expected_midi);
+    if (bucket) {
+      bucket.push(target);
+    } else {
+      byMidi.set(target.expected_midi, [target]);
+    }
+  }
+
+  for (const [expectedMidi, matchingTargets] of byMidi.entries()) {
+    const hit = analyzeHeldHit(
+      scene.latestFrames,
+      expectedMidi,
+      scene.profile.pitch_tolerance_semitones,
+      DEFAULT_HOLD_MS,
+      DEFAULT_MIN_CONFIDENCE
+    );
+    if (!hit.valid) continue;
+
+    for (const target of matchingTargets) {
+      scene.chordHitTargetIds.add(target.id);
+    }
+  }
+
+  const hitCount = countChordHits(scene, chordTargets);
+  return {
+    requiredCount: chordTargets.length,
+    hitCount,
+    valid: hitCount >= chordTargets.length
+  };
+}
+
+function countChordHits(scene: PlaySceneContext, chordTargets: TargetNote[]): number {
+  let hitCount = 0;
+  for (const target of chordTargets) {
+    if (scene.chordHitTargetIds.has(target.id)) {
+      hitCount += 1;
+    }
+  }
+  return hitCount;
+}
+
+function clearChordTracking(scene: PlaySceneContext): void {
+  scene.activeChordTrackingId = undefined;
+  scene.chordHitTargetIds.clear();
 }

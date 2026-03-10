@@ -7,6 +7,7 @@ import {
   BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS,
   BALL_GHOST_TRAIL_SAMPLE_STEP
 } from '../../../app/config';
+import { resolveGroupRepresentativeString } from '../../../guitar/targetGrouping';
 import { PlayState, type TargetNote } from '../../../types/models';
 import type { Layout, MutablePoint } from '../../playSceneTypes';
 import type { PlaySceneContext } from './PlaySceneContext';
@@ -100,6 +101,7 @@ function redrawTargetsAndBallImpl(this: PlaySceneContext): void {
     runtimeState: this.runtime.state,
     currentTick: this.runtime.current_tick,
     waitingTargetId: this.runtime.state === PlayState.WaitingForHit ? this.runtime.waiting_target_id : undefined,
+    waitingChordId: this.runtime.state === PlayState.WaitingForHit ? this.runtime.waiting_chord_id : undefined,
     targets: this.targets,
     correctlyHitTargetIds: this.correctlyHitTargetIds,
     layout,
@@ -122,12 +124,14 @@ function resolveBallPositionImpl(this: PlaySceneContext, layout: Layout): Mutabl
 
   const waitingTarget = this.runtime.state === PlayState.WaitingForHit ? this.targets[this.runtime.active_target_index] : undefined;
   if (waitingTarget) {
-    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, waitingTarget.string));
+    const waitingString = resolveGroupRepresentativeString(this.targets, this.runtime.active_target_index);
+    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, waitingString));
   }
 
   const firstTarget = this.targets[0];
   if (this.targetOnsetSeconds.length !== this.targets.length) {
-    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, firstTarget.string));
+    const firstString = resolveGroupRepresentativeString(this.targets, 0);
+    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, firstString));
   }
 
   const firstTargetSeconds = Math.max(0.001, this.targetOnsetSeconds[0]);
@@ -143,23 +147,24 @@ function resolveBallPositionImpl(this: PlaySceneContext, layout: Layout): Mutabl
 
   const nextTargetIndex = this.findTargetIndexAtOrAfterSongSeconds(songSecondsNow);
   if (nextTargetIndex === -1) {
-    const lastTarget = this.targets[this.targets.length - 1];
-    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, lastTarget.string));
+    const lastString = resolveGroupRepresentativeString(this.targets, this.targets.length - 1);
+    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, lastString));
   }
 
   if (nextTargetIndex === 0) {
-    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, this.targets[0].string));
+    const firstString = resolveGroupRepresentativeString(this.targets, 0);
+    return this.writeBallPosition(layout.hitLineX, this.getStringCenterY(layout, firstString));
   }
 
   const previousTargetIndex = nextTargetIndex - 1;
-  const previousTarget = this.targets[previousTargetIndex];
-  const nextTarget = this.targets[nextTargetIndex];
   const previousTargetSeconds = this.targetOnsetSeconds[previousTargetIndex];
   const nextTargetSeconds = this.targetOnsetSeconds[nextTargetIndex];
   const intervalSeconds = Math.max(0.001, nextTargetSeconds - previousTargetSeconds);
   const progress = Phaser.Math.Clamp((songSecondsNow - previousTargetSeconds) / intervalSeconds, 0, 1);
-  const startY = this.getStringCenterY(layout, previousTarget.string);
-  const endY = this.getStringCenterY(layout, nextTarget.string);
+  const startString = resolveGroupRepresentativeString(this.targets, previousTargetIndex);
+  const endString = resolveGroupRepresentativeString(this.targets, nextTargetIndex);
+  const startY = this.getStringCenterY(layout, startString);
+  const endY = this.getStringCenterY(layout, endString);
   const arcHeight = this.resolveBallArcHeight(layout, startY, endY, intervalSeconds);
   const lateralExcursion = this.resolveBallLateralExcursion(layout, startY, endY, intervalSeconds);
   const linearY = Phaser.Math.Linear(startY, endY, progress);
@@ -193,13 +198,14 @@ function resolvePrePlaybackBallPositionImpl(
 function resolveIntroBallPositionImpl(
   this: PlaySceneContext,
   layout: Layout,
-  firstTarget: TargetNote,
+  _firstTarget: TargetNote,
   progress: number,
   firstTargetSeconds: number
 ): MutablePoint {
   const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
   const thirdStringY = this.getStringCenterY(layout, 3);
-  const targetY = this.getStringCenterY(layout, firstTarget.string);
+  const firstString = resolveGroupRepresentativeString(this.targets, 0);
+  const targetY = this.getStringCenterY(layout, firstString);
   const startY = thirdStringY - BALL_BOUNCE_AMPLITUDE_MAX_PX;
   const introDuration = Math.max(0.2, firstTargetSeconds);
   const introLateralExcursion = this.resolveBallLateralExcursion(layout, thirdStringY, targetY, introDuration);

@@ -17,8 +17,8 @@ import {
   type RuntimeTransition,
   type RuntimeUpdate
 } from '../game/stateMachine';
-import { generateTargetNotes } from '../guitar/targetGenerator';
-import { loadMidiFromUrl } from '../midi/midiLoader';
+import { generateTargetNotesFromMidiTab } from '../guitar/tabTargetGenerator';
+import { fetchMidiArrayBuffer, loadMidiFromArrayBuffer, type LoadedMidi } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
 import type { DifficultyProfile, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
@@ -28,7 +28,6 @@ import { FretboardRenderer } from './FretboardRenderer';
 import { MinimapRenderer } from './MinimapRenderer';
 import { NoteRenderer } from './NoteRenderer';
 import {
-  filterSourceNotesByOnsetSeconds,
   sanitizeSelection
 } from './playSceneDebug';
 import type {
@@ -68,6 +67,8 @@ export class PlayScene extends Phaser.Scene {
   public totalScore = 0;
   public currentComboStreak = 0;
   public correctlyHitTargetIds = new Set<string>();
+  public readonly chordHitTargetIds = new Set<string>();
+  public activeChordTrackingId?: string;
   public readonly latestFrames = new PitchFrameRingBuffer(64);
   public readonly heldHitAnalysisScratch: HeldHitAnalysis = {
     valid: false,
@@ -187,9 +188,23 @@ export class PlayScene extends Phaser.Scene {
     const difficulty = DIFFICULTY_PRESETS[data.difficulty] ?? DIFFICULTY_PRESETS.Easy;
     this.profile = this.buildProfileWithSettings(difficulty, data.allowedStrings, data.allowedFingers, data.allowedFrets);
 
-    let loaded;
+    let loaded: LoadedMidi;
     try {
-      loaded = await loadMidiFromUrl(data.midiUrl);
+      const midiBuffer = await fetchMidiArrayBuffer(data.midiUrl);
+      loaded = loadMidiFromArrayBuffer(midiBuffer);
+      const generatedTargets = generateTargetNotesFromMidiTab(midiBuffer, {
+        profile: this.profile,
+        difficulty: data.difficulty,
+        sourceNotes: loaded.sourceNotes,
+        songName: data.songId ?? 'song'
+      });
+
+      this.tempoMap = loaded.tempoMap;
+      this.ticksPerQuarter = loaded.ticksPerQuarter;
+      this.targets = generatedTargets.filter(
+        (target) => loaded.tempoMap.tickToSeconds(target.tick) >= PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
+      );
+      this.targetOnsetSeconds = this.targets.map((target) => loaded.tempoMap.tickToSeconds(target.tick));
     } catch (error) {
       console.error('Failed to load MIDI', { midiUrl: data.midiUrl, audioUrl: data.audioUrl, error });
       this.add
@@ -201,16 +216,6 @@ export class PlayScene extends Phaser.Scene {
         .setOrigin(0.5);
       return;
     }
-
-    this.tempoMap = loaded.tempoMap;
-    this.ticksPerQuarter = loaded.ticksPerQuarter;
-    const sessionTargetSourceNotes = filterSourceNotesByOnsetSeconds(
-      loaded.sourceNotes,
-      loaded.tempoMap,
-      PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
-    );
-    this.targets = generateTargetNotes(sessionTargetSourceNotes, this.profile, loaded.tempoMap);
-    this.targetOnsetSeconds = this.targets.map((target) => loaded.tempoMap.tickToSeconds(target.tick));
 
     this.lifecycleController.initializeSessionState();
 
@@ -341,8 +346,13 @@ export class PlayScene extends Phaser.Scene {
     return this.heldHitAnalysisScratch;
   }
 
-  public handleTransition(transition: RuntimeTransition, target: TargetNote | undefined, previousState: PlayState): void {
-    this.gameplayController.handleTransition(transition, target, previousState);
+  public handleTransition(
+    transition: RuntimeTransition,
+    target: TargetNote | undefined,
+    targetGroup: TargetNote[] | undefined,
+    previousState: PlayState
+  ): void {
+    this.gameplayController.handleTransition(transition, target, targetGroup, previousState);
   }
 
   public recordScoreEvent(event: ScoreEvent): void {

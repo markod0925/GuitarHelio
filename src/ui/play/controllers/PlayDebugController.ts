@@ -1,3 +1,4 @@
+import { resolveTargetGroup } from '../../../guitar/targetGrouping';
 import { PlayState, type SourceNote } from '../../../types/models';
 import type { PlaySceneContext } from './PlaySceneContext';
 
@@ -17,8 +18,9 @@ async function playDebugTargetNoteImpl(this: PlaySceneContext): Promise<void> {
     this.updateDebugOverlay();
     return;
   }
-  const target = this.targets[this.runtime.active_target_index];
-  if (!target) {
+  const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
+  const target = activeGroup[0];
+  if (!target || activeGroup.length === 0) {
     this.feedbackText = 'No target to play';
     this.feedbackUntilMs = performance.now() + 700;
     return;
@@ -31,18 +33,24 @@ async function playDebugTargetNoteImpl(this: PlaySceneContext): Promise<void> {
 
   const when = this.audioCtx.currentTime + 0.01;
   const tickSeed = Math.floor(performance.now() * 1000);
-  const note: SourceNote = {
-    tick_on: tickSeed,
-    tick_off: tickSeed + 1,
-    midi_note: target.expected_midi,
-    velocity: 1,
-    channel: 15,
-    track: 99
-  };
+  for (let index = 0; index < activeGroup.length; index += 1) {
+    const debugTarget = activeGroup[index];
+    const note: SourceNote = {
+      tick_on: tickSeed + index,
+      tick_off: tickSeed + index + 1,
+      midi_note: debugTarget.expected_midi,
+      velocity: 1,
+      channel: 15,
+      track: 99
+    };
+    const noteWhen = when + index * 0.015;
+    this.debugSynth.noteOn(note, noteWhen);
+    this.debugSynth.noteOff(note, noteWhen + 0.35);
+  }
 
-  this.debugSynth.noteOn(note, when);
-  this.debugSynth.noteOff(note, when + 0.35);
-  this.feedbackText = `Debug note: ${target.expected_midi}`;
+  this.feedbackText = activeGroup.length > 1
+    ? `Debug chord: ${activeGroup.map((item) => item.expected_midi).join(', ')}`
+    : `Debug note: ${target.expected_midi}`;
   this.feedbackUntilMs = performance.now() + 600;
 
   if (
@@ -52,7 +60,9 @@ async function playDebugTargetNoteImpl(this: PlaySceneContext): Promise<void> {
   ) {
     this.consumeDebugHit();
   } else {
-    this.feedbackText = `Debug note: ${target.expected_midi} (outside hit window)`;
+    this.feedbackText = activeGroup.length > 1
+      ? `Debug chord (outside hit window)`
+      : `Debug note: ${target.expected_midi} (outside hit window)`;
     this.feedbackUntilMs = performance.now() + 900;
     this.updateHud();
     this.updateDebugOverlay();

@@ -123,6 +123,7 @@ function finishSongImpl(this: PlaySceneContext): void {
   this.runtime.state = PlayState.Finished;
   this.runtime.waiting_started_at_s = undefined;
   this.runtime.waiting_target_id = undefined;
+  this.runtime.waiting_chord_id = undefined;
   this.finishDelayTimer?.remove(false);
   this.finishDelayTimer = undefined;
   this.finishQueuedAtMs = undefined;
@@ -679,7 +680,7 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
     `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
     `song id=${this.sceneData?.songId ?? '-'} midi=${formatDebugPath(this.sceneData?.midiUrl)} audio=${formatDebugPath(this.sceneData?.audioUrl)}`,
     active
-      ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
+      ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} chord=${snapshot?.activeChordSize ?? 1} hit=${snapshot?.validatedChordNotes ?? 0} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
       : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
     `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
     `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s bpm=${formatDebugNumber(playbackBpm, 2)} d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,

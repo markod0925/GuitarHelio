@@ -16,6 +16,9 @@ export type TargetNote = {
   finger: number;
   expected_midi: number;
   source_midi?: number;
+  chord_id?: string;
+  chord_size?: number;
+  chord_index?: number;
 };
 
 export type DifficultyProfile = {
@@ -28,7 +31,7 @@ export type DifficultyProfile = {
   pitch_tolerance_semitones: number;
   prefer_open_strings?: boolean;
   max_simultaneous_notes: 1 | 2;
-  gating_timeout_seconds?: number;
+  gating_timeout_seconds?: number | null;
 };
 
 export type PitchFrame = {
@@ -48,6 +51,7 @@ export type RuntimeState = {
   current_tick: number;
   active_target_index: number;
   waiting_target_id?: string;
+  waiting_chord_id?: string;
   waiting_started_at_s?: number;
 };
 

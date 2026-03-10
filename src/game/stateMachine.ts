@@ -1,4 +1,5 @@
 import { APPROACH_THRESHOLD_TICKS } from '../app/config';
+import { resolveTargetGroup, resolveTargetGroupBounds, resolveTargetChordId } from '../guitar/targetGrouping';
 import { PlayState, type RuntimeState, type TargetNote } from '../types/models';
 
 export type RuntimeTransition = 'none' | 'entered_waiting' | 'validated_hit' | 'timeout_miss' | 'finished';
@@ -7,6 +8,7 @@ export type RuntimeUpdate = {
   state: RuntimeState;
   transition: RuntimeTransition;
   target?: TargetNote;
+  targetGroup?: TargetNote[];
 };
 
 export type RuntimeUpdateOptions = {
@@ -42,6 +44,8 @@ export function updateRuntimeState(
   const lateHitWindowSeconds = options.lateHitWindowSeconds ?? 0;
 
   const activeTarget = targets[state.active_target_index];
+  const activeGroupBounds = resolveTargetGroupBounds(targets, state.active_target_index);
+  const activeGroup = resolveTargetGroup(targets, state.active_target_index);
   if (!activeTarget) {
     if (options.finishWhenNoTargets === false) {
       return writeRuntimeUpdate(
@@ -50,7 +54,8 @@ export function updateRuntimeState(
           ...state,
           state: PlayState.Playing,
           waiting_started_at_s: undefined,
-          waiting_target_id: undefined
+          waiting_target_id: undefined,
+          waiting_chord_id: undefined
         },
         'none'
       );
@@ -61,7 +66,8 @@ export function updateRuntimeState(
         ...state,
         state: PlayState.Finished,
         waiting_started_at_s: undefined,
-        waiting_target_id: undefined
+        waiting_target_id: undefined,
+        waiting_chord_id: undefined
       },
       'finished'
     );
@@ -72,11 +78,12 @@ export function updateRuntimeState(
       out,
       {
         state: PlayState.Playing,
-        active_target_index: state.active_target_index + 1,
+        active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
       'validated_hit',
-      activeTarget
+      activeTarget,
+      activeGroup
     );
   }
 
@@ -95,11 +102,13 @@ export function updateRuntimeState(
         ...state,
         state: PlayState.WaitingForHit,
         waiting_target_id: activeTarget.id,
+        waiting_chord_id: resolveTargetChordId(activeTarget),
         waiting_started_at_s: nowSeconds,
         current_tick: state.current_tick
       },
       'entered_waiting',
-      activeTarget
+      activeTarget,
+      activeGroup
     );
   }
 
@@ -108,11 +117,12 @@ export function updateRuntimeState(
       out,
       {
         state: PlayState.Playing,
-        active_target_index: state.active_target_index + 1,
+        active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
       'validated_hit',
-      activeTarget
+      activeTarget,
+      activeGroup
     );
   }
 
@@ -128,11 +138,12 @@ export function updateRuntimeState(
       out,
       {
         state: PlayState.Playing,
-        active_target_index: state.active_target_index + 1,
+        active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
         current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
       },
       'timeout_miss',
-      activeTarget
+      activeTarget,
+      activeGroup
     );
   }
 
@@ -143,10 +154,11 @@ function writeRuntimeUpdate(
   out: RuntimeUpdate | undefined,
   state: RuntimeState,
   transition: RuntimeTransition,
-  target?: TargetNote
+  target?: TargetNote,
+  targetGroup?: TargetNote[]
 ): RuntimeUpdate {
   if (!out) {
-    return { state, transition, target };
+    return { state, transition, target, targetGroup };
   }
 
   out.state = state;
@@ -155,6 +167,11 @@ function writeRuntimeUpdate(
     out.target = target;
   } else {
     delete out.target;
+  }
+  if (targetGroup && targetGroup.length > 0) {
+    out.targetGroup = targetGroup;
+  } else {
+    delete out.targetGroup;
   }
   return out;
 }

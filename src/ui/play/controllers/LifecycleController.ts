@@ -42,6 +42,8 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.totalScore = 0;
   this.currentComboStreak = 0;
   this.correctlyHitTargetIds.clear();
+  this.chordHitTargetIds.clear();
+  this.activeChordTrackingId = undefined;
   this.latestFrames.clear();
   this.gameplayPitchStabilizer?.reset();
   this.waitingStartMs = null;

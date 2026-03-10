@@ -26,7 +26,8 @@ export const DIFFICULTY_PRESETS: Record<'Easy' | 'Medium' | 'Hard', DifficultyPr
     allowed_fingers: [1],
     avg_seconds_per_note: 2.0,
     pitch_tolerance_semitones: 3,
-    max_simultaneous_notes: 1
+    max_simultaneous_notes: 1,
+    gating_timeout_seconds: null
   },
   Medium: {
     allowed_strings: [6, 5, 4, 3],

@@ -36,6 +36,8 @@ export type HitDebugSnapshot = {
   canValidateHit: boolean;
   validHit: boolean;
   activeTarget?: TargetNote;
+  activeChordSize?: number;
+  validatedChordNotes?: number;
   latestFrame?: PitchFrame;
   holdMs: number;
   holdRequiredMs: number;

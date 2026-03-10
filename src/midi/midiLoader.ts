@@ -8,7 +8,7 @@ export type LoadedMidi = {
   tempoMap: TempoMap;
 };
 
-export async function loadMidiFromUrl(url: string): Promise<LoadedMidi> {
+export async function fetchMidiArrayBuffer(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch MIDI from "${url}" (${response.status} ${response.statusText})`);
@@ -24,6 +24,12 @@ export async function loadMidiFromUrl(url: string): Promise<LoadedMidi> {
   if (!isMidiHeader) {
     throw new Error(`Invalid MIDI header for "${url}". Expected "MThd".`);
   }
+
+  return buffer;
+}
+
+export async function loadMidiFromUrl(url: string): Promise<LoadedMidi> {
+  const buffer = await fetchMidiArrayBuffer(url);
 
   return loadMidiFromArrayBuffer(buffer);
 }

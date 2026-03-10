@@ -190,11 +190,13 @@ type DifficultyProfile = {
   pitch_tolerance_semitones: number
   prefer_open_strings?: boolean
   max_simultaneous_notes: 1 | 2
-  gating_timeout_seconds?: number
+  gating_timeout_seconds?: number | null
 }
 ```
 
 If `gating_timeout_seconds` is omitted, runtime MUST use a default timeout of `2.5` seconds.
+
+If `gating_timeout_seconds` is explicitly set to `null`, runtime MUST use an infinite wait (no auto-timeout).
 
 ---
 
@@ -234,81 +236,74 @@ These MUST be cumulative and tempo-aware.
 Pipeline:
 
 ```
-SourceNotes
-  → Candidate extraction
-  → Density filter
-  → Guitar projection
+MIDI ArrayBuffer
+  → MIDI-to-TAB conversion (difficulty + fretboard constraints)
+  → TAB events flattening
   → TargetNotes
 ```
 
----
-
-## 6.1 Candidate extraction
-
-Rules:
-
-* collect all NoteOn events
-* cluster chords within 30–60 ms
-* keep one representative note per cluster
-
-Selection policy (configurable):
-
-* prefer highest pitch (default)
+The project MUST use the MIDI-to-TAB converter flow for gameplay targets when entering `PlayScene`.
 
 ---
 
-## 6.2 Density filter
+## 6.1 TAB conversion input constraints
 
-Compute minimum spacing:
+The converter input MUST include:
 
-If `avg_seconds_per_note`:
+* selected difficulty (`easy`/`medium`/`hard`) using the original MIDI-to-TAB difficulty presets
+* selected `allowed_strings`
+* selected `allowed_frets` (explicit list)
 
-```
-min_gap_seconds = avg_seconds_per_note
-```
-
-If `target_notes_per_minute`:
-
-```
-min_gap_seconds = 60 / target_notes_per_minute
-```
-
-Convert to ticks via tempo map.
-
-Allow at most one TargetNote per window.
+The converter output MUST be treated as the authoritative source for gameplay note positions (`string`, `fret`).
 
 ---
 
-## 6.3 Guitar projection
+## 6.2 TAB event to gameplay target mapping
 
-For each candidate pitch:
+For each converted TAB event:
 
-Find playable (string, fret, finger) such that:
+* event tick MUST map directly to `TargetNote.tick`
+* `TargetNote.expected_midi` MUST be computed from standard tuning + `(string, fret)`
+* `TargetNote.string` MUST use GuitarHelio 1-based indexing
+* `TargetNote.duration_ticks` SHOULD come from source MIDI note matching (same pitch near event onset)
+* if no source match is available, duration SHOULD fallback to next-event delta (or a PPQ-based default)
 
-* string ∈ allowed_strings
-* fret within allowed range
-* finger allowed
-* pitch distance constraint:
+Current runtime requirement:
 
-```
-abs(expected_midi - source_midi) <= pitch_tolerance_semitones
-```
+* gameplay targets MUST preserve full TAB chord events (multi-note prompts on same tick)
+* state progression MUST advance per chord-event group (not per single note inside the same group)
 
-If multiple solutions:
+---
 
-Minimize cost:
+## 6.3 Finger assignment
 
-```
-cost =
-  w1 * pitch_distance +
-  w2 * fret_height +
-  w3 * large_jump_penalty
-```
+Because the converter output does not include finger IDs:
 
-Fallback order:
+* open-string notes (`fret = 0`) MUST use finger `0`
+* fretted notes MUST be assigned using selected `allowed_fingers` with deterministic runtime mapping
 
-1. try octave shift ±12
-2. skip note
+## 6.4 Difficulty preset behavior
+
+Gameplay target extraction MUST honor the original MIDI-to-TAB difficulty presets (`Easy`, `Medium`, `Hard`), including their soft-mode behavior (for example note dropping, per-event caps, and filtering thresholds).
+
+GuitarHelio UI selections MUST still be enforced through converter parameters:
+
+* `allowed_strings`
+* `allowed_frets`
+* derived `maxReachFret` from selected fret constraints
+
+## 6.5 Constraint-aware playability adaptation
+
+To reduce unsustainable note overlap after strict string/fret filtering, gameplay extraction MUST apply a constraint-aware adaptation layer on top of original MIDI-to-TAB presets:
+
+* `maxNotesPerEvent` MUST be capped by the number of selected playable strings
+* `onsetMergeWindowTicks` MUST be increased adaptively when selected string/fret sets are restrictive
+* post-conversion target groups MUST be density-limited with a minimum time gap that depends on selected difficulty and constraint restrictiveness
+* minimum group gap MUST be computed as:
+  * Easy: `1.5 + 0.5 * restriction` seconds
+  * Medium: `0.5 + 0.2 * restriction` seconds
+  * Hard: `0.2 + 0.1 * restriction` seconds
+* adaptation MUST preserve the selected base difficulty (`Easy`/`Medium`/`Hard`) and only relax density where required for playability
 
 ---
 
@@ -429,9 +424,10 @@ In this case, target index advances without pausing transport.
 
 Timeout:
 
-`WaitingForHit` MUST always use a timeout. Resolve it as:
+`WaitingForHit` timeout resolution MUST be:
 
-* `profile.gating_timeout_seconds` when provided
+* infinite timeout when `profile.gating_timeout_seconds` is `null`
+* `profile.gating_timeout_seconds` when it is a finite number
 * otherwise default `2.5s`
 
 If exceeded:
@@ -1047,6 +1043,7 @@ Speed control requirements:
 * frets: 0–3
 * fingers: [1]
 * avg_seconds_per_note: 2.0
+* gating_timeout_seconds: null (infinite WaitingForHit)
 * pitch_tolerance: ±3
 
 ## Medium

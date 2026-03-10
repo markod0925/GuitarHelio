@@ -25,6 +25,7 @@ describe('updateRuntimeState', () => {
     expect(update.transition).toBe('entered_waiting');
     expect(update.state.state).toBe(PlayState.WaitingForHit);
     expect(update.state.waiting_target_id).toBe(target.id);
+    expect(update.state.waiting_chord_id).toBeDefined();
     expect(update.state.current_tick).toBe(880);
   });
 
@@ -121,6 +122,22 @@ describe('updateRuntimeState', () => {
     expect(update.state.active_target_index).toBe(1);
   });
 
+  test('keeps waiting indefinitely when timeout is not configured', () => {
+    const state: RuntimeState = {
+      state: PlayState.WaitingForHit,
+      current_tick: target.tick,
+      active_target_index: 0,
+      waiting_target_id: target.id,
+      waiting_started_at_s: 20
+    };
+
+    const update = updateRuntimeState(state, [target], 120, false, { gatingTimeoutSeconds: undefined });
+
+    expect(update.transition).toBe('none');
+    expect(update.state.state).toBe(PlayState.WaitingForHit);
+    expect(update.state.active_target_index).toBe(0);
+  });
+
   test('marks runtime as finished when no active targets remain', () => {
     const state: RuntimeState = {
       state: PlayState.Playing,
@@ -181,5 +198,28 @@ describe('updateRuntimeState', () => {
     expect(secondUpdate).toBe(out);
     expect(secondUpdate.transition).toBe('none');
     expect(secondUpdate.target).toBeUndefined();
+  });
+
+  test('advances by full chord group on hit', () => {
+    const chordTargets: TargetNote[] = [
+      { ...target, id: 'c-1', chord_id: 'chord-1', chord_size: 2, chord_index: 0, string: 4, fret: 2, expected_midi: 52 },
+      { ...target, id: 'c-2', chord_id: 'chord-1', chord_size: 2, chord_index: 1, string: 3, fret: 2, expected_midi: 57 },
+      { ...target, id: 'next', chord_id: 'chord-2', chord_size: 1, chord_index: 0, tick: 1200, string: 2, fret: 1, expected_midi: 60 }
+    ];
+    const state: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 1002,
+      active_target_index: 0
+    };
+
+    const update = updateRuntimeState(state, chordTargets, 10.2, true, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    });
+
+    expect(update.transition).toBe('validated_hit');
+    expect(update.state.active_target_index).toBe(2);
+    expect(update.targetGroup?.length).toBe(2);
+    expect(update.targetGroup?.map((note) => note.id)).toEqual(['c-1', 'c-2']);
   });
 });

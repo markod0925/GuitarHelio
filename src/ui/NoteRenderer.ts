@@ -10,6 +10,7 @@ type RedrawArgs = {
   runtimeState: PlayState;
   currentTick: number;
   waitingTargetId?: string;
+  waitingChordId?: string;
   targets: TargetNote[];
   correctlyHitTargetIds: ReadonlySet<string>;
   layout: Layout;
@@ -46,6 +47,7 @@ export class NoteRenderer {
       runtimeState,
       currentTick,
       waitingTargetId,
+      waitingChordId,
       targets,
       correctlyHitTargetIds,
       layout,
@@ -84,7 +86,8 @@ export class NoteRenderer {
       if (x + width < viewLeft || x > viewRight) continue;
 
       const y = layout.top + (target.string - 1) * layout.laneSpacing;
-      const isWaitingTarget = waitingTargetId === target.id;
+      const targetChordId = target.chord_id ?? target.id;
+      const isWaitingTarget = waitingChordId ? waitingChordId === targetChordId : waitingTargetId === target.id;
       const isPast = target.tick < currentTick;
       const alpha = isWaitingTarget ? 1 : isPast ? 0.28 : 0.95;
       const noteColor = correctlyHitTargetIds.has(target.id) ? 0x22c55e : (FINGER_COLORS[target.finger] ?? 0xffffff);
