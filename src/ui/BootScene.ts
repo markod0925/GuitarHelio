@@ -13,6 +13,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('uiSettingsIcon', '/ui/icon-settings-neon.png');
     this.load.image('uiTunerIcon', '/ui/icon-tuner-neon.png');
     this.load.image('uiPlayIcon', '/ui/icon-play-neon.png');
+    this.load.image('uiImportIcon', '/ui/icon-import-neon.png');
+    this.load.image('uiGuitarIcon', '/ui/icon-guitar-neon.png');
   }
 
   create(): void {
@@ -22,7 +24,9 @@ export class BootScene extends Phaser.Scene {
       'logoGuitarHelio',
       'uiSettingsIcon',
       'uiTunerIcon',
-      'uiPlayIcon'
+      'uiPlayIcon',
+      'uiImportIcon',
+      'uiGuitarIcon'
     ].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });

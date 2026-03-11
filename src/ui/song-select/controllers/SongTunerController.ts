@@ -316,7 +316,7 @@ export class SongTunerController {
       .setOrigin(0.5);
 
     const calibrationStatus = this.scene.add
-      .text(panelX, panelY + panelHeight * 0.3, 'Calibration inactive', {
+      .text(panelX, panelY + panelHeight * 0.3 - 5, 'Calibration inactive', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(11, labelSize - 4)}px`

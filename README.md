@@ -286,7 +286,7 @@ Manifest data structure (`public/songs/manifest.json`):
 Fallback rules:
 - If `midi` is missing in manifest: the song is not shown in Start Screen.
 - If `midi` exists but file is unreachable: session start fails with explicit error, without blocking Start Screen.
-- If `cover` is missing/invalid: uses `public/ui/song-cover-default.svg`.
+- If `cover` is missing/invalid: uses `public/ui/song-cover-placeholder-neon.png`.
 - If `audio` is missing/invalid: uses MIDI as audio reference.
 - In gameplay: if `audio` points to a valid WAV/MP3/OGG, it is used as backing track; otherwise MIDI playback is used.
 

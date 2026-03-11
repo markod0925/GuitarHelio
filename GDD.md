@@ -841,7 +841,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 
 ### 11.11.1 Practice scene
 
-The start screen MUST expose a dedicated `Practice` button that opens a separate practice scene.
+The start screen MUST expose a dedicated `Practice` button (with `icon-guitar-neon.png`) that opens a separate practice scene.
 
 Practice scene requirements:
 
@@ -913,7 +913,7 @@ Fallback behavior:
 
 * if `midi` is missing in manifest entry, that song MUST NOT be shown in song selection
 * if `midi` path is present but file is missing/unreachable at runtime, session start MUST fail with a clear user-facing error while keeping start screen usable
-* if `cover` is missing or not found, use default asset `public/ui/song-cover-default.svg`
+* if `cover` is missing or not found, use default asset `public/ui/song-cover-placeholder-neon.png`
 * if `audio` is missing or not found, use the song MIDI reference as fallback audio source
 * if `audio` falls back to MIDI, the song-select button thumbnail MUST show fallback cover art
 * during gameplay playback, if a valid WAV/MP3/OGG file is available it MUST be used as backing track; otherwise playback MUST use MIDI synth rendering
@@ -977,7 +977,7 @@ Runtime strategy constraints:
 
 ## 11.15 Start-screen song import workflow
 
-The start screen MUST include an `Import MIDI/MP3/OGG` action that allows uploading a local source file (`.mid`/`.midi`, `.mp3`, `.ogg`).
+The start screen MUST include an `Import Your Song` action (with `icon-import-neon.png`) that allows uploading a local source file (`.mid`/`.midi`, `.mp3`, `.ogg`).
 
 When a source file is selected:
 

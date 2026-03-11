@@ -101,9 +101,10 @@ export class SongSelectScene extends Phaser.Scene {
     songGridController.initialize(songs, width, height, labelSize);
 
     const difficultyToImportGap = 86;
-    const importToSettingsGap = 92;
-    const settingsToTunerGap = 86;
-    const tunerToPracticeGap = 86;
+    const sideButtonsVerticalTightenPx = 6;
+    const importToSettingsGap = 92 - sideButtonsVerticalTightenPx;
+    const settingsToTunerGap = 86 - sideButtonsVerticalTightenPx;
+    const tunerToPracticeGap = 86 - sideButtonsVerticalTightenPx;
     const sideButtonWidth = Math.min(300, width * 0.3);
     const sideButtonHeight = 56;
     const sideButtonsBottomGapFromStart = 14;
@@ -140,10 +141,14 @@ export class SongSelectScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
     const settingsIcon = this.textures.exists('uiSettingsIcon')
-      ? this.add
-          .image(settingsButton.x - sideButtonWidth * 0.33, settingsButtonY, 'uiSettingsIcon')
-          .setDisplaySize(sideIconSize, sideIconSize)
-          .setInteractive({ useHandCursor: true })
+      ? (() => {
+          const icon = this.add
+            .image(settingsButton.x - sideButtonWidth * 0.33, settingsButtonY, 'uiSettingsIcon')
+            .setInteractive({ useHandCursor: true });
+          const scaleFromNative = sideIconSize / Math.max(icon.width, icon.height);
+          icon.setScale(scaleFromNative);
+          return icon;
+        })()
       : undefined;
     const settingsLabel = this.add
       .text(settingsButton.x + (settingsIcon ? sideButtonWidth * 0.04 : 0), settingsButtonY, 'Settings', {
@@ -192,8 +197,14 @@ export class SongSelectScene extends Phaser.Scene {
     )
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
+    const practiceIcon = this.textures.exists('uiGuitarIcon')
+      ? this.add
+          .image(practiceButton.x - sideButtonWidth * 0.33, practiceButtonY, 'uiGuitarIcon')
+          .setDisplaySize(sideIconSize, sideIconSize)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
     const practiceLabel = this.add
-      .text(practiceButton.x, practiceButtonY, 'Practice', {
+      .text(practiceButton.x + (practiceIcon ? sideButtonWidth * 0.04 : 0), practiceButtonY, 'Practice', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -211,8 +222,14 @@ export class SongSelectScene extends Phaser.Scene {
     const importButton = new RoundedBox(this, width * 0.79, importButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
+    const importIcon = this.textures.exists('uiImportIcon')
+      ? this.add
+          .image(importButton.x - sideButtonWidth * 0.33, importButtonY, 'uiImportIcon')
+          .setDisplaySize(sideIconSize, sideIconSize)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
     const importLabel = this.add
-      .text(importButton.x, importButtonY, 'Import MIDI/MP3/OGG', {
+      .text(importButton.x + (importIcon ? sideButtonWidth * 0.04 : 0), importButtonY, 'Import Your Song', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -398,10 +415,12 @@ export class SongSelectScene extends Phaser.Scene {
       practiceButton.setFillStyle(practiceDisabled ? 0x334155 : 0x1a2a53, practiceDisabled ? 0.9 : 0.74);
       practiceButton.setStrokeStyle(2, practiceDisabled ? 0x64748b : 0x3b82f6, practiceDisabled ? 0.72 : 0.52);
       practiceLabel.setColor(practiceDisabled ? '#cbd5e1' : '#f1f5f9');
+      practiceIcon?.setAlpha(practiceDisabled ? 0.72 : 0.94);
 
       importButton.setFillStyle(importState.inProgress || quitPromptOpen ? 0x334155 : 0x1a2a53, importState.inProgress || quitPromptOpen ? 0.9 : 0.74);
       importButton.setStrokeStyle(2, importState.inProgress ? 0xf59e0b : 0x3b82f6, importState.inProgress || quitPromptOpen ? 0.82 : 0.52);
       importLabel.setColor(importState.inProgress || quitPromptOpen ? '#fef3c7' : '#f1f5f9');
+      importIcon?.setAlpha(importState.inProgress || quitPromptOpen ? 0.78 : 0.94);
       importSummary.setText(
         truncateLabel(importState.inProgress ? 'Import in progress...' : importState.summaryMessage, Math.max(28, Math.floor(width * 0.036)))
       );
@@ -565,8 +584,10 @@ export class SongSelectScene extends Phaser.Scene {
     tunerIcon?.on('pointerdown', openTuner);
     practiceButton.on('pointerdown', openPractice);
     practiceLabel.on('pointerdown', openPractice);
+    practiceIcon?.on('pointerdown', openPractice);
     importButton.on('pointerdown', openImportPicker);
     importLabel.on('pointerdown', openImportPicker);
+    importIcon?.on('pointerdown', openImportPicker);
     importLogShareButton?.on(
       'pointerdown',
       (
