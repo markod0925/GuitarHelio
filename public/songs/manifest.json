@@ -7,6 +7,54 @@
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"
+    },
+    {
+      "id": "ho-incontrato-elio",
+      "name": "Ho incontrato Elio",
+      "folder": "Ho incontrato Elio",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "deeh",
+      "name": "Deeh",
+      "folder": "Deeh",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "harmony-in-the-wild",
+      "name": "Harmony in the Wild",
+      "folder": "Harmony in the Wild",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "poldar-tanz",
+      "name": "Poldar Tanz",
+      "folder": "Poldar Tanz",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "la-saetta-dario",
+      "name": "La saetta Dario",
+      "folder": "La saetta Dario",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
+    },
+    {
+      "id": "soft-glass-menu",
+      "name": "Soft Glass Menu",
+      "folder": "Soft Glass Menu",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
     }
   ]
 }

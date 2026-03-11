@@ -238,7 +238,7 @@ function finishSongImpl(this: PlaySceneContext): void {
 }
 
 function computeEndScreenStarsImpl(this: PlaySceneContext, summary: ReturnType<typeof summarizeScores>): number {
-  return computeOverlayEndScreenStars(this.targets.length, summary);
+  return computeOverlayEndScreenStars(this.targets.length, summary, this.sceneData?.difficulty ?? 'Medium');
 }
 
 function createEndScreenStarsImpl(

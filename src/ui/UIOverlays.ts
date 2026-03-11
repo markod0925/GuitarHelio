@@ -2,13 +2,22 @@ import type { summarizeScores } from '../game/scoring';
 import { PlayState } from '../types/models';
 import { normalizeTopFeedback } from './playSceneDebug';
 
+type StarDifficulty = 'Easy' | 'Medium' | 'Hard';
+
 export function computeEndScreenStars(
   totalTargets: number,
-  summary: ReturnType<typeof summarizeScores>
+  summary: ReturnType<typeof summarizeScores>,
+  difficulty: StarDifficulty = 'Medium'
 ): number {
   if (totalTargets <= 0) return 0;
   const playedNotes = summary.hitDistribution.Perfect + summary.hitDistribution.Great + summary.hitDistribution.OK;
   const playedRatio = playedNotes / totalTargets;
+  if (difficulty === 'Easy') {
+    if (playedRatio >= 0.6) return 3;
+    if (playedRatio >= 0.4) return 2;
+    if (playedRatio >= 0.1) return 1;
+    return 0;
+  }
   if (playedRatio >= 0.9) return 3;
   if (playedRatio >= 0.6) return 2;
   if (playedRatio >= 0.3) return 1;

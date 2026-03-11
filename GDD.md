@@ -539,10 +539,15 @@ At end-of-song, gameplay MUST show a completion menu with two explicit actions:
 * `Back to Start` → return to `SongSelectScene`
 * when the last target note is completed, gameplay MUST wait about 2 seconds before opening the completion menu/end screen
 * when completion menu is visible, bottom minimap and bottom-right hand reminder MUST be hidden to avoid overlap with end-screen controls
-* the completion menu MUST show 3 neutral stars that fill in yellow (with a brief scale animation) based on played-note ratio:
-  * >= 30% played notes: 1 star
-  * >= 60% played notes: 2 stars
-  * >= 90% played notes: 3 stars
+* the completion menu MUST show 3 neutral stars that fill in yellow (with a brief scale animation) based on played-note ratio and selected difficulty:
+  * `Easy`:
+    - >= 10% played notes: 1 star
+    - >= 40% played notes: 2 stars
+    - >= 60% played notes: 3 stars
+  * `Medium` and `Hard`:
+    - >= 30% played notes: 1 star
+    - >= 60% played notes: 2 stars
+    - >= 90% played notes: 3 stars
 
 ---
 
@@ -790,11 +795,11 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 
-### 11.11.1 Pitch detector debug scene
+### 11.11.1 Practice scene
 
-The start screen MUST expose a dedicated `Pitch Debug` button that opens a separate debug scene.
+The start screen MUST expose a dedicated `Practice` button that opens a separate practice scene.
 
-Pitch debug scene requirements:
+Practice scene requirements:
 
 * show 6 guitar strings and a full fret grid from fret `0` to fret `12`
 * draw all note positions for each string/fret intersection
@@ -808,6 +813,9 @@ Pitch debug scene requirements:
   - `B only` -> amber/orange
   - `A + B` (same detected pitch) -> lime/combined highlight
 * include explicit controls for `Start Mic` / `Stop Mic`
+* include a metronome with:
+  - a BPM scrollbar/slider control
+  - an explicit `Start Metronome` / `Stop Metronome` button
 * include `Back to Start` to return to `SongSelectScene`
 * the scene SHOULD show per-detector stable note output and A/B semitone delta
 * both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
@@ -831,7 +839,7 @@ Start-screen layout constraints:
 
 * the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
-* in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`, `Pitch Debug`) and `Start Session` CTA MUST keep non-overlapping spacing
+* in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`, `Practice`) and `Start Session` CTA MUST keep non-overlapping spacing
 
 ### 11.12.1 App icon and startup splash assets
 
