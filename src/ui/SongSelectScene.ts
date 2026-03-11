@@ -83,10 +83,16 @@ export class SongSelectScene extends Phaser.Scene {
         .setOrigin(0.5);
     }
 
+    const startScale = Math.SQRT2;
+    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
+    const startButtonHeight = Math.round(62 * 1.08);
+    const startY = height - startButtonHeight / 2 - 16;
+    const startTopY = startY - startButtonHeight / 2;
     const songGridController = new SongGridController(this, {
       isPointerBlocked: () => isQuitConfirmOpen() || importController.isOverlayVisible(),
       canSelectSong: () => !settingsController.isOpen() && songs.length > 0,
       canStartLongPressRemove: () => !settingsController.isOpen() && songs.length > 0 && !importController.isInProgress(),
+      getViewportBottomLimitY: () => startTopY - 12,
       onSelectionChanged: () => refreshSelections(),
       onRequestRemoveSong: (song) => void removeSong(song),
       longPressMs: SONG_REMOVE_LONG_PRESS_MS,
@@ -94,11 +100,6 @@ export class SongSelectScene extends Phaser.Scene {
     });
     songGridController.initialize(songs, width, height, labelSize);
 
-    const startScale = Math.SQRT2;
-    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
-    const startButtonHeight = Math.round(62 * 1.08);
-    const startY = height - startButtonHeight / 2 - 16;
-    const startTopY = startY - startButtonHeight / 2;
     const difficultyToImportGap = 86;
     const importToSettingsGap = 92;
     const settingsToTunerGap = 86;
@@ -290,14 +291,11 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
-    const startGlowHeight = Math.max(92, startButtonHeight + 26);
-    const startGlow = this.add
-      .ellipse(width / 2, startY + 4, Math.min(Math.round(404 * startScale), width * 0.86), startGlowHeight, 0xfb7185, 0.26)
-      .setDepth(20);
     const playIconSize = Math.min(60, labelSize + 24);
     const startButton = new RoundedBox(this, width / 2, startY, startButtonWidth, startButtonHeight, 0xf97316, 1)
       .setStrokeStyle(2, 0xfecaca, 0.8)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({ useHandCursor: true })
+      .setDepth(120);
     const playIcon = this.textures.exists('uiPlayIcon')
       ? this.add
           .image(width / 2 - startButtonWidth * 0.3, startY, 'uiPlayIcon')
@@ -314,7 +312,6 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setShadow(0, 2, '#7f1d1d', 6, true, true)
       .setInteractive({ useHandCursor: true });
-    startGlow.setDepth(startButton.depth - 1);
     playIcon?.setDepth(startButton.depth + 1);
     startLabel.setDepth(startButton.depth + 1);
 
@@ -425,7 +422,6 @@ export class SongSelectScene extends Phaser.Scene {
 
       startButton.setFillStyle(canStartSession ? 0xf97316 : 0x9f1239, 1);
       startButton.setStrokeStyle(2, canStartSession ? 0xfecaca : 0xfda4af, canStartSession ? 0.8 : 0.75);
-      startGlow.setFillStyle(canStartSession ? 0xfb7185 : 0xf43f5e, canStartSession ? 0.26 : 0.2);
       startLabel.setColor(canStartSession ? '#fff7ed' : '#ffe4e6');
       startLabel.setText(importState.inProgress ? 'Import in progress...' : canStartSession ? 'Start Session' : 'Fix Song Setup');
       playIcon?.setAlpha(canStartSession ? 0.98 : 0.72);
@@ -602,9 +598,18 @@ export class SongSelectScene extends Phaser.Scene {
     difficultyDropdown.trigger.on('pointerdown', cycleDifficulty);
     difficultyDropdown.label.on('pointerdown', cycleDifficulty);
 
-    startButton.on('pointerdown', () => void startGame());
-    startLabel.on('pointerdown', () => void startGame());
-    playIcon?.on('pointerdown', () => void startGame());
+    const onStartPointerDown = (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData
+    ): void => {
+      event.stopPropagation();
+      void startGame();
+    };
+    startButton.on('pointerdown', onStartPointerDown);
+    startLabel.on('pointerdown', onStartPointerDown);
+    playIcon?.on('pointerdown', onStartPointerDown);
 
     this.input.keyboard?.on('keydown-LEFT', () => {
       if (isQuitConfirmOpen() || settingsController.isOpen() || songs.length === 0) return;

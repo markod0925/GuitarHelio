@@ -11,6 +11,7 @@ type SongGridControllerOptions = {
   isPointerBlocked: () => boolean;
   canSelectSong: () => boolean;
   canStartLongPressRemove: () => boolean;
+  getViewportBottomLimitY?: () => number;
   onSelectionChanged: () => void;
   onRequestRemoveSong: (song: SongEntry) => void;
   longPressMs: number;
@@ -244,8 +245,14 @@ export class SongGridController {
     const viewportLeft = gridLeft - 8;
     const viewportTop = Math.max(height * 0.2, gridTop - buttonHeight * 0.52);
     const viewportRight = gridLeft + gridWidth + 8;
-    const viewportBottom = Math.min(height * 0.8, height - Math.max(96, buttonHeight * 0.85));
-    const viewportHeight = Math.max(buttonHeight + 16, viewportBottom - viewportTop);
+    const defaultViewportBottom = Math.min(height * 0.8, height - Math.max(96, buttonHeight * 0.85));
+    const viewportBottomLimitY = this.options.getViewportBottomLimitY?.();
+    const cappedViewportBottom =
+      typeof viewportBottomLimitY === 'number' && Number.isFinite(viewportBottomLimitY)
+        ? Math.min(defaultViewportBottom, viewportBottomLimitY)
+        : defaultViewportBottom;
+    const viewportBottom = Math.max(viewportTop + 1, cappedViewportBottom);
+    const viewportHeight = viewportBottom - viewportTop;
     const rows = Math.max(1, Math.ceil(songCount / cols));
     const contentBottom = songCount <= 0 ? gridTop : gridTop + rows * buttonHeight + Math.max(0, rows - 1) * gapY;
 

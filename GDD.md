@@ -459,6 +459,32 @@ type PitchFrame = {
 }
 ```
 
+Runtime confidence estimation MUST be derived from normalized autocorrelation:
+
+```
+bestCorrelation = max_lag corr(samples, lag)
+```
+
+with:
+
+```
+corr = cross / sqrt(normA * normB)
+```
+
+and confidence mapping:
+
+```
+if rms < 0.0035 -> confidence = 0, midi_estimate = null
+else if bestCorrelation < 0.58 -> confidence = clamp01(bestCorrelation), midi_estimate = null
+else -> confidence = clamp01((bestCorrelation - 0.45) / 0.5)
+```
+
+where:
+
+```
+clamp01(x) = min(1, max(0, x))
+```
+
 ---
 
 ## 9.3 Hit validation
@@ -467,6 +493,21 @@ A hit is valid if for at least `hold_ms` continuous:
 
 * confidence ≥ min_confidence
 * pitch within tolerance
+
+Per-frame validity MUST be:
+
+```
+valid_frame_i =
+  (midi_estimate_i !== null) &&
+  (confidence_i >= min_confidence) &&
+  (abs(midi_estimate_i - expected_midi) <= pitch_tolerance_semitones)
+```
+
+A target hit MUST be valid iff there exists a continuous streak of valid frames such that:
+
+```
+(t_last - t_first) * 1000 >= hold_ms
+```
 
 Defaults:
 
