@@ -55,6 +55,14 @@
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"
+    },
+    {
+      "id": "banana-groove",
+      "name": "Banana Groove",
+      "folder": "Banana Groove",
+      "midi": "song.mid",
+      "audio": "song.mp3",
+      "cover": "cover.jpg"
     }
   ]
 }
