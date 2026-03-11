@@ -90,6 +90,16 @@ export type SettingsOverlay = {
   panel: RoundedBox;
   doneButton: RoundedBox;
   doneLabel: Phaser.GameObjects.Text;
+  resetScoresButton: RoundedBox;
+  resetScoresLabel: Phaser.GameObjects.Text;
+  resetScoresConfirmBackdrop: RoundedBox;
+  resetScoresConfirmPanel: RoundedBox;
+  resetScoresConfirmTitle: Phaser.GameObjects.Text;
+  resetScoresConfirmMessage: Phaser.GameObjects.Text;
+  resetScoresConfirmCancelButton: RoundedBox;
+  resetScoresConfirmCancelLabel: Phaser.GameObjects.Text;
+  resetScoresConfirmConfirmButton: RoundedBox;
+  resetScoresConfirmConfirmLabel: Phaser.GameObjects.Text;
   stringToggles: ToggleOption[];
   fingerToggles: ToggleOption[];
   fretToggles: ToggleOption[];

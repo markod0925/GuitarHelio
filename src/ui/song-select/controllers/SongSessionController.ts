@@ -1,6 +1,8 @@
+import { Capacitor } from '@capacitor/core';
 import { DIFFICULTY_PRESETS } from '../../../app/config';
 import {
   loadSessionSettingsPreference,
+  resetAllSongHighScores,
   saveSessionSettingsPreference
 } from '../../../app/sessionPersistence';
 import { RoundedBox } from '../../RoundedBox';
@@ -26,6 +28,11 @@ export type SessionSettingsSnapshot = {
   valid: boolean;
 };
 
+type SongSessionControllerOptions = {
+  onStateChanged: () => void;
+  onScoresReset?: () => Promise<void> | void;
+};
+
 export class SongSessionController {
   private overlay?: SettingsOverlay;
   private open = false;
@@ -33,10 +40,12 @@ export class SongSessionController {
   private selectedStrings = new Set<number>();
   private selectedFingers = new Set<number>();
   private selectedFrets = new Set<number>();
+  private resetScoresConfirmOpen = false;
+  private resetScoresInProgress = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
-    private readonly onStateChanged: () => void
+    private readonly options: SongSessionControllerOptions
   ) {}
 
   initialize(width: number, height: number, labelSize: number): void {
@@ -59,31 +68,35 @@ export class SongSessionController {
   openOverlay(): void {
     if (!this.overlay) return;
     this.open = true;
+    this.closeResetScoresConfirm();
     this.overlay.container.setVisible(true);
     this.refresh();
-    this.onStateChanged();
+    this.options.onStateChanged();
   }
 
   closeOverlay(): void {
     if (!this.overlay) return;
+    this.closeResetScoresConfirm();
     this.open = false;
     this.overlay.container.setVisible(false);
     this.refresh();
-    this.onStateChanged();
+    this.options.onStateChanged();
   }
 
   cycleDifficultyNext(): void {
+    if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
     this.difficulty = nextDifficulty(this.difficulty);
     this.persistSessionSettingsPreference();
     this.refresh();
-    this.onStateChanged();
+    this.options.onStateChanged();
   }
 
   cycleDifficultyPrevious(): void {
+    if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
     this.difficulty = previousDifficulty(this.difficulty);
     this.persistSessionSettingsPreference();
     this.refresh();
-    this.onStateChanged();
+    this.options.onStateChanged();
   }
 
   getDifficulty(): Difficulty {
@@ -146,6 +159,38 @@ export class SongSessionController {
     overlay.doneButton.setFillStyle(valid ? 0x2563eb : 0x7f1d1d, 1);
     overlay.doneButton.setStrokeStyle(2, valid ? 0x93c5fd : 0xfca5a5, 0.8);
     overlay.doneLabel.setColor(valid ? '#ecfdf5' : '#ffe4e6');
+
+    const resetButtonDisabled = this.resetScoresInProgress;
+    overlay.resetScoresButton.setFillStyle(resetButtonDisabled ? 0x334155 : 0x7f1d1d, 1);
+    overlay.resetScoresButton.setStrokeStyle(2, resetButtonDisabled ? 0x64748b : 0xfda4af, 0.84);
+    overlay.resetScoresButton.setAlpha(resetButtonDisabled ? 0.78 : 1);
+    overlay.resetScoresLabel.setText(resetButtonDisabled ? 'Resetting...' : 'Reset Scores');
+    overlay.resetScoresLabel.setColor(resetButtonDisabled ? '#cbd5e1' : '#ffe4e6');
+    overlay.resetScoresLabel.setAlpha(resetButtonDisabled ? 0.84 : 1);
+
+    const confirmVisible = this.resetScoresConfirmOpen;
+    overlay.resetScoresConfirmBackdrop.setVisible(confirmVisible);
+    overlay.resetScoresConfirmPanel.setVisible(confirmVisible);
+    overlay.resetScoresConfirmTitle.setVisible(confirmVisible);
+    overlay.resetScoresConfirmMessage.setVisible(confirmVisible);
+    overlay.resetScoresConfirmCancelButton.setVisible(confirmVisible);
+    overlay.resetScoresConfirmCancelLabel.setVisible(confirmVisible);
+    overlay.resetScoresConfirmConfirmButton.setVisible(confirmVisible);
+    overlay.resetScoresConfirmConfirmLabel.setVisible(confirmVisible);
+
+    const confirmDisabled = this.resetScoresInProgress;
+    overlay.resetScoresConfirmCancelButton.setFillStyle(confirmDisabled ? 0x334155 : 0x1e293b, 1);
+    overlay.resetScoresConfirmCancelButton.setStrokeStyle(2, confirmDisabled ? 0x64748b : 0x64748b, 0.84);
+    overlay.resetScoresConfirmCancelLabel.setColor(confirmDisabled ? '#94a3b8' : '#e2e8f0');
+    overlay.resetScoresConfirmCancelButton.setAlpha(confirmDisabled ? 0.8 : 1);
+    overlay.resetScoresConfirmCancelLabel.setAlpha(confirmDisabled ? 0.85 : 1);
+
+    overlay.resetScoresConfirmConfirmButton.setFillStyle(confirmDisabled ? 0x334155 : 0x7f1d1d, 1);
+    overlay.resetScoresConfirmConfirmButton.setStrokeStyle(2, confirmDisabled ? 0x64748b : 0xfda4af, 0.84);
+    overlay.resetScoresConfirmConfirmLabel.setText(confirmDisabled ? 'Resetting...' : 'Reset');
+    overlay.resetScoresConfirmConfirmLabel.setColor(confirmDisabled ? '#cbd5e1' : '#ffe4e6');
+    overlay.resetScoresConfirmConfirmButton.setAlpha(confirmDisabled ? 0.8 : 1);
+    overlay.resetScoresConfirmConfirmLabel.setAlpha(confirmDisabled ? 0.85 : 1);
   }
 
   private initializeDefaults(): void {
@@ -178,17 +223,196 @@ export class SongSessionController {
     });
   }
 
+  private openResetScoresConfirm(): void {
+    if (!this.overlay || this.resetScoresInProgress) return;
+    this.resetScoresConfirmOpen = true;
+    this.refresh();
+  }
+
+  private closeResetScoresConfirm(): void {
+    if (!this.overlay) {
+      this.resetScoresConfirmOpen = false;
+      return;
+    }
+    this.resetScoresConfirmOpen = false;
+    this.refresh();
+  }
+
+  private async confirmResetBestScores(): Promise<void> {
+    if (!this.overlay || this.resetScoresInProgress) return;
+    this.resetScoresInProgress = true;
+    this.refresh();
+    try {
+      resetAllSongHighScores();
+      if (Capacitor.isNativePlatform()) {
+        await import('../../../platform/nativeSongLibrary')
+          .then(({ resetAllNativeSongHighScores }) => resetAllNativeSongHighScores())
+          .catch((error) => {
+            console.warn('Failed to reset native song high scores', error);
+          });
+      }
+      await this.options.onScoresReset?.();
+      this.closeResetScoresConfirm();
+      this.options.onStateChanged();
+    } finally {
+      this.resetScoresInProgress = false;
+      this.refresh();
+    }
+  }
+
   private bindOverlayEvents(): void {
     const overlay = this.overlay;
     if (!overlay) return;
 
-    overlay.doneButton.on('pointerdown', () => this.closeOverlay());
-    overlay.doneLabel.on('pointerdown', () => this.closeOverlay());
-    overlay.backdrop.on('pointerdown', () => this.closeOverlay());
-    overlay.panel.on('pointerdown', () => undefined);
+    overlay.doneButton.on('pointerdown', () => {
+      if (this.resetScoresInProgress) return;
+      if (this.resetScoresConfirmOpen) {
+        this.closeResetScoresConfirm();
+        return;
+      }
+      this.closeOverlay();
+    });
+    overlay.doneLabel.on('pointerdown', () => {
+      if (this.resetScoresInProgress) return;
+      if (this.resetScoresConfirmOpen) {
+        this.closeResetScoresConfirm();
+        return;
+      }
+      this.closeOverlay();
+    });
+    overlay.backdrop.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress) return;
+        if (this.resetScoresConfirmOpen) {
+          this.closeResetScoresConfirm();
+          return;
+        }
+        this.closeOverlay();
+      }
+    );
+    overlay.panel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+      }
+    );
+
+    overlay.resetScoresButton.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress || this.resetScoresConfirmOpen) return;
+        this.openResetScoresConfirm();
+      }
+    );
+    overlay.resetScoresLabel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress || this.resetScoresConfirmOpen) return;
+        this.openResetScoresConfirm();
+      }
+    );
+    overlay.resetScoresConfirmBackdrop.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress) return;
+        this.closeResetScoresConfirm();
+      }
+    );
+    overlay.resetScoresConfirmPanel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+      }
+    );
+    overlay.resetScoresConfirmCancelButton.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress) return;
+        this.closeResetScoresConfirm();
+      }
+    );
+    overlay.resetScoresConfirmCancelLabel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        if (this.resetScoresInProgress) return;
+        this.closeResetScoresConfirm();
+      }
+    );
+    overlay.resetScoresConfirmConfirmButton.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        void this.confirmResetBestScores();
+      }
+    );
+    overlay.resetScoresConfirmConfirmLabel.on(
+      'pointerdown',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData
+      ) => {
+        event.stopPropagation();
+        void this.confirmResetBestScores();
+      }
+    );
 
     overlay.stringToggles.forEach((option) => {
       const toggleString = (): void => {
+        if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
         if (this.selectedStrings.has(option.value)) {
           this.selectedStrings.delete(option.value);
         } else {
@@ -196,7 +420,7 @@ export class SongSessionController {
         }
         this.persistSessionSettingsPreference();
         this.refresh();
-        this.onStateChanged();
+        this.options.onStateChanged();
       };
       option.background.on('pointerdown', toggleString);
       option.label.on('pointerdown', toggleString);
@@ -204,6 +428,7 @@ export class SongSessionController {
 
     overlay.fingerToggles.forEach((option) => {
       const toggleFinger = (): void => {
+        if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
         if (this.selectedFingers.has(option.value)) {
           this.selectedFingers.delete(option.value);
         } else {
@@ -211,7 +436,7 @@ export class SongSessionController {
         }
         this.persistSessionSettingsPreference();
         this.refresh();
-        this.onStateChanged();
+        this.options.onStateChanged();
       };
       option.background.on('pointerdown', toggleFinger);
       option.label.on('pointerdown', toggleFinger);
@@ -219,6 +444,7 @@ export class SongSessionController {
 
     overlay.fretToggles.forEach((option) => {
       const toggleFret = (): void => {
+        if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
         if (this.selectedFrets.has(option.value)) {
           this.selectedFrets.delete(option.value);
         } else {
@@ -226,7 +452,7 @@ export class SongSessionController {
         }
         this.persistSessionSettingsPreference();
         this.refresh();
-        this.onStateChanged();
+        this.options.onStateChanged();
       };
       option.background.on('pointerdown', toggleFret);
       option.label.on('pointerdown', toggleFret);
@@ -254,6 +480,26 @@ export class SongSessionController {
         fontSize: `${Math.max(20, labelSize + 6)}px`
       })
       .setOrigin(0.5);
+    const resetScoresButton = new RoundedBox(
+      this.scene,
+      panelX + panelWidth * 0.33 + 25,
+      panelY - panelHeight * 0.41 - 10,
+      Math.min(212, panelWidth * 0.24),
+      40,
+      0x7f1d1d,
+      1
+    )
+      .setStrokeStyle(2, 0xfda4af, 0.84)
+      .setInteractive({ useHandCursor: true });
+    const resetScoresLabel = this.scene.add
+      .text(resetScoresButton.x, resetScoresButton.y, 'Reset Scores', {
+        color: '#ffe4e6',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, labelSize - 1)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     const stringsTitleY = panelY - panelHeight * 0.31;
     const stringsTitle = this.scene.add
@@ -331,11 +577,90 @@ export class SongSessionController {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+    const resetScoresConfirmBackdrop = new RoundedBox(this.scene, width / 2, height / 2, width, height, 0x020617, 0.78, 0)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const resetScoresConfirmPanel = new RoundedBox(
+      this.scene,
+      panelX,
+      panelY,
+      Math.min(560, panelWidth * 0.62),
+      Math.min(240, panelHeight * 0.46),
+      0x101c3c,
+      0.98
+    )
+      .setStrokeStyle(2, 0x3b82f6, 0.45)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const resetScoresConfirmTitle = this.scene.add
+      .text(panelX, resetScoresConfirmPanel.y - resetScoresConfirmPanel.height * 0.28, 'Reset Best Scores?', {
+        color: '#ffe4e6',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(19, labelSize + 4)}px`
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+    const resetScoresConfirmMessage = this.scene.add
+      .text(panelX, resetScoresConfirmPanel.y - resetScoresConfirmPanel.height * 0.02, 'This will clear every song best score.\nThis action cannot be undone.', {
+        color: '#cbd5e1',
+        fontFamily: 'Montserrat, sans-serif',
+        align: 'center',
+        fontSize: `${Math.max(13, labelSize - 2)}px`
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+    const resetScoresConfirmCancelButton = new RoundedBox(
+      this.scene,
+      panelX - resetScoresConfirmPanel.width * 0.22,
+      resetScoresConfirmPanel.y + resetScoresConfirmPanel.height * 0.28,
+      Math.min(164, resetScoresConfirmPanel.width * 0.36),
+      46,
+      0x1e293b,
+      1
+    )
+      .setStrokeStyle(2, 0x64748b, 0.84)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const resetScoresConfirmCancelLabel = this.scene.add
+      .text(resetScoresConfirmCancelButton.x, resetScoresConfirmCancelButton.y, 'Cancel', {
+        color: '#e2e8f0',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(15, labelSize)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const resetScoresConfirmConfirmButton = new RoundedBox(
+      this.scene,
+      panelX + resetScoresConfirmPanel.width * 0.22,
+      resetScoresConfirmPanel.y + resetScoresConfirmPanel.height * 0.28,
+      Math.min(164, resetScoresConfirmPanel.width * 0.36),
+      46,
+      0x7f1d1d,
+      1
+    )
+      .setStrokeStyle(2, 0xfda4af, 0.84)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const resetScoresConfirmConfirmLabel = this.scene.add
+      .text(resetScoresConfirmConfirmButton.x, resetScoresConfirmConfirmButton.y, 'Reset', {
+        color: '#ffe4e6',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(15, labelSize)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
 
     const allObjects: Phaser.GameObjects.GameObject[] = [
       backdrop,
       panel,
       title,
+      resetScoresButton,
+      resetScoresLabel,
       stringsTitle,
       fingersTitle,
       fretsTitle,
@@ -343,12 +668,39 @@ export class SongSessionController {
       doneLabel,
       ...stringToggles.flatMap((toggle) => [toggle.background, toggle.label]),
       ...fingerToggles.flatMap((toggle) => [toggle.background, toggle.label]),
-      ...fretToggles.flatMap((toggle) => [toggle.background, toggle.label])
+      ...fretToggles.flatMap((toggle) => [toggle.background, toggle.label]),
+      resetScoresConfirmBackdrop,
+      resetScoresConfirmPanel,
+      resetScoresConfirmTitle,
+      resetScoresConfirmMessage,
+      resetScoresConfirmCancelButton,
+      resetScoresConfirmCancelLabel,
+      resetScoresConfirmConfirmButton,
+      resetScoresConfirmConfirmLabel
     ];
 
     const container = this.scene.add.container(0, 0, allObjects).setDepth(1200).setVisible(false);
 
-    return { container, backdrop, panel, doneButton, doneLabel, stringToggles, fingerToggles, fretToggles };
+    return {
+      container,
+      backdrop,
+      panel,
+      doneButton,
+      doneLabel,
+      resetScoresButton,
+      resetScoresLabel,
+      resetScoresConfirmBackdrop,
+      resetScoresConfirmPanel,
+      resetScoresConfirmTitle,
+      resetScoresConfirmMessage,
+      resetScoresConfirmCancelButton,
+      resetScoresConfirmCancelLabel,
+      resetScoresConfirmConfirmButton,
+      resetScoresConfirmConfirmLabel,
+      stringToggles,
+      fingerToggles,
+      fretToggles
+    };
   }
 
   private createStringToggles(

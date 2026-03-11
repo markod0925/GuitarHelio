@@ -122,7 +122,12 @@ export class SongSelectScene extends Phaser.Scene {
       importButtonY -= shiftUp;
       practiceButtonY -= shiftUp;
     }
-    const settingsController = new SongSessionController(this, () => refreshSelections());
+    const settingsController = new SongSessionController(this, {
+      onStateChanged: () => refreshSelections(),
+      onScoresReset: async () => {
+        await this.refreshSongListAfterImport();
+      }
+    });
     settingsController.initialize(width, height, labelSize);
     const difficultyDropdown = this.createDifficultyDropdown(
       width,

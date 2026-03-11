@@ -723,6 +723,9 @@ The default selected difficulty on start screen MUST be `Medium`.
 The start screen MUST provide a `Settings` button under the difficulty selector.
 The transient status label above `Start Session` MUST stay hidden.
 Pressing this button MUST open a modal settings panel with a dimmed background overlay.
+The `Session Settings` panel MUST include a top-right red button (same color family used by `Hard` difficulty) labeled to reset all song best scores.
+Pressing the reset button MUST open a confirmation popup with explicit `Cancel` and `Reset` actions before any score data is changed.
+Confirming reset MUST clear all persisted best scores for every song in both web/localStorage runtime and Capacitor native song library runtime.
 All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
 The song list in start screen MUST be rendered inside an invisible scrollable viewport (mouse wheel + drag/touch scroll) so users can browse and select songs beyond the initially visible rows.
 Song titles in song cards MUST always stay inside their fixed label box; if a title is too long, UI MUST reduce title font size until it fits.

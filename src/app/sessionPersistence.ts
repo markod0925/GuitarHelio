@@ -83,6 +83,16 @@ export function saveSongHighScoreIfHigher(songId: string, score: number): number
   return best;
 }
 
+export function resetAllSongHighScores(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(SONG_HIGH_SCORES_STORAGE_KEY);
+  } catch {
+    // Ignore persistence failures (quota/private mode).
+  }
+}
+
 function loadSongHighScoreMap(): SongHighScoreMap {
   const raw = readStoredJson(SONG_HIGH_SCORES_STORAGE_KEY);
   if (!raw || typeof raw !== 'object') return {};

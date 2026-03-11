@@ -105,6 +105,27 @@ export async function updateNativeSongHighScore(songId: string, score: number): 
   await writeNativeSongsManifest(nextEntries);
 }
 
+export async function resetAllNativeSongHighScores(): Promise<void> {
+  if (!isNativeSongLibraryAvailable()) return;
+
+  const entries = await readNativeSongsManifest();
+  if (entries.length === 0) return;
+
+  let changed = false;
+  const nextEntries = entries.map((entry) => {
+    const previous = asOptionalNonNegativeInteger(entry.highScore) ?? 0;
+    if (previous === 0 && entry.highScore === 0) return entry;
+    changed = true;
+    return {
+      ...entry,
+      highScore: 0
+    };
+  });
+
+  if (!changed) return;
+  await writeNativeSongsManifest(nextEntries);
+}
+
 export async function deleteNativeSongById(songId: string): Promise<boolean> {
   if (!isNativeSongLibraryAvailable()) return false;
 
