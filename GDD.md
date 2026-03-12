@@ -861,6 +861,7 @@ Practice scene requirements:
   - a BPM scrollbar/slider control
   - an explicit `Start Metronome` / `Stop Metronome` button
 * include `Back to Start` to return to `SongSelectScene`
+* on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
 * the scene SHOULD show per-detector stable note output and A/B semitone delta
 * both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
 
@@ -884,6 +885,8 @@ Start-screen layout constraints:
 * the title logo asset (`logoGuitarHelio`) MUST be rendered with its displayed height reduced by 30% and shifted upward by 40px
 * the primary CTA `Start Session` MUST be increased by about 100% in visual area versus baseline (roughly +41% per side), preserving full clickability of background + label/icon
 * in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`, `Practice`) and `Start Session` CTA MUST keep non-overlapping spacing
+* in all runtimes (server/web, Windows, Android), right-side action buttons (`Import`, `Settings`, `Tuner`, `Practice`) MUST use equal vertical spacing between consecutive buttons
+* in all runtimes (server/web, Windows, Android), right-side action buttons (`Import`, `Settings`, `Tuner`, `Practice`) MUST use a compact height so the top-right control zone stays clear of transient system status bar overlays
 
 ### 11.12.1 App icon and startup splash assets
 

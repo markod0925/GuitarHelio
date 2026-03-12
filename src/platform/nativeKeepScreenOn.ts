@@ -12,19 +12,27 @@ function isAndroidNativeRuntime(): boolean {
 }
 
 export async function enableKeepScreenOnDuringPlayScene(): Promise<void> {
+  await enableAndroidKeepScreenOn();
+}
+
+export async function disableKeepScreenOnAfterPlayScene(): Promise<void> {
+  await disableAndroidKeepScreenOn();
+}
+
+export async function enableAndroidKeepScreenOn(): Promise<void> {
   if (!isAndroidNativeRuntime()) return;
   try {
     await KeepScreenOn.enable();
   } catch (error) {
-    console.warn('Failed to enable Android keep-screen-on for PlayScene', error);
+    console.warn('Failed to enable Android keep-screen-on', error);
   }
 }
 
-export async function disableKeepScreenOnAfterPlayScene(): Promise<void> {
+export async function disableAndroidKeepScreenOn(): Promise<void> {
   if (!isAndroidNativeRuntime()) return;
   try {
     await KeepScreenOn.disable();
   } catch (error) {
-    console.warn('Failed to disable Android keep-screen-on after PlayScene', error);
+    console.warn('Failed to disable Android keep-screen-on', error);
   }
 }

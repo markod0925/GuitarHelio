@@ -100,29 +100,28 @@ export class SongSelectScene extends Phaser.Scene {
     });
     songGridController.initialize(songs, width, height, labelSize);
 
-    const difficultyToImportGap = 86;
-    const sideButtonsVerticalTightenPx = 6;
-    const importToSettingsGap = 92 - sideButtonsVerticalTightenPx;
-    const settingsToTunerGap = 86 - sideButtonsVerticalTightenPx;
-    const tunerToPracticeGap = 86 - sideButtonsVerticalTightenPx;
+    const sideLayoutScale = Phaser.Math.Clamp(height / 540, 0.6, 1);
     const sideButtonWidth = Math.min(300, width * 0.3);
-    const sideButtonHeight = 56;
     const sideButtonsBottomGapFromStart = 14;
-    let difficultyButtonY = height * 0.27;
-    let importButtonY = difficultyButtonY + difficultyToImportGap;
-    let settingsButtonY = importButtonY + importToSettingsGap;
-    let tunerButtonY = settingsButtonY + settingsToTunerGap;
-    let practiceButtonY = tunerButtonY + tunerToPracticeGap;
-    const maxBottomButton = startTopY - sideButtonsBottomGapFromStart;
-    const bottomButtonY = practiceButtonY + sideButtonHeight / 2;
-    if (bottomButtonY > maxBottomButton) {
-      const shiftUp = bottomButtonY - maxBottomButton;
-      difficultyButtonY -= shiftUp;
-      settingsButtonY -= shiftUp;
-      tunerButtonY -= shiftUp;
-      importButtonY -= shiftUp;
-      practiceButtonY -= shiftUp;
-    }
+    const difficultyButtonHeight = Math.min(54, Math.max(42, height * 0.08));
+    const sideTopSafeInset = Math.max(20, Math.round(height * 0.06));
+    const minDifficultyButtonY = sideTopSafeInset + difficultyButtonHeight / 2;
+    const preferredDifficultyButtonY = height * 0.21;
+    const difficultyButtonY = Math.max(preferredDifficultyButtonY, minDifficultyButtonY);
+    const availableSideSpan = startTopY - sideButtonsBottomGapFromStart - difficultyButtonY;
+    const minimumInterButtonGap = 10;
+    const maxSideButtonHeightForFit = Math.floor((availableSideSpan - minimumInterButtonGap * 4) / 4.5);
+    const preferredSideButtonHeight = Math.round(50 * sideLayoutScale);
+    const fittedSideButtonHeight = Phaser.Math.Clamp(Math.min(preferredSideButtonHeight, maxSideButtonHeightForFit), 30, 50);
+    const sideButtonHeight = Math.max(27, fittedSideButtonHeight - 3);
+    const preferredInterButtonGap = Math.round(Phaser.Math.Clamp(22 * sideLayoutScale, 12, 22));
+    const preferredSideCenterStep = sideButtonHeight + preferredInterButtonGap;
+    const maxSideCenterStep = (availableSideSpan - sideButtonHeight / 2) / 4;
+    const sideCenterStep = Math.min(preferredSideCenterStep, maxSideCenterStep);
+    const importButtonY = difficultyButtonY + sideCenterStep;
+    const settingsButtonY = importButtonY + sideCenterStep;
+    const tunerButtonY = settingsButtonY + sideCenterStep;
+    const practiceButtonY = tunerButtonY + sideCenterStep;
     const settingsController = new SongSessionController(this, {
       onStateChanged: () => refreshSelections(),
       onScoresReset: async () => {
@@ -136,7 +135,8 @@ export class SongSelectScene extends Phaser.Scene {
       difficultyButtonY,
       settingsController.getDifficulty()
     );
-    const sideIconSize = Math.min(26, Math.floor(labelSize * 1.5));
+    const sideIconSize = Math.max(16, Math.min(26, Math.floor(labelSize * 1.5), Math.floor(sideButtonHeight * 0.56)));
+    const sideButtonFontSize = Math.max(14, Math.min(Math.max(17, labelSize + 2), Math.floor(sideButtonHeight * 0.48)));
     const settingsButton = new RoundedBox(this, width * 0.79, settingsButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
@@ -155,7 +155,7 @@ export class SongSelectScene extends Phaser.Scene {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(17, labelSize + 2)}px`
+        fontSize: `${sideButtonFontSize}px`
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -174,12 +174,14 @@ export class SongSelectScene extends Phaser.Scene {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(17, labelSize + 2)}px`
+        fontSize: `${sideButtonFontSize}px`
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+    const baseSideSummaryOffset = Math.max(16, Math.min(sideButtonHeight / 2 + 10, sideCenterStep - sideButtonHeight / 2 - 6));
+    const sideSummaryOffset = Math.round(Math.max(14, baseSideSummaryOffset - 2));
     const tunerSummary = this.add
-      .text(tunerButton.x, tunerButtonY + 38, '', {
+      .text(tunerButton.x, tunerButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
@@ -208,12 +210,12 @@ export class SongSelectScene extends Phaser.Scene {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(17, labelSize + 2)}px`
+        fontSize: `${sideButtonFontSize}px`
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     const settingsSummary = this.add
-      .text(settingsButton.x, settingsButtonY + 39, '', {
+      .text(settingsButton.x, settingsButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`
@@ -233,12 +235,12 @@ export class SongSelectScene extends Phaser.Scene {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(16, labelSize + 1)}px`
+        fontSize: `${Math.max(13, sideButtonFontSize - 1)}px`
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     const importSummary = this.add
-      .text(importButton.x, importButtonY + 39, '', {
+      .text(importButton.x, importButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, labelSize - 3)}px`

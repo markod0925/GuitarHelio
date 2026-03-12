@@ -6,6 +6,7 @@ import { createMicNode } from '../audio/micInput';
 import { loadPitchCalibrationProfile } from '../audio/pitchCalibration';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { midiForStringFret } from '../guitar/tuning';
+import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
 import { releaseMicStream } from './AudioController';
 import { RoundedBox } from './RoundedBox';
 import {
@@ -91,6 +92,7 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   create(): void {
+    void enableAndroidKeepScreenOn();
     const { width, height } = this.scale;
     this.cellsByMidi.clear();
     this.customHighlightedMidi = null;
@@ -221,6 +223,7 @@ export class PracticeScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-ESC', onEsc);
       this.input.off('pointerup', this.handleMetronomePointerRelease, this);
       this.input.off('pointerupoutside', this.handleMetronomePointerRelease, this);
+      void disableAndroidKeepScreenOn();
       void this.stopMetronome(true);
       void this.stopListening();
     });
@@ -399,6 +402,7 @@ export class PracticeScene extends Phaser.Scene {
   private async leaveToStart(): Promise<void> {
     await this.stopMetronome(true);
     await this.stopListening();
+    await disableAndroidKeepScreenOn();
     if (this.scene.isActive()) {
       this.scene.start('SongSelectScene');
     }
