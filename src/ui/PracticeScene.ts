@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Capacitor } from '@capacitor/core';
 import type { PitchFrame } from '../types/models';
 import { AubioPitchDetectorService } from '../audio/aubioPitchDetector';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
@@ -89,6 +90,7 @@ export class PracticeScene extends Phaser.Scene {
   private metronomeAudioCtx?: AudioContext;
   private activeMetronomePointerId: number | null = null;
   private isShuttingDown = false;
+  private nativeBackButtonListener?: { remove: () => Promise<void> };
 
   constructor() {
     super('PracticeScene');
@@ -223,12 +225,17 @@ export class PracticeScene extends Phaser.Scene {
       void this.leaveToStart();
     };
     this.input.keyboard?.on('keydown-ESC', onEsc);
+    this.bindNativeBackHandler();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.isShuttingDown = true;
       this.input.keyboard?.off('keydown-ESC', onEsc);
       this.input.off('pointerup', this.handleMetronomePointerRelease, this);
       this.input.off('pointerupoutside', this.handleMetronomePointerRelease, this);
+      if (this.nativeBackButtonListener) {
+        void this.nativeBackButtonListener.remove();
+        this.nativeBackButtonListener = undefined;
+      }
       void disableAndroidKeepScreenOn();
       void this.stopMetronome(true);
       void this.stopListening();
@@ -412,6 +419,25 @@ export class PracticeScene extends Phaser.Scene {
     if (this.scene.isActive()) {
       this.scene.start('SongSelectScene');
     }
+  }
+
+  private bindNativeBackHandler(): void {
+    if (!Capacitor.isNativePlatform()) return;
+    if (this.nativeBackButtonListener) {
+      void this.nativeBackButtonListener.remove();
+      this.nativeBackButtonListener = undefined;
+    }
+    void import('@capacitor/app')
+      .then(async ({ App }) => {
+        const backListener = await App.addListener('backButton', () => {
+          if (!this.scene.isActive()) return;
+          void this.leaveToStart();
+        });
+        this.nativeBackButtonListener = backListener;
+      })
+      .catch((error) => {
+        console.warn('Failed to register native back handler in PracticeScene', error);
+      });
   }
 
   private async startListening(): Promise<void> {

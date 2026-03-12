@@ -675,6 +675,14 @@ export class SongSelectScene extends Phaser.Scene {
       void startGame();
     });
     this.input.keyboard?.on('keydown-ESC', () => {
+      if (settingsController.isOpen()) {
+        closeSettings();
+        return;
+      }
+      if (tunerController.isOpen()) {
+        closeTuner();
+        return;
+      }
       requestQuitConfirm();
     });
 

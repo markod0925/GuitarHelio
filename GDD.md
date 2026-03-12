@@ -725,7 +725,9 @@ All pause menu actions MUST be clickable both on button backgrounds and on their
 
 While this menu is open, runtime progression and playback MUST remain paused.
 
-On `SongSelectScene`, pressing `Esc` (desktop/server/Windows) or smartphone `Back` (Capacitor Android) MUST open a quit confirmation popup with exactly two actions:
+On `SongSelectScene`, pressing `Esc` (desktop/server/Windows) MUST first close an open `Session Settings` panel or open `Tuner` panel (if present). If neither panel is open, `Esc` MUST open the quit confirmation popup.
+
+On `SongSelectScene`, pressing smartphone `Back` (Capacitor Android) MUST open a quit confirmation popup with exactly two actions:
 
 * `Cancel` → close the popup and keep the app running
 * `Quit` → close the application when runtime supports it (Capacitor native app and Electron desktop app)
@@ -907,6 +909,7 @@ Practice scene requirements:
   - a BPM scrollbar/slider control
   - an explicit `Start Metronome` / `Stop Metronome` button
 * include `Back to Start` to return to `SongSelectScene`
+* on Capacitor Android runtime, system back navigation (hardware/gesture back) while `Practice` scene is active MUST trigger `Back to Start` and return to `SongSelectScene` (must not background/exit the app directly)
 * on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
 * the scene SHOULD show per-detector stable note output and A/B semitone delta
 * both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
