@@ -1140,6 +1140,21 @@ Speed control requirements:
 
 ---
 
+## 11.19 Play-scene multiplier ship widget
+
+The top-left gameplay multiplier indicator MUST be rendered as a lightweight stylized spaceship widget instead of plain standalone text.
+
+Widget requirements:
+
+* the multiplier label (`xN`) MUST remain visible inside the spaceship body
+* the gameplay combo multiplier MUST be clamped internally to a maximum of `x20` (and HUD display MUST match this cap)
+* the full spaceship widget (body + label) MUST pulse at song tempo (BPM) by combining a scale pulse and a lighter blue color shift; when BPM is unavailable, a safe fallback pulse tempo MAY be used
+* the spaceship MUST move continuously with pseudo-random target navigation inside a top-left HUD area that extends downward close to the fretboard top edge
+* movement and pulse animation MUST remain active during gameplay runtime, including pre-roll
+* implementation MUST stay performance-friendly by using simple primitive shapes and low-cost per-tick interpolation (no heavy particle systems or expensive effects)
+
+---
+
 # 12. Difficulty Presets (defaults)
 
 ## Easy

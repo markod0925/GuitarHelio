@@ -20,6 +20,7 @@ import {
   resolveTopFeedbackMessage as resolveOverlayTopFeedbackMessage
 } from '../../UIOverlays';
 import type { PlaySceneContext } from './PlaySceneContext';
+type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class UIController {
   constructor(private readonly scene: PlaySceneContext) {}
@@ -699,9 +700,11 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
 function updateHudImpl(this: PlaySceneContext): void {
   if (!this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
 
+  const sceneClass = this.constructor as Partial<PlaySceneStatics>;
+  const maxComboMultiplier = sceneClass.MAX_COMBO_MULTIPLIER ?? 20;
   const now = performance.now();
 
-  const streak = Math.max(1, this.currentComboStreak);
+  const streak = Math.min(maxComboMultiplier, Math.max(1, this.currentComboStreak));
   let status = `x${streak}`;
   if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
     status = `x${streak}`;
@@ -729,6 +732,10 @@ function updateHudImpl(this: PlaySceneContext): void {
     this.liveScoreText.setText(liveScoreText);
     this.lastHudLiveScoreText = liveScoreText;
   }
+  const songSecondsForBpm =
+    this.playbackStarted && this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds;
+  const bpm = this.getCurrentPlaybackBpm(songSecondsForBpm);
+  this.updateMultiplierWidget(now, bpm);
   this.updateDebugOverlay();
 }
 

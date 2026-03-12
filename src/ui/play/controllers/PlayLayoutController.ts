@@ -19,6 +19,18 @@ export class PlayLayoutController {
     layoutPauseButtonImpl.call(this.scene);
   }
 
+  createMultiplierWidget(): void {
+    createMultiplierWidgetImpl.call(this.scene);
+  }
+
+  layoutMultiplierWidget(): void {
+    layoutMultiplierWidgetImpl.call(this.scene);
+  }
+
+  updateMultiplierWidget(nowMs: number, bpm: number | undefined): void {
+    updateMultiplierWidgetImpl.call(this.scene, nowMs, bpm);
+  }
+
   createPlaybackSpeedSlider(): void {
     createPlaybackSpeedSliderImpl.call(this.scene);
   }
@@ -178,7 +190,7 @@ function drawStaticLanesImpl(this: PlaySceneContext): void {
   this.redrawSongMinimapStatic();
   this.updateSongMinimapProgress();
 
-  this.statusText.setPosition(layout.left, 16);
+  this.layoutMultiplierWidget();
   this.liveScoreText.setPosition(layout.right, 16);
   const feedbackFontPx = Math.max(30, Math.floor(width * 0.047));
   const sliderBottomY = this.playbackSpeedPanel ? this.playbackSpeedPanel.y + this.playbackSpeedPanel.height / 2 : 46;
@@ -192,6 +204,124 @@ function drawStaticLanesImpl(this: PlaySceneContext): void {
     this.debugButton.setPosition(layout.right - 62, 52);
     this.debugButtonLabel.setPosition(this.debugButton.x, this.debugButton.y);
   }
+}
+
+function createMultiplierWidgetImpl(this: PlaySceneContext): void {
+  if (!this.statusText || this.multiplierShipHull) return;
+
+  this.multiplierShipEngineGlow = this.add
+    .ellipse(0, 0, 20, 10, 0x38bdf8, 0.45)
+    .setDepth(304);
+  this.multiplierShipWingTop = this.add
+    .triangle(0, 0, 0, 0, 18, 0, 7, 12, 0x1d4ed8, 0.9)
+    .setDepth(305);
+  this.multiplierShipWingBottom = this.add
+    .triangle(0, 0, 0, 12, 18, 12, 7, 0, 0x1d4ed8, 0.9)
+    .setDepth(305);
+  this.multiplierShipHull = this.add
+    .triangle(0, 0, 0, 0, 32, 9, 0, 18, 0x93c5fd, 0.95)
+    .setDepth(306);
+  this.multiplierShipCockpit = this.add
+    .circle(0, 0, 4, 0xf8fafc, 0.95)
+    .setDepth(307);
+  this.statusText.setDepth(308);
+}
+
+function layoutMultiplierWidgetImpl(this: PlaySceneContext): void {
+  if (!this.statusText || !this.multiplierShipHull) return;
+
+  const layout = this.layout();
+  const boundsX = layout.left - 6;
+  const boundsY = 10;
+  const boundsWidth = Math.max(108, Math.floor(this.scale.width * 0.14));
+  const minBottomY = boundsY + Math.max(72, Math.floor(this.scale.height * 0.12));
+  const nearFretboardY = layout.top + Math.max(10, Math.floor(layout.laneSpacing * 0.18));
+  const boundsBottom = Math.max(minBottomY, nearFretboardY);
+  const boundsHeight = Math.max(46, boundsBottom - boundsY);
+  this.multiplierShipBounds = new Phaser.Geom.Rectangle(boundsX, boundsY, boundsWidth, boundsHeight);
+
+  if (this.multiplierShipX === 0 && this.multiplierShipY === 0) {
+    this.multiplierShipX = boundsX + boundsWidth * 0.5;
+    this.multiplierShipY = boundsY + boundsHeight * 0.5;
+    this.multiplierShipTargetX = this.multiplierShipX;
+    this.multiplierShipTargetY = this.multiplierShipY;
+  } else {
+    this.multiplierShipX = Phaser.Math.Clamp(this.multiplierShipX, boundsX, boundsX + boundsWidth);
+    this.multiplierShipY = Phaser.Math.Clamp(this.multiplierShipY, boundsY, boundsY + boundsHeight);
+    this.multiplierShipTargetX = Phaser.Math.Clamp(this.multiplierShipTargetX, boundsX, boundsX + boundsWidth);
+    this.multiplierShipTargetY = Phaser.Math.Clamp(this.multiplierShipTargetY, boundsY, boundsY + boundsHeight);
+  }
+
+  setMultiplierShipPosition(this, this.multiplierShipX, this.multiplierShipY);
+}
+
+function updateMultiplierWidgetImpl(this: PlaySceneContext, nowMs: number, bpm: number | undefined): void {
+  if (!this.statusText || !this.multiplierShipHull || !this.multiplierShipBounds) return;
+
+  const clampedBpm = Phaser.Math.Clamp(bpm ?? 96, 40, 220);
+  const beatPeriodMs = 60000 / clampedBpm;
+  const beatPhase = (nowMs % beatPeriodMs) / beatPeriodMs;
+  const pulse = Math.pow(Math.max(0, Math.cos(beatPhase * Math.PI * 2)), 2);
+  const shipPulse = 0.2 + pulse * 0.8;
+
+  if (nowMs >= this.multiplierShipRetargetAtMs) {
+    this.multiplierShipTargetX = Phaser.Math.Between(
+      Math.floor(this.multiplierShipBounds.left),
+      Math.floor(this.multiplierShipBounds.right)
+    );
+    this.multiplierShipTargetY = Phaser.Math.Between(
+      Math.floor(this.multiplierShipBounds.top),
+      Math.floor(this.multiplierShipBounds.bottom)
+    );
+    this.multiplierShipRetargetAtMs = nowMs + Phaser.Math.Between(850, 2000);
+  }
+
+  this.multiplierShipX = Phaser.Math.Linear(this.multiplierShipX, this.multiplierShipTargetX, 0.03);
+  this.multiplierShipY = Phaser.Math.Linear(this.multiplierShipY, this.multiplierShipTargetY, 0.03);
+  setMultiplierShipPosition(this, this.multiplierShipX, this.multiplierShipY);
+
+  const heading = Phaser.Math.Clamp((this.multiplierShipTargetX - this.multiplierShipX) / 34, -0.28, 0.28);
+  const wingColor = blendColor(0x1d4ed8, 0x60a5fa, shipPulse * 0.65);
+  const hullColor = blendColor(0x93c5fd, 0xe0f2fe, shipPulse * 0.72);
+  const cockpitColor = blendColor(0xf8fafc, 0xffffff, shipPulse * 0.45);
+  const shipScale = 1 + pulse * 0.1;
+  const labelScale = 1 + pulse * 0.18;
+
+  this.multiplierShipWingTop?.setFillStyle(wingColor, 0.92).setScale(shipScale);
+  this.multiplierShipWingBottom?.setFillStyle(wingColor, 0.92).setScale(shipScale);
+  this.multiplierShipHull.setFillStyle(hullColor, 0.96).setScale(shipScale);
+  this.multiplierShipCockpit?.setFillStyle(cockpitColor, 0.98).setScale(shipScale);
+  this.multiplierShipEngineGlow?.setFillStyle(blendColor(0x38bdf8, 0xa5f3fc, shipPulse), 0.26 + pulse * 0.48);
+
+  this.multiplierShipHull.setRotation(heading);
+  this.multiplierShipWingTop?.setRotation(heading * 0.7);
+  this.multiplierShipWingBottom?.setRotation(heading * 0.7);
+  this.multiplierShipCockpit?.setRotation(heading * 0.2);
+  this.multiplierShipEngineGlow?.setScale(1 + pulse * 0.2).setAlpha(0.24 + pulse * 0.42 + Math.abs(Math.sin(nowMs * 0.014)) * 0.07);
+  this.statusText.setScale(labelScale);
+}
+
+function setMultiplierShipPosition(scene: PlaySceneContext, x: number, y: number): void {
+  scene.multiplierShipEngineGlow?.setPosition(x - 14, y + 1);
+  scene.multiplierShipWingTop?.setPosition(x - 10, y - 8);
+  scene.multiplierShipWingBottom?.setPosition(x - 10, y - 4);
+  scene.multiplierShipHull?.setPosition(x - 6, y - 8);
+  scene.multiplierShipCockpit?.setPosition(x + 1, y + 1);
+  scene.statusText?.setPosition(x + 4, y + 1);
+}
+
+function blendColor(from: number, to: number, mix: number): number {
+  const t = Phaser.Math.Clamp(mix, 0, 1);
+  const fromR = (from >> 16) & 0xff;
+  const fromG = (from >> 8) & 0xff;
+  const fromB = from & 0xff;
+  const toR = (to >> 16) & 0xff;
+  const toG = (to >> 8) & 0xff;
+  const toB = to & 0xff;
+  const r = Math.round(fromR + (toR - fromR) * t);
+  const g = Math.round(fromG + (toG - fromG) * t);
+  const b = Math.round(fromB + (toB - fromB) * t);
+  return (r << 16) | (g << 8) | b;
 }
 
 function layoutSongMinimapImpl(this: PlaySceneContext): void {

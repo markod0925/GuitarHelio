@@ -87,4 +87,19 @@ describe('GameplayController debug hit', () => {
     expect(scene.currentComboStreak).toBe(1);
     expect(scene.feedbackText).toBe('OK');
   });
+
+  test('internally caps combo multiplier streak at x20', () => {
+    const { controller, scene } = createWaitingDebugScene(1200);
+
+    for (let index = 0; index < 30; index += 1) {
+      controller.recordScoreEvent({
+        targetId: `cap-${index}`,
+        rating: 'Perfect',
+        deltaMs: 12,
+        points: 100
+      });
+    }
+
+    expect(scene.currentComboStreak).toBe(20);
+  });
 });

@@ -69,6 +69,12 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.lastHudStatusText = '';
   this.lastHudFeedbackText = '';
   this.lastHudLiveScoreText = '';
+  this.multiplierShipBounds = undefined;
+  this.multiplierShipX = 0;
+  this.multiplierShipY = 0;
+  this.multiplierShipTargetX = 0;
+  this.multiplierShipTargetY = 0;
+  this.multiplierShipRetargetAtMs = 0;
   this.hitDebugSnapshot = {
     isWithinGraceWindow: false,
     canValidateHit: false,
@@ -175,6 +181,22 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.debugButton = undefined;
   this.debugButtonLabel?.destroy();
   this.debugButtonLabel = undefined;
+  this.multiplierShipEngineGlow?.destroy();
+  this.multiplierShipEngineGlow = undefined;
+  this.multiplierShipWingTop?.destroy();
+  this.multiplierShipWingTop = undefined;
+  this.multiplierShipWingBottom?.destroy();
+  this.multiplierShipWingBottom = undefined;
+  this.multiplierShipHull?.destroy();
+  this.multiplierShipHull = undefined;
+  this.multiplierShipCockpit?.destroy();
+  this.multiplierShipCockpit = undefined;
+  this.multiplierShipBounds = undefined;
+  this.multiplierShipX = 0;
+  this.multiplierShipY = 0;
+  this.multiplierShipTargetX = 0;
+  this.multiplierShipTargetY = 0;
+  this.multiplierShipRetargetAtMs = 0;
   this.statusText?.destroy();
   this.statusText = undefined;
   this.feedbackMessageText?.destroy();

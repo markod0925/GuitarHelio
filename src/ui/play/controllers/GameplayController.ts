@@ -259,13 +259,15 @@ function handleTransitionImpl(
 }
 
 function recordScoreEventImpl(this: PlaySceneContext, event: ScoreEvent): void {
+  const sceneClass = this.constructor as Partial<PlaySceneStatics>;
+  const maxComboMultiplier = sceneClass.MAX_COMBO_MULTIPLIER ?? 20;
   this.scoreEvents.push(event);
   this.totalScore += event.points;
   if (event.rating === 'Miss') {
     this.currentComboStreak = 0;
     return;
   }
-  this.currentComboStreak += 1;
+  this.currentComboStreak = Math.min(maxComboMultiplier, this.currentComboStreak + 1);
 }
 
 function consumeDebugHitImpl(this: PlaySceneContext): void {

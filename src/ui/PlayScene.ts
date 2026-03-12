@@ -53,6 +53,7 @@ import { UIController } from './play/controllers/UIController';
 export class PlayScene extends Phaser.Scene {
   public static readonly PAUSE_BUTTON_SIZE = 34;
   public static readonly PAUSE_BUTTON_GAP = 10;
+  public static readonly MAX_COMBO_MULTIPLIER = 20;
   public static readonly PLAYBACK_SPEED_MIN = 0.25;
   public static readonly PLAYBACK_SPEED_MAX = 1.25;
   public static readonly PLAYBACK_SPEED_DEFAULT = 1;
@@ -117,6 +118,17 @@ export class PlayScene extends Phaser.Scene {
   public readonly noteRenderer = new NoteRenderer(this);
   public handReminderImage?: Phaser.GameObjects.Image;
   public statusText?: Phaser.GameObjects.Text;
+  public multiplierShipHull?: Phaser.GameObjects.Triangle;
+  public multiplierShipWingTop?: Phaser.GameObjects.Triangle;
+  public multiplierShipWingBottom?: Phaser.GameObjects.Triangle;
+  public multiplierShipCockpit?: Phaser.GameObjects.Arc;
+  public multiplierShipEngineGlow?: Phaser.GameObjects.Ellipse;
+  public multiplierShipBounds?: Phaser.Geom.Rectangle;
+  public multiplierShipX = 0;
+  public multiplierShipY = 0;
+  public multiplierShipTargetX = 0;
+  public multiplierShipTargetY = 0;
+  public multiplierShipRetargetAtMs = 0;
   public feedbackMessageText?: Phaser.GameObjects.Text;
   public liveScoreText?: Phaser.GameObjects.Text;
   public lastHudStatusText = '';
@@ -238,7 +250,11 @@ export class PlayScene extends Phaser.Scene {
       fontFamily: 'Montserrat, sans-serif',
       fontStyle: 'bold',
       fontSize: `${Math.max(14, Math.floor(this.scale.width * 0.016))}px`
-    });
+    })
+      .setOrigin(0.5)
+      .setDepth(307)
+      .setStroke('#020617', 5);
+    this.createMultiplierWidget();
     this.feedbackMessageText = this.add
       .text(0, 0, '', {
         color: '#f8fafc',
@@ -461,6 +477,18 @@ export class PlayScene extends Phaser.Scene {
 
   public layoutPauseButton(): void {
     this.layoutController.layoutPauseButton();
+  }
+
+  public createMultiplierWidget(): void {
+    this.layoutController.createMultiplierWidget();
+  }
+
+  public layoutMultiplierWidget(): void {
+    this.layoutController.layoutMultiplierWidget();
+  }
+
+  public updateMultiplierWidget(nowMs: number, bpm: number | undefined): void {
+    this.layoutController.updateMultiplierWidget(nowMs, bpm);
   }
 
   public createPlaybackSpeedSlider(): void {
