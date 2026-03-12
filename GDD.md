@@ -765,6 +765,7 @@ The start screen MUST provide a `Settings` button under the difficulty selector.
 The transient status label above `Start Session` MUST stay hidden.
 Pressing this button MUST open a modal settings panel with a dimmed background overlay.
 The `Session Settings` panel MUST include a top-right red button (same color family used by `Hard` difficulty) labeled to reset all song best scores.
+The `Session Settings` panel MUST include a top-left `Input Mode` cycle button that rotates mode on each tap/click between `Speaker` and `Headphones`, while always showing the currently active mode in the same button label.
 Pressing the reset button MUST open a confirmation popup with explicit `Cancel` and `Reset` actions before any score data is changed.
 Confirming reset MUST clear all persisted best scores for every song in both web/localStorage runtime and Capacitor native song library runtime.
 All start-screen buttons and toggle controls MUST be fully clickable across their full visual button area (not limited to text/icon glyph bounds).
@@ -880,7 +881,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 
-Start screen Session Settings MUST expose an explicit audio input mode toggle:
+Start screen Session Settings MUST expose an explicit audio input mode toggle via a single cycle button:
 - `Speaker` (default): reduced precision but robust against playback bleed
 - `Headphones` (recommended): full precision
 

@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { RoundedBox } from '../RoundedBox';
-import type { AudioInputMode } from '../../types/audioInputMode';
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type ImportSourceMode = 'auto' | 'server' | 'native';
@@ -101,20 +100,11 @@ export type SettingsOverlay = {
   resetScoresConfirmCancelLabel: Phaser.GameObjects.Text;
   resetScoresConfirmConfirmButton: RoundedBox;
   resetScoresConfirmConfirmLabel: Phaser.GameObjects.Text;
-  audioInputModeTitle: Phaser.GameObjects.Text;
-  audioInputModeSpeakerButton: RoundedBox;
-  audioInputModeSpeakerLabel: Phaser.GameObjects.Text;
-  audioInputModeHeadphonesButton: RoundedBox;
-  audioInputModeHeadphonesLabel: Phaser.GameObjects.Text;
+  audioInputModeButton: RoundedBox;
+  audioInputModeLabel: Phaser.GameObjects.Text;
   stringToggles: ToggleOption[];
   fingerToggles: ToggleOption[];
   fretToggles: ToggleOption[];
-};
-
-export type AudioInputModeOption = {
-  mode: AudioInputMode;
-  background: RoundedBox;
-  label: Phaser.GameObjects.Text;
 };
 
 export type TunerPanel = {
