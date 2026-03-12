@@ -1,10 +1,12 @@
 import type { PitchFrame, TargetNote } from '../types/models';
+import type { AudioInputMode } from '../types/audioInputMode';
 
 export type SceneData = {
   songId?: string;
   midiUrl: string;
   audioUrl: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
+  audioInputMode?: AudioInputMode;
   allowedStrings?: number[];
   allowedFingers?: number[];
   allowedFrets?: number[];

@@ -38,6 +38,12 @@ export type PitchFrame = {
   t_seconds: number;
   midi_estimate: number | null;
   confidence: number;
+  reference_midi?: number | null;
+  reference_correlation?: number;
+  energy_ratio_db?: number;
+  onset_strength?: number;
+  contamination_score?: number;
+  rejected_as_reference_bleed?: boolean;
 };
 
 export enum PlayState {

@@ -5,8 +5,10 @@ import {
   resetAllSongHighScores,
   saveSessionSettingsPreference
 } from '../../../app/sessionPersistence';
+import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../../../types/audioInputMode';
 import { RoundedBox } from '../../RoundedBox';
 import type {
+  AudioInputModeOption,
   Difficulty,
   SettingsOverlay,
   ToggleOption
@@ -22,6 +24,7 @@ import {
 export type SessionSettingsSnapshot = {
   open: boolean;
   difficulty: Difficulty;
+  audioInputMode: AudioInputMode;
   selectedStringsCount: number;
   selectedFingersCount: number;
   selectedFretsCount: number;
@@ -37,6 +40,7 @@ export class SongSessionController {
   private overlay?: SettingsOverlay;
   private open = false;
   private difficulty: Difficulty = 'Medium';
+  private audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
   private selectedStrings = new Set<number>();
   private selectedFingers = new Set<number>();
   private selectedFrets = new Set<number>();
@@ -103,6 +107,18 @@ export class SongSessionController {
     return this.difficulty;
   }
 
+  getAudioInputMode(): AudioInputMode {
+    return this.audioInputMode;
+  }
+
+  cycleAudioInputMode(): void {
+    if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
+    this.audioInputMode = this.audioInputMode === 'speaker' ? 'headphones' : 'speaker';
+    this.persistSessionSettingsPreference();
+    this.refresh();
+    this.options.onStateChanged();
+  }
+
   getAllowedStrings(): number[] {
     return sortedValues(this.selectedStrings);
   }
@@ -119,6 +135,7 @@ export class SongSessionController {
     return {
       open: this.open,
       difficulty: this.difficulty,
+      audioInputMode: this.audioInputMode,
       selectedStringsCount: this.selectedStrings.size,
       selectedFingersCount: this.selectedFingers.size,
       selectedFretsCount: this.selectedFrets.size,
@@ -191,10 +208,20 @@ export class SongSessionController {
     overlay.resetScoresConfirmConfirmLabel.setColor(confirmDisabled ? '#cbd5e1' : '#ffe4e6');
     overlay.resetScoresConfirmConfirmButton.setAlpha(confirmDisabled ? 0.8 : 1);
     overlay.resetScoresConfirmConfirmLabel.setAlpha(confirmDisabled ? 0.85 : 1);
+
+    const speakerActive = this.audioInputMode === 'speaker';
+    overlay.audioInputModeTitle.setText(`Input Mode: ${speakerActive ? 'Speaker' : 'Headphones'}`);
+    overlay.audioInputModeSpeakerButton.setFillStyle(speakerActive ? 0x2563eb : 0x1a2a53, speakerActive ? 0.92 : 0.72);
+    overlay.audioInputModeSpeakerButton.setStrokeStyle(2, speakerActive ? 0x93c5fd : 0x334155, speakerActive ? 0.8 : 0.5);
+    overlay.audioInputModeSpeakerLabel.setColor(speakerActive ? '#eff6ff' : '#cbd5e1');
+    overlay.audioInputModeHeadphonesButton.setFillStyle(!speakerActive ? 0x0f766e : 0x1a2a53, !speakerActive ? 0.92 : 0.72);
+    overlay.audioInputModeHeadphonesButton.setStrokeStyle(2, !speakerActive ? 0x5eead4 : 0x334155, !speakerActive ? 0.82 : 0.5);
+    overlay.audioInputModeHeadphonesLabel.setColor(!speakerActive ? '#ecfeff' : '#cbd5e1');
   }
 
   private initializeDefaults(): void {
     const defaultPreset = DIFFICULTY_PRESETS[this.difficulty];
+    this.audioInputMode = DEFAULT_AUDIO_INPUT_MODE;
     this.selectedStrings = new Set(defaultPreset.allowed_strings);
     this.selectedFingers = new Set(defaultPreset.allowed_fingers);
 
@@ -209,6 +236,7 @@ export class SongSessionController {
     if (!stored) return;
 
     this.difficulty = stored.difficulty;
+    this.audioInputMode = stored.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.selectedStrings = new Set(sanitizeSettingValues(stored.selectedStrings, 1, 6));
     this.selectedFingers = new Set(sanitizeSettingValues(stored.selectedFingers, 1, 4));
     this.selectedFrets = new Set(sanitizeSettingValues(stored.selectedFrets, 0, 21));
@@ -217,6 +245,7 @@ export class SongSessionController {
   private persistSessionSettingsPreference(): void {
     saveSessionSettingsPreference({
       difficulty: this.difficulty,
+      audioInputMode: this.audioInputMode,
       selectedStrings: this.getAllowedStrings(),
       selectedFingers: this.getAllowedFingers(),
       selectedFrets: this.getAllowedFrets()
@@ -410,6 +439,30 @@ export class SongSessionController {
       }
     );
 
+    const audioInputModeOptions: AudioInputModeOption[] = [
+      {
+        mode: 'speaker',
+        background: overlay.audioInputModeSpeakerButton,
+        label: overlay.audioInputModeSpeakerLabel
+      },
+      {
+        mode: 'headphones',
+        background: overlay.audioInputModeHeadphonesButton,
+        label: overlay.audioInputModeHeadphonesLabel
+      }
+    ];
+    audioInputModeOptions.forEach((option) => {
+      const setAudioInputMode = (): void => {
+        if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
+        this.audioInputMode = option.mode;
+        this.persistSessionSettingsPreference();
+        this.refresh();
+        this.options.onStateChanged();
+      };
+      option.background.on('pointerdown', setAudioInputMode);
+      option.label.on('pointerdown', setAudioInputMode);
+    });
+
     overlay.stringToggles.forEach((option) => {
       const toggleString = (): void => {
         if (this.resetScoresConfirmOpen || this.resetScoresInProgress) return;
@@ -501,7 +554,56 @@ export class SongSessionController {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    const stringsTitleY = panelY - panelHeight * 0.31;
+    const audioInputModeTitleY = panelY - panelHeight * 0.31;
+    const audioInputModeTitle = this.scene.add
+      .text(panelX + panelWidth * 0.07, audioInputModeTitleY, 'Input Mode: Speaker', {
+        color: '#cbd5e1',
+        fontFamily: 'Montserrat, sans-serif',
+        fontSize: `${Math.max(13, labelSize - 1)}px`
+      })
+      .setOrigin(0.5, 0.5);
+    const audioInputModeSpeakerButton = new RoundedBox(
+      this.scene,
+      panelX + panelWidth * 0.23,
+      audioInputModeTitleY + 34,
+      Math.min(150, panelWidth * 0.17),
+      34,
+      0x2563eb,
+      0.9
+    )
+      .setStrokeStyle(2, 0x93c5fd, 0.8)
+      .setInteractive({ useHandCursor: true });
+    const audioInputModeSpeakerLabel = this.scene.add
+      .text(audioInputModeSpeakerButton.x, audioInputModeSpeakerButton.y, 'Speaker', {
+        color: '#eff6ff',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, labelSize - 3)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const audioInputModeHeadphonesButton = new RoundedBox(
+      this.scene,
+      panelX + panelWidth * 0.41,
+      audioInputModeTitleY + 34,
+      Math.min(170, panelWidth * 0.2),
+      34,
+      0x1a2a53,
+      0.72
+    )
+      .setStrokeStyle(2, 0x334155, 0.5)
+      .setInteractive({ useHandCursor: true });
+    const audioInputModeHeadphonesLabel = this.scene.add
+      .text(audioInputModeHeadphonesButton.x, audioInputModeHeadphonesButton.y, 'Headphones', {
+        color: '#cbd5e1',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, labelSize - 3)}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    const stringsTitleY = panelY - panelHeight * 0.17;
     const stringsTitle = this.scene.add
       .text(panelX - panelWidth * 0.42, stringsTitleY, 'Strings', {
         color: '#cbd5e1',
@@ -519,7 +621,7 @@ export class SongSessionController {
       labelSize
     );
 
-    const fingersTitleY = panelY - panelHeight * 0.18;
+    const fingersTitleY = panelY - panelHeight * 0.04;
     const fingersTitle = this.scene.add
       .text(panelX - panelWidth * 0.42, fingersTitleY, 'Fingers (1-4)', {
         color: '#cbd5e1',
@@ -537,7 +639,7 @@ export class SongSessionController {
       labelSize
     );
 
-    const fretsTitleY = panelY - panelHeight * 0.05;
+    const fretsTitleY = panelY + panelHeight * 0.09;
     const fretsTitle = this.scene.add
       .text(panelX - panelWidth * 0.42, fretsTitleY, 'Frets (0-21)', {
         color: '#cbd5e1',
@@ -661,6 +763,11 @@ export class SongSessionController {
       title,
       resetScoresButton,
       resetScoresLabel,
+      audioInputModeTitle,
+      audioInputModeSpeakerButton,
+      audioInputModeSpeakerLabel,
+      audioInputModeHeadphonesButton,
+      audioInputModeHeadphonesLabel,
       stringsTitle,
       fingersTitle,
       fretsTitle,
@@ -697,6 +804,11 @@ export class SongSessionController {
       resetScoresConfirmCancelLabel,
       resetScoresConfirmConfirmButton,
       resetScoresConfirmConfirmLabel,
+      audioInputModeTitle,
+      audioInputModeSpeakerButton,
+      audioInputModeSpeakerLabel,
+      audioInputModeHeadphonesButton,
+      audioInputModeHeadphonesLabel,
       stringToggles,
       fingerToggles,
       fretToggles

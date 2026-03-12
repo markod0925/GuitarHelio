@@ -8,6 +8,7 @@ type Voice = {
 
 type SynthOptions = {
   strict?: boolean;
+  output?: AudioNode;
 };
 
 export class SimpleSynth {
@@ -20,6 +21,7 @@ export class SimpleSynth {
 
   constructor(private readonly ctx: AudioContext, options: SynthOptions = {}) {
     this.strict = options.strict ?? false;
+    const outputNode = options.output ?? this.ctx.destination;
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.strict ? 0.42 : 0.65;
@@ -41,7 +43,7 @@ export class SimpleSynth {
     this.limiter.attack.value = this.strict ? 0.008 : 0.003;
     this.limiter.release.value = this.strict ? 0.32 : 0.24;
 
-    this.masterGain.connect(this.lowPass).connect(this.highPass).connect(this.limiter).connect(this.ctx.destination);
+    this.masterGain.connect(this.lowPass).connect(this.highPass).connect(this.limiter).connect(outputNode);
   }
 
   noteOn(note: SourceNote, when: number): void {

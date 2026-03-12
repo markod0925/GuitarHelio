@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  loadSessionSettingsPreference,
   resetAllSongHighScores,
   resolveSongHighScore,
+  saveSessionSettingsPreference,
   saveSongHighScoreIfHigher
 } from '../src/app/sessionPersistence';
 
@@ -52,5 +54,43 @@ describe('sessionPersistence high score reset', () => {
     resetAllSongHighScores();
 
     expect(resolveSongHighScore('song-b', 11)).toBe(11);
+  });
+
+  test('defaults audio input mode to speaker when preference field is missing', () => {
+    window.localStorage.setItem(
+      'gh_session_settings_v1',
+      JSON.stringify({
+        difficulty: 'Medium',
+        selectedStrings: [6, 5, 4],
+        selectedFingers: [1, 2],
+        selectedFrets: [0, 1, 2]
+      })
+    );
+
+    expect(loadSessionSettingsPreference()).toEqual({
+      difficulty: 'Medium',
+      audioInputMode: 'speaker',
+      selectedStrings: [4, 5, 6],
+      selectedFingers: [1, 2],
+      selectedFrets: [0, 1, 2]
+    });
+  });
+
+  test('persists and restores audio input mode', () => {
+    saveSessionSettingsPreference({
+      difficulty: 'Hard',
+      audioInputMode: 'headphones',
+      selectedStrings: [1, 3, 2],
+      selectedFingers: [3, 2],
+      selectedFrets: [7, 5, 6]
+    });
+
+    expect(loadSessionSettingsPreference()).toEqual({
+      difficulty: 'Hard',
+      audioInputMode: 'headphones',
+      selectedStrings: [1, 2, 3],
+      selectedFingers: [2, 3],
+      selectedFrets: [5, 6, 7]
+    });
   });
 });

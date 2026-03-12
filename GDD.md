@@ -449,6 +449,21 @@ When there is no active target left (`active_target_index` past the last target)
 
 Microphone via WebAudio.
 
+Pitch analysis MUST run on a residual signal produced by a DSP stage:
+
+`mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
+
+The DSP stage MUST use the shared Rust/WASM core (`gh_dsp_core`) as primary backend on runtime targets.
+Generated WASM artifacts MUST be synchronized to both:
+- `src/audio/dsp-core` (runtime import source)
+- `public/assets/dsp-core` (bundled static assets for worklet module loading)
+
+When WASM core initialization fails, runtime MUST fall back to the legacy JS DSP path without blocking session startup.
+
+The `reference` stream SHOULD come from the active backing playback path:
+- backing audio tap when audio file playback is active
+- synthetic MIDI-aligned reference when MIDI fallback playback is active
+
 ## 9.2 Required output
 
 ```ts
@@ -456,6 +471,12 @@ type PitchFrame = {
   t_seconds: number
   midi_estimate: number | null
   confidence: number
+  reference_midi?: number | null
+  reference_correlation?: number
+  energy_ratio_db?: number
+  onset_strength?: number
+  contamination_score?: number
+  rejected_as_reference_bleed?: boolean
 }
 ```
 
@@ -487,7 +508,27 @@ clamp01(x) = min(1, max(0, x))
 
 ---
 
-## 9.3 Hit validation
+## 9.3 Anti-contamination policy
+
+The system MUST NOT reject a frame only because detected pitch equals current backing pitch.
+
+For `speaker` mode, hard reject is allowed only when all conditions are true:
+- `pitch_match` (`abs(mic_midi - reference_midi) <= 0.25`)
+- `reference_correlation >= 0.86`
+- `energy_ratio_db <= -10`
+- `onset_strength < 0.22`
+- `energy_ratio_db < +4`
+
+For `headphones` mode, hard reject MUST be more permissive and apply only when:
+- `pitch_match`
+- `reference_correlation >= 0.94`
+- `energy_ratio_db <= -14`
+
+In ambiguous pitch-match cases that are not hard-rejected, confidence MUST be penalized instead of nulling pitch:
+- `speaker`: `confidence' = confidence * (1 - 0.45 * contamination_score)`
+- `headphones`: lighter penalty
+
+## 9.4 Hit validation
 
 A hit is valid if for at least `hold_ms` continuous:
 
@@ -512,11 +553,11 @@ A target hit MUST be valid iff there exists a continuous streak of valid frames 
 Defaults:
 
 ```
-hold_ms = 80
-min_confidence = 0.7
+headphones: hold_ms = 80, min_confidence = 0.7
+speaker: hold_ms = 110, min_confidence = 0.76
 ```
 
-## 9.4 Temporal stabilization
+## 9.5 Temporal stabilization
 
 To reduce frame-to-frame jitter from raw pitch estimation:
 
@@ -838,6 +879,10 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * while tuner is active, if current target string stays inside in-tune green band (`±5c`) for at least `2` continuous seconds:
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
+
+Start screen Session Settings MUST expose an explicit audio input mode toggle:
+- `Speaker` (default): reduced precision but robust against playback bleed
+- `Headphones` (recommended): full precision
 
 ### 11.11.1 Practice scene
 

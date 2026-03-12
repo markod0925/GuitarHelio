@@ -104,6 +104,7 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
   const canValidateHit =
     active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
+  const thresholds = resolveDetectionThresholds(this);
 
   const leadHitAnalysis =
     active !== undefined && canValidateHit
@@ -111,8 +112,8 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
         this.latestFrames,
         active.expected_midi,
         this.profile.pitch_tolerance_semitones,
-        DEFAULT_HOLD_MS,
-        DEFAULT_MIN_CONFIDENCE,
+        thresholds.holdMs,
+        thresholds.minConfidence,
         this.heldHitAnalysisScratch
       )
       : this.writeInvalidHeldHitAnalysis();
@@ -135,8 +136,8 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     canValidateHit: false,
     validHit: false,
     holdMs: 0,
-    holdRequiredMs: DEFAULT_HOLD_MS,
-    minConfidence: DEFAULT_MIN_CONFIDENCE,
+    holdRequiredMs: thresholds.holdMs,
+    minConfidence: thresholds.minConfidence,
     validFrameCount: 0,
     sampleCount: 0
   };
@@ -149,8 +150,8 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   snapshot.activeTarget = active;
   snapshot.latestFrame = leadHitAnalysis.latestFrame;
   snapshot.holdMs = leadHitAnalysis.streakMs;
-  snapshot.holdRequiredMs = DEFAULT_HOLD_MS;
-  snapshot.minConfidence = DEFAULT_MIN_CONFIDENCE;
+  snapshot.holdRequiredMs = thresholds.holdMs;
+  snapshot.minConfidence = thresholds.minConfidence;
   snapshot.validFrameCount = leadHitAnalysis.validFrameCount;
   snapshot.sampleCount = leadHitAnalysis.sampleCount;
   snapshot.activeChordSize = chordProgress.requiredCount;
@@ -380,6 +381,7 @@ function syncActiveChordTracking(scene: PlaySceneContext, activeTarget: TargetNo
 }
 
 function updateChordHitProgress(scene: PlaySceneContext, chordTargets: TargetNote[]): ChordHitProgress {
+  const thresholds = resolveDetectionThresholds(scene);
   const byMidi = new Map<number, TargetNote[]>();
   for (const target of chordTargets) {
     const bucket = byMidi.get(target.expected_midi);
@@ -395,8 +397,8 @@ function updateChordHitProgress(scene: PlaySceneContext, chordTargets: TargetNot
       scene.latestFrames,
       expectedMidi,
       scene.profile.pitch_tolerance_semitones,
-      DEFAULT_HOLD_MS,
-      DEFAULT_MIN_CONFIDENCE
+      thresholds.holdMs,
+      thresholds.minConfidence
     );
     if (!hit.valid) continue;
 
@@ -426,4 +428,17 @@ function countChordHits(scene: PlaySceneContext, chordTargets: TargetNote[]): nu
 function clearChordTracking(scene: PlaySceneContext): void {
   scene.activeChordTrackingId = undefined;
   scene.chordHitTargetIds.clear();
+}
+
+function resolveDetectionThresholds(scene: PlaySceneContext): { holdMs: number; minConfidence: number } {
+  if (scene.audioInputMode === 'speaker') {
+    return {
+      holdMs: 110,
+      minConfidence: 0.76
+    };
+  }
+  return {
+    holdMs: DEFAULT_HOLD_MS,
+    minConfidence: DEFAULT_MIN_CONFIDENCE
+  };
 }

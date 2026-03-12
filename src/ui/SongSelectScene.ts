@@ -339,7 +339,7 @@ export class SongSelectScene extends Phaser.Scene {
     playIcon?.setDepth(startButton.depth + 1);
     startLabel.setDepth(startButton.depth + 1);
 
-    const tunerController = new SongTunerController(this, () => refreshSelections());
+    const tunerController = new SongTunerController(this, () => refreshSelections(), () => settingsController.getAudioInputMode());
     tunerController.initialize(width, height, labelSize);
     const lifecycleController = new SongLifecycleController(this, {
       canOpenQuitPrompt: () => !importController.isInProgress(),
@@ -397,7 +397,7 @@ export class SongSelectScene extends Phaser.Scene {
       settingsLabel.setColor(settingsState.open ? '#e0f2fe' : '#f1f5f9');
       settingsIcon?.setAlpha(settingsState.open ? 1 : 0.94);
       settingsSummary.setText(
-        `${settingsState.selectedStringsCount} strings • ${settingsState.selectedFingersCount} fingers • ${settingsState.selectedFretsCount} frets`
+        `${settingsState.selectedStringsCount} strings • ${settingsState.selectedFingersCount} fingers • ${settingsState.selectedFretsCount} frets • ${settingsState.audioInputMode === 'speaker' ? 'Speaker' : 'Headphones'}`
       );
       settingsSummary.setColor(settingsValid ? '#a5b4fc' : '#fca5a5');
 
@@ -495,7 +495,9 @@ export class SongSelectScene extends Phaser.Scene {
       if (settingsController.isOpen()) closeSettings();
       if (tunerController.isOpen()) closeTuner();
       void tunerController.stop(false);
-      this.scene.start('PracticeScene');
+      this.scene.start('PracticeScene', {
+        audioInputMode: settingsController.getAudioInputMode()
+      });
     };
 
     const closeTuner = (): void => {
@@ -558,6 +560,7 @@ export class SongSelectScene extends Phaser.Scene {
         midiUrl: validatedSong.midi,
         audioUrl: validatedSong.audio,
         difficulty: settingsController.getDifficulty(),
+        audioInputMode: settingsController.getAudioInputMode(),
         allowedStrings: settingsController.getAllowedStrings(),
         allowedFingers: settingsController.getAllowedFingers(),
         allowedFrets: settingsController.getAllowedFrets()

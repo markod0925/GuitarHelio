@@ -62,6 +62,9 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.backingTrackSourceStartSongSeconds = 0;
   this.backingTrackIsPlaying = false;
   this.backingTrackAudioUrl = undefined;
+  this.detectorLegacyFallback = false;
+  this.referenceInputGain = undefined;
+  this.referenceTapGain = undefined;
   this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
   this.lastHudStatusText = '';
   this.lastHudFeedbackText = '';
@@ -209,6 +212,10 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.detector?.stop();
   this.detector = undefined;
   this.gameplayPitchStabilizer = undefined;
+  this.referenceInputGain?.disconnect();
+  this.referenceInputGain = undefined;
+  this.referenceTapGain?.disconnect();
+  this.referenceTapGain = undefined;
   releaseMicStream(this.micStream);
   this.micStream = undefined;
 

@@ -8,6 +8,8 @@ import {
 } from '../app/config';
 import { PitchFrameRingBuffer } from '../audio/PitchFrameRingBuffer';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
+import type { AudioInputMode } from '../types/audioInputMode';
+import { DEFAULT_AUDIO_INPUT_MODE } from '../types/audioInputMode';
 import type { JzzTinySynth } from '../audio/jzzTinySynth';
 import type { MidiScrubPlayer } from '../audio/midiScrubPlayer';
 import type { PitchDetectorService } from '../audio/pitchDetector';
@@ -98,6 +100,8 @@ export class PlayScene extends Phaser.Scene {
   public pausedBackingAudioSeconds?: number;
   public lastKnownBackingAudioSeconds = 0;
   public playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
+  public audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
+  public detectorLegacyFallback = false;
 
   public laneLayer?: Phaser.GameObjects.Graphics;
   public ball?: Phaser.GameObjects.Arc;
@@ -148,6 +152,8 @@ export class PlayScene extends Phaser.Scene {
   public detector?: PitchDetectorService;
   public gameplayPitchStabilizer?: PitchStabilityFilter;
   public micStream?: MediaStream;
+  public referenceInputGain?: GainNode;
+  public referenceTapGain?: GainNode;
   public onResize?: () => void;
   public cachedLayout?: Layout;
   public pauseMenuBackListener?: (event: Event) => void;
@@ -185,6 +191,7 @@ export class PlayScene extends Phaser.Scene {
 
   async create(data: SceneData): Promise<void> {
     this.sceneData = data;
+    this.audioInputMode = data.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     const difficulty = DIFFICULTY_PRESETS[data.difficulty] ?? DIFFICULTY_PRESETS.Easy;
     this.profile = this.buildProfileWithSettings(difficulty, data.allowedStrings, data.allowedFingers, data.allowedFrets);
 

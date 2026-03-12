@@ -6,6 +6,7 @@ import { PitchDetectorService } from '../../../audio/pitchDetector';
 import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { loadPitchCalibrationProfile } from '../../../audio/pitchCalibration';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
+import { SimpleSynth } from '../../../audio/synth';
 import {
   resolveResumeSongSeconds,
   resolveResumeSongSecondsForAudio,
@@ -133,16 +134,43 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
     return;
   }
   this.debugSynth = synth;
+  const referenceInputGain = audioCtx.createGain();
+  referenceInputGain.gain.value = 1;
+  this.referenceInputGain = referenceInputGain;
+  const referenceTapGain = audioCtx.createGain();
+  referenceTapGain.gain.value = 1;
+  referenceTapGain.connect(referenceInputGain);
+  this.referenceTapGain = referenceTapGain;
+  const referenceSynth = new SimpleSynth(audioCtx, { strict: true, output: referenceInputGain });
+  const compositeOutput = {
+    noteOn: (note: SourceNote, when: number) => {
+      synth.noteOn(note, when);
+      referenceSynth.noteOn(note, when);
+    },
+    noteOff: (note: SourceNote, when: number) => {
+      synth.noteOff(note, when);
+      referenceSynth.noteOff(note, when);
+    },
+    stopAll: (when?: number) => {
+      synth.stopAll(when);
+      referenceSynth.stopAll(when);
+    }
+  };
   const playbackNotes = buildPlaybackNotes(sourceNotes, this.ticksPerQuarter);
-  this.scrubPlayer = new MidiScrubPlayer(synth, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
+  this.scrubPlayer = new MidiScrubPlayer(compositeOutput, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
   this.gameplayPitchStabilizer = undefined;
 
   try {
-    const micSource = await createMicNode(audioCtx);
+    const micSource = await createMicNode(audioCtx, {
+      audioInputMode: this.audioInputMode,
+      channelCount: 1
+    });
     this.micStream = micSource.mediaStream;
     const detector = new PitchDetectorService(audioCtx, {
       smoothingAlpha: 0,
-      calibrationProfile: loadPitchCalibrationProfile()
+      calibrationProfile: loadPitchCalibrationProfile(),
+      audioInputMode: this.audioInputMode,
+      enableDspCore: true
     });
     await detector.init();
     const gameplayPitchStabilizer = new PitchStabilityFilter({
@@ -160,10 +188,19 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       if (this.runtime.state === PlayState.Finished) return;
       this.latestFrames.push(gameplayPitchStabilizer.update(frame));
     });
-    detector.start(micSource);
+    await detector.start(micSource, this.referenceInputGain ?? undefined);
+    this.detectorLegacyFallback = detector.isLegacyFallback();
+    if (this.detectorLegacyFallback) {
+      const reason = detector.getLegacyFallbackReason();
+      this.feedbackText = reason
+        ? `Legacy fallback active (precision reduced): ${reason}`
+        : 'Legacy fallback active (precision reduced).';
+      this.feedbackUntilMs = performance.now() + 4500;
+    }
     this.detector = detector;
   } catch (error) {
     console.error('Microphone setup failed', error);
+    this.detectorLegacyFallback = false;
     this.gameplayPitchStabilizer = undefined;
     if (this.profile.gating_timeout_seconds === undefined) {
       this.fallbackTimeoutSeconds = DEFAULT_GATING_TIMEOUT_SECONDS;
@@ -345,6 +382,9 @@ async function playBackingTrackAudioFromImpl(this: PlaySceneContext, songSeconds
     source.buffer = this.backingTrackBuffer;
     source.playbackRate.value = this.playbackSpeedMultiplier;
     source.connect(this.backingTrackGain!);
+    if (this.referenceTapGain) {
+      source.connect(this.referenceTapGain);
+    }
     const startAtAudioTime = this.audioCtx.currentTime + 0.005;
     source.onended = () => {
       if (this.backingTrackSource !== source) return;

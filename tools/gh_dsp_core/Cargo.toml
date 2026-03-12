@@ -1,0 +1,21 @@
+[package]
+name = "gh_dsp_core"
+version = "0.1.0"
+edition = "2021"
+description = "GuitarHelio cross-platform DSP core (delay estimate + NLMS echo suppression)."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

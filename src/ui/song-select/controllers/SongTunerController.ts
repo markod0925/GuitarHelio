@@ -29,6 +29,7 @@ import {
   truncateLabel,
   waitMs
 } from '../utils/songSelectUtils';
+import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../../../types/audioInputMode';
 
 export type SongTunerSnapshot = {
   targetString: number;
@@ -57,7 +58,8 @@ export class SongTunerController {
 
   constructor(
     private readonly scene: Phaser.Scene,
-    private readonly onStateChanged: () => void
+    private readonly onStateChanged: () => void,
+    private readonly getAudioInputMode: () => AudioInputMode = () => DEFAULT_AUDIO_INPUT_MODE
   ) {}
 
   initialize(width: number, height: number, labelSize: number): void {
@@ -185,10 +187,11 @@ export class SongTunerController {
   }
 
   destroy(): void {
-    void this.stop(false);
     this.open = false;
-    this.panel?.container.destroy(true);
+    const panel = this.panel;
     this.panel = undefined;
+    void this.stop(false);
+    panel?.container.destroy(true);
   }
 
   private bindPanelEvents(): void {
@@ -559,7 +562,7 @@ export class SongTunerController {
         if (frame.midi_estimate === null || frame.confidence < 0.55) return;
         currentSamples.push(frame.midi_estimate);
       });
-      detector.start(micSource);
+      await detector.start(micSource);
 
       const measurements: PitchCalibrationMeasurement[] = [];
       const points = DEFAULT_PITCH_CALIBRATION_REFERENCE_MIDI;
@@ -732,11 +735,19 @@ export class SongTunerController {
         await ctx.resume();
       }
 
-      const micSource = await createMicNode(ctx);
+      const audioInputMode = this.getAudioInputMode();
+      const micSource = await createMicNode(ctx, {
+        echoCancellation: audioInputMode === 'speaker',
+        noiseSuppression: audioInputMode === 'speaker',
+        autoGainControl: audioInputMode === 'speaker',
+        channelCount: 1
+      });
       this.micStream = micSource.mediaStream;
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
-        calibrationProfile: this.pitchCalibrationProfile ?? undefined
+        calibrationProfile: this.pitchCalibrationProfile ?? undefined,
+        audioInputMode,
+        enableDspCore: true
       });
       await detector.init();
       this.detector = detector;
@@ -790,10 +801,19 @@ export class SongTunerController {
         panel.detectedLabel.setText(`Detected: ${detected} (${sign}${Math.round(cents)}c)`);
         this.setNeedleFromCents(cents);
       });
-      detector.start(micSource);
+      await detector.start(micSource);
 
       this.active = true;
-      panel.detectedLabel.setText('Detected: listening...');
+      if (detector.isLegacyFallback()) {
+        const reason = detector.getLegacyFallbackReason();
+        panel.detectedLabel.setText(
+          reason
+            ? `Detected: listening... (legacy fallback: ${truncateLabel(reason, 20)})`
+            : 'Detected: listening... (legacy fallback)'
+        );
+      } else {
+        panel.detectedLabel.setText('Detected: listening...');
+      }
       this.setNeedleFromCents(null);
       this.refresh();
     } catch (error) {

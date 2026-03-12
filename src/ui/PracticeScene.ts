@@ -14,6 +14,7 @@ import {
   midiToNoteName,
   truncateLabel
 } from './song-select/utils/songSelectUtils';
+import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../types/audioInputMode';
 
 type FretCell = {
   midi: number;
@@ -75,6 +76,7 @@ export class PracticeScene extends Phaser.Scene {
   private compareLabel?: Phaser.GameObjects.Text;
   private statusLabel?: Phaser.GameObjects.Text;
   private micStatusMessage = 'Mic inactive.';
+  private audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
 
   private metronomeTrack?: Phaser.GameObjects.Rectangle;
   private metronomeKnob?: Phaser.GameObjects.Arc;
@@ -86,12 +88,15 @@ export class PracticeScene extends Phaser.Scene {
   private metronomeTimer?: Phaser.Time.TimerEvent;
   private metronomeAudioCtx?: AudioContext;
   private activeMetronomePointerId: number | null = null;
+  private isShuttingDown = false;
 
   constructor() {
     super('PracticeScene');
   }
 
-  create(): void {
+  create(data?: { audioInputMode?: AudioInputMode }): void {
+    this.isShuttingDown = false;
+    this.audioInputMode = data?.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     void enableAndroidKeepScreenOn();
     const { width, height } = this.scale;
     this.cellsByMidi.clear();
@@ -220,6 +225,7 @@ export class PracticeScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', onEsc);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.isShuttingDown = true;
       this.input.keyboard?.off('keydown-ESC', onEsc);
       this.input.off('pointerup', this.handleMetronomePointerRelease, this);
       this.input.off('pointerupoutside', this.handleMetronomePointerRelease, this);
@@ -420,9 +426,9 @@ export class PracticeScene extends Phaser.Scene {
       }
 
       const micSource = await createMicNode(ctx, {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
+        echoCancellation: this.audioInputMode === 'speaker',
+        noiseSuppression: this.audioInputMode === 'speaker',
+        autoGainControl: this.audioInputMode === 'speaker',
         channelCount: 1
       });
       this.micStream = micSource.mediaStream;
@@ -431,12 +437,14 @@ export class PracticeScene extends Phaser.Scene {
       const customDetector = new PitchDetectorService(ctx, {
         roundMidi: false,
         smoothingAlpha: 0,
-        calibrationProfile: calibrationProfile ?? undefined
+        calibrationProfile: calibrationProfile ?? undefined,
+        audioInputMode: this.audioInputMode,
+        enableDspCore: true
       });
       await customDetector.init();
       this.customDetector = customDetector;
       this.offCustomPitch = customDetector.onPitch((frame) => this.handlePitchFrame(this.customState, frame, true));
-      customDetector.start(micSource);
+      await customDetector.start(micSource);
 
       this.aubioAvailable = false;
       try {
@@ -460,10 +468,16 @@ export class PracticeScene extends Phaser.Scene {
       this.active = true;
       this.updateToggleVisual();
       const calibrationBadge = calibrationProfile ? 'Calibration ON' : 'Calibration OFF';
+      const fallbackReason = customDetector.getLegacyFallbackReason();
+      const fallbackBadge = customDetector.isLegacyFallback()
+        ? fallbackReason
+          ? ` • legacy fallback (${truncateLabel(fallbackReason, 26)})`
+          : ' • legacy fallback'
+        : '';
       this.micStatusMessage =
         this.aubioAvailable
-          ? `Mic active • A/B compare running • ${calibrationBadge}`
-          : `Mic active • A only (aubio unavailable) • ${calibrationBadge}`;
+          ? `Mic active • A/B compare running • ${calibrationBadge}${fallbackBadge}`
+          : `Mic active • A only (aubio unavailable) • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
     } catch (error) {
       console.error('Failed to start practice microphone', error);
@@ -567,6 +581,7 @@ export class PracticeScene extends Phaser.Scene {
     }
 
     cells.forEach((cell) => {
+      if (!isGameObjectAlive(cell.node)) return;
       if (customMatch || aubioMatch) {
         cell.node.setFillStyle(fillColor, fillAlpha);
         cell.node.setStrokeStyle(1, strokeColor, strokeAlpha);
@@ -587,44 +602,60 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private updateDetectorLabels(): void {
+    if (this.isShuttingDown) return;
+    const customDetectedLabel = this.customDetectedLabel;
+    const aubioDetectedLabel = this.aubioDetectedLabel;
+    const customDetailsLabel = this.customDetailsLabel;
+    const aubioDetailsLabel = this.aubioDetailsLabel;
+    const compareLabel = this.compareLabel;
+    if (
+      !isGameObjectAlive(customDetectedLabel) ||
+      !isGameObjectAlive(aubioDetectedLabel) ||
+      !isGameObjectAlive(customDetailsLabel) ||
+      !isGameObjectAlive(aubioDetailsLabel) ||
+      !isGameObjectAlive(compareLabel)
+    ) {
+      return;
+    }
+
     const customStable = formatStableMidi(this.customState.lockedMidi);
     const aubioStable = this.aubioAvailable
       ? formatStableMidi(this.aubioState.lockedMidi)
       : 'unavailable';
 
-    this.customDetectedLabel?.setText(`A Custom: ${customStable}`);
-    this.aubioDetectedLabel?.setText(`B Aubio: ${aubioStable}`);
-    this.customDetailsLabel?.setText(
+    customDetectedLabel.setText(`A Custom: ${customStable}`);
+    aubioDetectedLabel.setText(`B Aubio: ${aubioStable}`);
+    customDetailsLabel.setText(
       `A raw: ${formatRawMidi(this.customState.rawMidi)}  •  A conf: ${formatConfidence(this.customState.confidence)}`
     );
-    this.aubioDetailsLabel?.setText(
+    aubioDetailsLabel.setText(
       `B raw: ${formatRawMidi(this.aubioState.rawMidi)}  •  B conf: ${formatConfidence(this.aubioState.confidence)}`
     );
 
     if (!this.aubioAvailable) {
-      this.compareLabel?.setText('A/B delta: aubio unavailable');
-      this.compareLabel?.setColor('#fca5a5');
+      compareLabel.setText('A/B delta: aubio unavailable');
+      compareLabel.setColor('#fca5a5');
       return;
     }
 
     const customMidi = this.customState.lockedMidi;
     const aubioMidi = this.aubioState.lockedMidi;
     if (customMidi === null || aubioMidi === null) {
-      this.compareLabel?.setText('A/B delta: waiting...');
-      this.compareLabel?.setColor('#cbd5e1');
+      compareLabel.setText('A/B delta: waiting...');
+      compareLabel.setColor('#cbd5e1');
       return;
     }
 
     const delta = customMidi - aubioMidi;
     if (delta === 0) {
-      this.compareLabel?.setText('A/B delta: 0 semitones (match)');
-      this.compareLabel?.setColor('#86efac');
+      compareLabel.setText('A/B delta: 0 semitones (match)');
+      compareLabel.setColor('#86efac');
       return;
     }
 
     const sign = delta > 0 ? '+' : '';
-    this.compareLabel?.setText(`A/B delta: ${sign}${delta} semitones`);
-    this.compareLabel?.setColor('#fda4af');
+    compareLabel.setText(`A/B delta: ${sign}${delta} semitones`);
+    compareLabel.setColor('#fda4af');
   }
 
   private handleMetronomePointerRelease(pointer: Phaser.Input.Pointer): void {
@@ -651,16 +682,25 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private refreshMetronomeVisuals(): void {
-    if (!this.metronomeTrack || !this.metronomeKnob) return;
-    const left = this.metronomeTrack.x - this.metronomeTrack.displayWidth / 2;
+    if (this.isShuttingDown) return;
+    const metronomeTrack = this.metronomeTrack;
+    const metronomeKnob = this.metronomeKnob;
+    const metronomeButton = this.metronomeButton;
+    const metronomeButtonLabel = this.metronomeButtonLabel;
+    const metronomeBpmLabel = this.metronomeBpmLabel;
+    if (!isGameObjectAlive(metronomeTrack) || !isGameObjectAlive(metronomeKnob)) return;
+
+    const left = metronomeTrack.x - metronomeTrack.displayWidth / 2;
     const ratio = (this.metronomeBpm - MIN_METRONOME_BPM) / (MAX_METRONOME_BPM - MIN_METRONOME_BPM);
-    this.metronomeKnob.setPosition(left + ratio * this.metronomeTrack.displayWidth, this.metronomeTrack.y);
-    this.metronomeBpmLabel?.setText(`BPM ${this.metronomeBpm}`);
-    if (!this.metronomeButton || !this.metronomeButtonLabel) return;
-    this.metronomeButton.setFillStyle(this.metronomeRunning ? 0x7f1d1d : 0x2563eb, 1);
-    this.metronomeButton.setStrokeStyle(2, this.metronomeRunning ? 0xfca5a5 : 0x93c5fd, 0.86);
-    this.metronomeButtonLabel.setText(this.metronomeRunning ? 'Stop Metronomo' : 'Avvio Metronomo');
-    this.metronomeButtonLabel.setColor(this.metronomeRunning ? '#ffe4e6' : '#eff6ff');
+    metronomeKnob.setPosition(left + ratio * metronomeTrack.displayWidth, metronomeTrack.y);
+    if (isGameObjectAlive(metronomeBpmLabel)) {
+      metronomeBpmLabel.setText(`BPM ${this.metronomeBpm}`);
+    }
+    if (!isGameObjectAlive(metronomeButton) || !isGameObjectAlive(metronomeButtonLabel)) return;
+    metronomeButton.setFillStyle(this.metronomeRunning ? 0x7f1d1d : 0x2563eb, 1);
+    metronomeButton.setStrokeStyle(2, this.metronomeRunning ? 0xfca5a5 : 0x93c5fd, 0.86);
+    metronomeButtonLabel.setText(this.metronomeRunning ? 'Stop Metronomo' : 'Avvio Metronomo');
+    metronomeButtonLabel.setColor(this.metronomeRunning ? '#ffe4e6' : '#eff6ff');
   }
 
   private async startMetronome(): Promise<void> {
@@ -735,13 +775,15 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private updateStatusLabel(): void {
-    if (!this.statusLabel) return;
+    if (this.isShuttingDown) return;
+    if (!isGameObjectAlive(this.statusLabel)) return;
     const metronomeStatus = this.metronomeRunning ? ` • Metronome ON (${this.metronomeBpm} BPM)` : '';
     this.statusLabel.setText(`${this.micStatusMessage}${metronomeStatus}`);
   }
 
   private updateToggleVisual(): void {
-    if (!this.toggleButton || !this.toggleLabel) return;
+    if (this.isShuttingDown) return;
+    if (!isGameObjectAlive(this.toggleButton) || !isGameObjectAlive(this.toggleLabel)) return;
     this.toggleButton.setFillStyle(this.active ? 0x7f1d1d : 0x2563eb, 1);
     this.toggleButton.setStrokeStyle(2, this.active ? 0xfca5a5 : 0x93c5fd, 0.86);
     this.toggleLabel.setText(this.active ? 'Stop Mic' : 'Start Mic');
@@ -761,6 +803,10 @@ function resetDetectorState(state: DetectorState): void {
   state.lockedMidi = null;
   state.rawMidi = null;
   state.confidence = 0;
+}
+
+function isGameObjectAlive<T extends Phaser.GameObjects.GameObject>(value: T | undefined): value is T {
+  return Boolean(value && value.scene && value.active);
 }
 
 function formatStableMidi(midi: number | null): string {
