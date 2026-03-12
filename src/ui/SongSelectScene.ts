@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
+import { SONG_SELECT_LAYOUT } from '../app/config';
 import { IMPORT_DEBUG_LOG_ENABLED } from '../platform/importDebugConfig';
 import {
   SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX,
@@ -41,36 +42,43 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   async create(): Promise<void> {
+    const layout = SONG_SELECT_LAYOUT;
     this.coverLoadGeneration += 1;
     this.catalogLoadGeneration += 1;
     const { width, height } = this.scale;
-    const titleSize = Math.max(34, Math.floor(width * 0.058));
-    const labelSize = Math.max(14, Math.floor(width * 0.017));
+    const titleSize = Math.max(layout.TITLE_MIN_PX, Math.floor(width * layout.TITLE_WIDTH_SCALE));
+    const labelSize = Math.max(layout.LABEL_MIN_PX, Math.floor(width * layout.LABEL_WIDTH_SCALE));
     let songs: SongEntry[] = [];
     let isCatalogLoading = true;
 
     this.drawNeonStartBackdrop(width, height);
 
     const loadingSongsLabel = this.add
-      .text(width * 0.27, height * 0.24, 'Loading songs...', {
+      .text(width * layout.LOADING_LABEL_X_RATIO, height * layout.LOADING_LABEL_Y_RATIO, 'Loading songs...', {
         color: '#cbd5e1',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(14, labelSize)}px`
+        fontSize: `${Math.max(layout.LABEL_MIN_PX, labelSize)}px`
       })
       .setOrigin(0.5);
 
     if (this.textures.exists('logoGuitarHelio')) {
-      const logoWidth = Math.min(420, width * 0.46);
-      const logoHeight = Math.round(logoWidth * 0.3125);
-      const compressedLogoHeight = Math.round(logoHeight * 0.7);
-      const logoCenterY = Math.max(compressedLogoHeight / 2 + 10, height * 0.095 - 40);
+      const logoWidth = Math.min(layout.LOGO_MAX_WIDTH_PX, width * layout.LOGO_WIDTH_RATIO);
+      const logoHeight = Math.round(logoWidth * layout.LOGO_ASPECT_RATIO);
+      const compressedLogoHeight = Math.round(logoHeight * layout.LOGO_COMPRESS_FACTOR);
+      const logoCenterY = Math.max(
+        compressedLogoHeight / 2 + layout.LOGO_MIN_TOP_PADDING_PX,
+        height * layout.LOGO_CENTER_Y_RATIO - layout.LOGO_CENTER_Y_OFFSET_PX
+      );
       this.add
         .image(width / 2, logoCenterY, 'logoGuitarHelio')
         .setDisplaySize(logoWidth, compressedLogoHeight)
         .setOrigin(0.5)
         .setAlpha(0.98);
     } else {
-      const fallbackTitleY = Math.max(titleSize * 0.7, height * 0.09 - 30);
+      const fallbackTitleY = Math.max(
+        titleSize * layout.FALLBACK_TITLE_Y_SIZE_RATIO,
+        height * layout.FALLBACK_TITLE_Y_RATIO - layout.FALLBACK_TITLE_Y_OFFSET_PX
+      );
       this.add
         .text(width / 2, fallbackTitleY, 'GuitarHelio', {
           color: '#dbeafe',
@@ -83,16 +91,16 @@ export class SongSelectScene extends Phaser.Scene {
         .setOrigin(0.5);
     }
 
-    const startScale = Math.SQRT2;
-    const startButtonWidth = Math.min(Math.round(388 * startScale), width * 0.82);
-    const startButtonHeight = Math.round(62 * 1.08);
-    const startY = height - startButtonHeight / 2 - 16;
+    const startScale = layout.START_BUTTON_SCALE;
+    const startButtonWidth = Math.min(Math.round(layout.START_BUTTON_BASE_WIDTH_PX * startScale), width * layout.START_BUTTON_MAX_WIDTH_RATIO);
+    const startButtonHeight = Math.round(layout.START_BUTTON_BASE_HEIGHT_PX * layout.START_BUTTON_HEIGHT_SCALE);
+    const startY = height - startButtonHeight / 2 - layout.START_BUTTON_BOTTOM_MARGIN_PX;
     const startTopY = startY - startButtonHeight / 2;
     const songGridController = new SongGridController(this, {
       isPointerBlocked: () => isQuitConfirmOpen() || importController.isOverlayVisible(),
       canSelectSong: () => !settingsController.isOpen() && songs.length > 0,
       canStartLongPressRemove: () => !settingsController.isOpen() && songs.length > 0 && !importController.isInProgress(),
-      getViewportBottomLimitY: () => startTopY - 12,
+      getViewportBottomLimitY: () => startTopY - layout.SONG_GRID_BOTTOM_GAP_PX,
       onSelectionChanged: () => refreshSelections(),
       onRequestRemoveSong: (song) => void removeSong(song),
       longPressMs: SONG_REMOVE_LONG_PRESS_MS,
@@ -100,23 +108,42 @@ export class SongSelectScene extends Phaser.Scene {
     });
     songGridController.initialize(songs, width, height, labelSize);
 
-    const sideLayoutScale = Phaser.Math.Clamp(height / 540, 0.6, 1);
-    const sideButtonWidth = Math.min(300, width * 0.3);
-    const sideButtonsBottomGapFromStart = 14;
-    const difficultyButtonHeight = Math.min(54, Math.max(42, height * 0.08));
-    const sideTopSafeInset = Math.max(20, Math.round(height * 0.06));
+    const sideLayoutScale = Phaser.Math.Clamp(
+      height / layout.SIDE_LAYOUT_REF_HEIGHT_PX,
+      layout.SIDE_LAYOUT_SCALE_MIN,
+      layout.SIDE_LAYOUT_SCALE_MAX
+    );
+    const sideButtonWidth = Math.min(layout.SIDE_BUTTON_MAX_WIDTH_PX, width * layout.SIDE_BUTTON_WIDTH_RATIO);
+    const sideButtonsBottomGapFromStart = layout.SIDE_BUTTONS_BOTTOM_GAP_FROM_START_PX;
+    const difficultyButtonHeight = Math.min(
+      layout.DIFFICULTY_BUTTON_MAX_HEIGHT_PX,
+      Math.max(layout.DIFFICULTY_BUTTON_MIN_HEIGHT_PX, height * layout.DIFFICULTY_BUTTON_HEIGHT_RATIO)
+    );
+    const sideTopSafeInset = Math.max(layout.SIDE_TOP_SAFE_INSET_MIN_PX, Math.round(height * layout.SIDE_TOP_SAFE_INSET_RATIO));
     const minDifficultyButtonY = sideTopSafeInset + difficultyButtonHeight / 2;
-    const preferredDifficultyButtonY = height * 0.21;
+    const preferredDifficultyButtonY = height * layout.DIFFICULTY_BUTTON_PREFERRED_Y_RATIO;
     const difficultyButtonY = Math.max(preferredDifficultyButtonY, minDifficultyButtonY);
     const availableSideSpan = startTopY - sideButtonsBottomGapFromStart - difficultyButtonY;
-    const minimumInterButtonGap = 10;
-    const maxSideButtonHeightForFit = Math.floor((availableSideSpan - minimumInterButtonGap * 4) / 4.5);
-    const preferredSideButtonHeight = Math.round(50 * sideLayoutScale);
-    const fittedSideButtonHeight = Phaser.Math.Clamp(Math.min(preferredSideButtonHeight, maxSideButtonHeightForFit), 30, 50);
-    const sideButtonHeight = Math.max(27, fittedSideButtonHeight - 3);
-    const preferredInterButtonGap = Math.round(Phaser.Math.Clamp(22 * sideLayoutScale, 12, 22));
+    const minimumInterButtonGap = layout.SIDE_MIN_INTER_BUTTON_GAP_PX;
+    const maxSideButtonHeightForFit = Math.floor(
+      (availableSideSpan - minimumInterButtonGap * layout.SIDE_BUTTON_COUNT_FOR_FIT) / layout.SIDE_BUTTON_SPAN_DIVISOR
+    );
+    const preferredSideButtonHeight = Math.round(layout.SIDE_BUTTON_PREFERRED_HEIGHT_PX * sideLayoutScale);
+    const fittedSideButtonHeight = Phaser.Math.Clamp(
+      Math.min(preferredSideButtonHeight, maxSideButtonHeightForFit),
+      layout.SIDE_BUTTON_MIN_HEIGHT_PX,
+      layout.SIDE_BUTTON_MAX_HEIGHT_PX
+    );
+    const sideButtonHeight = Math.max(layout.SIDE_BUTTON_FINAL_MIN_HEIGHT_PX, fittedSideButtonHeight - layout.SIDE_BUTTON_FINAL_HEIGHT_TRIM_PX);
+    const preferredInterButtonGap = Math.round(
+      Phaser.Math.Clamp(
+        layout.SIDE_INTER_BUTTON_GAP_PREFERRED_PX * sideLayoutScale,
+        layout.SIDE_INTER_BUTTON_GAP_MIN_PX,
+        layout.SIDE_INTER_BUTTON_GAP_MAX_PX
+      )
+    );
     const preferredSideCenterStep = sideButtonHeight + preferredInterButtonGap;
-    const maxSideCenterStep = (availableSideSpan - sideButtonHeight / 2) / 4;
+    const maxSideCenterStep = (availableSideSpan - sideButtonHeight / 2) / layout.SIDE_BUTTON_COUNT_FOR_FIT;
     const sideCenterStep = Math.min(preferredSideCenterStep, maxSideCenterStep);
     const importButtonY = difficultyButtonY + sideCenterStep;
     const settingsButtonY = importButtonY + sideCenterStep;
@@ -135,15 +162,36 @@ export class SongSelectScene extends Phaser.Scene {
       difficultyButtonY,
       settingsController.getDifficulty()
     );
-    const sideIconSize = Math.max(16, Math.min(26, Math.floor(labelSize * 1.5), Math.floor(sideButtonHeight * 0.56)));
-    const sideButtonFontSize = Math.max(14, Math.min(Math.max(17, labelSize + 2), Math.floor(sideButtonHeight * 0.48)));
-    const settingsButton = new RoundedBox(this, width * 0.79, settingsButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
+    const sideIconSize = Math.max(
+      layout.SIDE_ICON_MIN_SIZE_PX,
+      Math.min(
+        layout.SIDE_ICON_MAX_SIZE_PX,
+        Math.floor(labelSize * layout.SIDE_ICON_LABEL_SIZE_RATIO),
+        Math.floor(sideButtonHeight * layout.SIDE_ICON_BUTTON_HEIGHT_RATIO)
+      )
+    );
+    const sideButtonFontSize = Math.max(
+      layout.SIDE_BUTTON_FONT_MIN_PX,
+      Math.min(
+        Math.max(layout.SIDE_BUTTON_FONT_BASE_MIN_PX, labelSize + layout.SIDE_BUTTON_FONT_LABEL_PLUS_PX),
+        Math.floor(sideButtonHeight * layout.SIDE_BUTTON_FONT_HEIGHT_RATIO)
+      )
+    );
+    const settingsButton = new RoundedBox(
+      this,
+      width * layout.SIDE_BUTTON_CENTER_X_RATIO,
+      settingsButtonY,
+      sideButtonWidth,
+      sideButtonHeight,
+      0x1a2a53,
+      0.74
+    )
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
     const settingsIcon = this.textures.exists('uiSettingsIcon')
       ? (() => {
           const icon = this.add
-            .image(settingsButton.x - sideButtonWidth * 0.33, settingsButtonY, 'uiSettingsIcon')
+            .image(settingsButton.x - sideButtonWidth * layout.SIDE_ICON_X_OFFSET_RATIO, settingsButtonY, 'uiSettingsIcon')
             .setInteractive({ useHandCursor: true });
           const scaleFromNative = sideIconSize / Math.max(icon.width, icon.height);
           icon.setScale(scaleFromNative);
@@ -151,7 +199,7 @@ export class SongSelectScene extends Phaser.Scene {
         })()
       : undefined;
     const settingsLabel = this.add
-      .text(settingsButton.x + (settingsIcon ? sideButtonWidth * 0.04 : 0), settingsButtonY, 'Settings', {
+      .text(settingsButton.x + (settingsIcon ? sideButtonWidth * layout.SIDE_LABEL_X_OFFSET_RATIO : 0), settingsButtonY, 'Settings', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -160,17 +208,17 @@ export class SongSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    const tunerButton = new RoundedBox(this, width * 0.79, tunerButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
+    const tunerButton = new RoundedBox(this, width * layout.SIDE_BUTTON_CENTER_X_RATIO, tunerButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
     const tunerIcon = this.textures.exists('uiTunerIcon')
       ? this.add
-          .image(tunerButton.x - sideButtonWidth * 0.33, tunerButtonY, 'uiTunerIcon')
+          .image(tunerButton.x - sideButtonWidth * layout.SIDE_ICON_X_OFFSET_RATIO, tunerButtonY, 'uiTunerIcon')
           .setDisplaySize(sideIconSize, sideIconSize)
           .setInteractive({ useHandCursor: true })
       : undefined;
     const tunerLabel = this.add
-      .text(tunerButton.x + (tunerIcon ? sideButtonWidth * 0.04 : 0), tunerButtonY, 'Tuner', {
+      .text(tunerButton.x + (tunerIcon ? sideButtonWidth * layout.SIDE_LABEL_X_OFFSET_RATIO : 0), tunerButtonY, 'Tuner', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -178,19 +226,25 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    const baseSideSummaryOffset = Math.max(16, Math.min(sideButtonHeight / 2 + 10, sideCenterStep - sideButtonHeight / 2 - 6));
-    const sideSummaryOffset = Math.round(Math.max(14, baseSideSummaryOffset - 2));
+    const baseSideSummaryOffset = Math.max(
+      layout.SIDE_SUMMARY_OFFSET_MIN_PX,
+      Math.min(
+        sideButtonHeight / 2 + layout.SIDE_SUMMARY_BUTTON_HALF_PLUS_PX,
+        sideCenterStep - sideButtonHeight / 2 - layout.SIDE_SUMMARY_STEP_MINUS_PX
+      )
+    );
+    const sideSummaryOffset = Math.round(Math.max(layout.SIDE_SUMMARY_FINAL_MIN_PX, baseSideSummaryOffset - layout.SIDE_SUMMARY_FINAL_TRIM_PX));
     const tunerSummary = this.add
       .text(tunerButton.x, tunerButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, labelSize - 3)}px`
+        fontSize: `${Math.max(layout.SIDE_SUMMARY_FONT_MIN_PX, labelSize - layout.SIDE_SUMMARY_FONT_LABEL_MINUS_PX)}px`
       })
       .setOrigin(0.5)
       .setVisible(false);
     const practiceButton = new RoundedBox(
       this,
-      width * 0.79,
+      width * layout.SIDE_BUTTON_CENTER_X_RATIO,
       practiceButtonY,
       sideButtonWidth,
       sideButtonHeight,
@@ -201,12 +255,12 @@ export class SongSelectScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     const practiceIcon = this.textures.exists('uiGuitarIcon')
       ? this.add
-          .image(practiceButton.x - sideButtonWidth * 0.33, practiceButtonY, 'uiGuitarIcon')
+          .image(practiceButton.x - sideButtonWidth * layout.SIDE_ICON_X_OFFSET_RATIO, practiceButtonY, 'uiGuitarIcon')
           .setDisplaySize(sideIconSize, sideIconSize)
           .setInteractive({ useHandCursor: true })
       : undefined;
     const practiceLabel = this.add
-      .text(practiceButton.x + (practiceIcon ? sideButtonWidth * 0.04 : 0), practiceButtonY, 'Practice', {
+      .text(practiceButton.x + (practiceIcon ? sideButtonWidth * layout.SIDE_LABEL_X_OFFSET_RATIO : 0), practiceButtonY, 'Practice', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -218,24 +272,24 @@ export class SongSelectScene extends Phaser.Scene {
       .text(settingsButton.x, settingsButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, labelSize - 3)}px`
+        fontSize: `${Math.max(layout.SIDE_SUMMARY_FONT_MIN_PX, labelSize - layout.SIDE_SUMMARY_FONT_LABEL_MINUS_PX)}px`
       })
       .setOrigin(0.5);
-    const importButton = new RoundedBox(this, width * 0.79, importButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
+    const importButton = new RoundedBox(this, width * layout.SIDE_BUTTON_CENTER_X_RATIO, importButtonY, sideButtonWidth, sideButtonHeight, 0x1a2a53, 0.74)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
       .setInteractive({ useHandCursor: true });
     const importIcon = this.textures.exists('uiImportIcon')
       ? this.add
-          .image(importButton.x - sideButtonWidth * 0.33, importButtonY, 'uiImportIcon')
+          .image(importButton.x - sideButtonWidth * layout.SIDE_ICON_X_OFFSET_RATIO, importButtonY, 'uiImportIcon')
           .setDisplaySize(sideIconSize, sideIconSize)
           .setInteractive({ useHandCursor: true })
       : undefined;
     const importLabel = this.add
-      .text(importButton.x + (importIcon ? sideButtonWidth * 0.04 : 0), importButtonY, 'Import Your Song', {
+      .text(importButton.x + (importIcon ? sideButtonWidth * layout.SIDE_LABEL_X_OFFSET_RATIO : 0), importButtonY, 'Import Your Song', {
         color: '#f1f5f9',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(13, sideButtonFontSize - 1)}px`
+        fontSize: `${Math.max(layout.IMPORT_LABEL_FONT_MIN_PX, sideButtonFontSize - layout.IMPORT_LABEL_FONT_MINUS_PX)}px`
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -243,16 +297,16 @@ export class SongSelectScene extends Phaser.Scene {
       .text(importButton.x, importButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, labelSize - 3)}px`
+        fontSize: `${Math.max(layout.SIDE_SUMMARY_FONT_MIN_PX, labelSize - layout.SIDE_SUMMARY_FONT_LABEL_MINUS_PX)}px`
       })
       .setOrigin(0.5);
     const importLogShareButton = Capacitor.isNativePlatform() && IMPORT_DEBUG_LOG_ENABLED
       ? new RoundedBox(
           this,
-          importButton.x + sideButtonWidth * 0.295,
-          importButtonY - sideButtonHeight * 0.28,
-          Math.min(102, sideButtonWidth * 0.34),
-          22,
+          importButton.x + sideButtonWidth * layout.IMPORT_LOG_SHARE_X_OFFSET_RATIO,
+          importButtonY - sideButtonHeight * layout.IMPORT_LOG_SHARE_Y_OFFSET_RATIO,
+          Math.min(layout.IMPORT_LOG_SHARE_MAX_WIDTH_PX, sideButtonWidth * layout.IMPORT_LOG_SHARE_WIDTH_RATIO),
+          layout.IMPORT_LOG_SHARE_HEIGHT_PX,
           0x0f766e,
           0.96
         )
@@ -265,7 +319,7 @@ export class SongSelectScene extends Phaser.Scene {
             color: '#ecfeff',
             fontFamily: 'Montserrat, sans-serif',
             fontStyle: 'bold',
-            fontSize: `${Math.max(10, labelSize - 5)}px`
+            fontSize: `${Math.max(layout.IMPORT_LOG_SHARE_FONT_MIN_PX, labelSize - layout.IMPORT_LOG_SHARE_FONT_LABEL_MINUS_PX)}px`
           })
           .setOrigin(0.5)
           .setInteractive({ useHandCursor: true })
@@ -277,22 +331,22 @@ export class SongSelectScene extends Phaser.Scene {
     });
     importController.initialize(width, height, labelSize);
     const showImportSourceDebug = importController.getSnapshot().showSourceDebug;
-    const importSourceScale = 0.7;
-    const importSourceDebugWidth = Math.min(300, width * 0.38) * importSourceScale;
-    const importSourceDebugCenterX = 14 + importSourceDebugWidth / 2;
-    const importSourceDebugButtonHeight = 30 * importSourceScale;
-    const importSourceGapFromSongs = 14;
-    const importSourceDebugMinCenterY = importSourceDebugButtonHeight / 2 + 26;
+    const importSourceScale = layout.IMPORT_SOURCE_DEBUG_SCALE;
+    const importSourceDebugWidth = Math.min(layout.IMPORT_SOURCE_DEBUG_MAX_WIDTH_PX, width * layout.IMPORT_SOURCE_DEBUG_WIDTH_RATIO) * importSourceScale;
+    const importSourceDebugCenterX = layout.IMPORT_SOURCE_DEBUG_LEFT_MARGIN_PX + importSourceDebugWidth / 2;
+    const importSourceDebugButtonHeight = layout.IMPORT_SOURCE_DEBUG_BUTTON_BASE_HEIGHT_PX * importSourceScale;
+    const importSourceGapFromSongs = layout.IMPORT_SOURCE_GAP_FROM_SONGS_PX;
+    const importSourceDebugMinCenterY = importSourceDebugButtonHeight / 2 + layout.IMPORT_SOURCE_DEBUG_MIN_CENTER_Y_OFFSET_PX;
     const importSourceDebugToggleY = Math.max(
       importSourceDebugMinCenterY,
       songGridController.getViewportTop() - importSourceDebugButtonHeight / 2 - importSourceGapFromSongs
     );
     const importSourceTitle = showImportSourceDebug
       ? this.add
-          .text(importSourceDebugCenterX, importSourceDebugToggleY - 24, 'Import Source (debug)', {
+          .text(importSourceDebugCenterX, importSourceDebugToggleY - layout.IMPORT_SOURCE_DEBUG_TITLE_Y_OFFSET_PX, 'Import Source (debug)', {
             color: '#94a3b8',
             fontFamily: 'Montserrat, sans-serif',
-            fontSize: `${Math.max(11, labelSize - 4)}px`
+            fontSize: `${Math.max(layout.IMPORT_SOURCE_DEBUG_TITLE_FONT_MIN_PX, labelSize - layout.IMPORT_SOURCE_DEBUG_TITLE_FONT_LABEL_MINUS_PX)}px`
           })
           .setOrigin(0.5)
       : undefined;
@@ -307,31 +361,31 @@ export class SongSelectScene extends Phaser.Scene {
       : [];
 
     const hint = this.add
-      .text(width / 2, height * 0.84, '', {
+      .text(width / 2, height * layout.HINT_Y_RATIO, '', {
         color: '#fca5a5',
         fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(13, Math.floor(width * 0.015))}px`
+        fontSize: `${Math.max(layout.HINT_FONT_MIN_PX, Math.floor(width * layout.HINT_FONT_WIDTH_RATIO))}px`
       })
       .setOrigin(0.5)
       .setVisible(false);
 
-    const playIconSize = Math.min(60, labelSize + 24);
+    const playIconSize = Math.min(layout.PLAY_ICON_MAX_SIZE_PX, labelSize + layout.PLAY_ICON_LABEL_PLUS_PX);
     const startButton = new RoundedBox(this, width / 2, startY, startButtonWidth, startButtonHeight, 0xf97316, 1)
       .setStrokeStyle(2, 0xfecaca, 0.8)
       .setInteractive({ useHandCursor: true })
       .setDepth(120);
     const playIcon = this.textures.exists('uiPlayIcon')
       ? this.add
-          .image(width / 2 - startButtonWidth * 0.3, startY, 'uiPlayIcon')
+          .image(width / 2 - startButtonWidth * layout.PLAY_ICON_X_OFFSET_RATIO, startY, 'uiPlayIcon')
           .setDisplaySize(playIconSize, playIconSize)
           .setInteractive({ useHandCursor: true })
       : undefined;
     const startLabel = this.add
-      .text(width / 2 + (playIcon ? startButtonWidth * 0.06 : 0), startY, 'Start Session', {
+      .text(width / 2 + (playIcon ? startButtonWidth * layout.START_LABEL_X_OFFSET_RATIO : 0), startY, 'Start Session', {
         color: '#fff7ed',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
-        fontSize: `${Math.max(28, labelSize + 10)}px`
+        fontSize: `${Math.max(layout.START_LABEL_FONT_MIN_PX, labelSize + layout.START_LABEL_FONT_LABEL_PLUS_PX)}px`
       })
       .setOrigin(0.5)
       .setShadow(0, 2, '#7f1d1d', 6, true, true)
@@ -424,7 +478,10 @@ export class SongSelectScene extends Phaser.Scene {
       importLabel.setColor(importState.inProgress || quitPromptOpen ? '#fef3c7' : '#f1f5f9');
       importIcon?.setAlpha(importState.inProgress || quitPromptOpen ? 0.78 : 0.94);
       importSummary.setText(
-        truncateLabel(importState.inProgress ? 'Import in progress...' : importState.summaryMessage, Math.max(28, Math.floor(width * 0.036)))
+        truncateLabel(
+          importState.inProgress ? 'Import in progress...' : importState.summaryMessage,
+          Math.max(layout.IMPORT_SUMMARY_TRUNCATE_MIN_CHARS, Math.floor(width * layout.IMPORT_SUMMARY_TRUNCATE_WIDTH_SCALE))
+        )
       );
       importSummary.setColor(importState.inProgress ? '#fde68a' : importState.summaryColor);
       if (importLogShareButton && importLogShareLabel) {
@@ -728,22 +785,23 @@ export class SongSelectScene extends Phaser.Scene {
   }
 
   private drawNeonStartBackdrop(width: number, height: number): void {
+    const layout = SONG_SELECT_LAYOUT;
     const g = this.add.graphics();
     g.fillGradientStyle(0x060d24, 0x0a1a42, 0x040a1a, 0x071734, 1, 1, 1, 1);
     g.fillRect(0, 0, width, height);
 
-    const ringX = width * 0.47;
-    const ringY = height * 0.56;
+    const ringX = width * layout.BACKDROP_RING_X_RATIO;
+    const ringY = height * layout.BACKDROP_RING_Y_RATIO;
     g.lineStyle(2, 0x7dd3fc, 0.2);
-    g.strokeCircle(ringX, ringY, Math.min(width, height) * 0.2);
+    g.strokeCircle(ringX, ringY, Math.min(width, height) * layout.BACKDROP_RING_RADIUS_PRIMARY_RATIO);
     g.lineStyle(1, 0x93c5fd, 0.18);
-    g.strokeCircle(ringX, ringY, Math.min(width, height) * 0.235);
-    g.strokeCircle(ringX, ringY, Math.min(width, height) * 0.17);
+    g.strokeCircle(ringX, ringY, Math.min(width, height) * layout.BACKDROP_RING_RADIUS_SECONDARY_RATIO);
+    g.strokeCircle(ringX, ringY, Math.min(width, height) * layout.BACKDROP_RING_RADIUS_TERTIARY_RATIO);
 
-    const lineYBase = height * 0.365;
-    const spacing = height * 0.083;
+    const lineYBase = height * layout.BACKDROP_LINE_BASE_Y_RATIO;
+    const spacing = height * layout.BACKDROP_LINE_SPACING_RATIO;
     g.lineStyle(1.7, 0x93c5fd, 0.28);
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < layout.BACKDROP_LINE_COUNT; i += 1) {
       const y = lineYBase + i * spacing;
       g.beginPath();
       g.moveTo(0, y);
@@ -759,9 +817,9 @@ export class SongSelectScene extends Phaser.Scene {
 
     const vignette = this.add.graphics();
     vignette.fillStyle(0x020617, 0.48);
-    vignette.fillRect(0, height * 0.84, width, height * 0.2);
+    vignette.fillRect(0, height * layout.BACKDROP_VIGNETTE_PRIMARY_Y_RATIO, width, height * layout.BACKDROP_VIGNETTE_PRIMARY_HEIGHT_RATIO);
     vignette.fillStyle(0x020617, 0.2);
-    vignette.fillRect(0, height * 0.76, width, height * 0.08);
+    vignette.fillRect(0, height * layout.BACKDROP_VIGNETTE_SECONDARY_Y_RATIO, width, height * layout.BACKDROP_VIGNETTE_SECONDARY_HEIGHT_RATIO);
 
   }
 
@@ -850,8 +908,9 @@ export class SongSelectScene extends Phaser.Scene {
     triggerY: number,
     initialDifficulty: Difficulty
   ): DifficultyDropdown {
-    const triggerX = width * 0.79;
-    const fontSize = Math.max(15, labelSize + 1);
+    const layout = SONG_SELECT_LAYOUT;
+    const triggerX = width * layout.SIDE_BUTTON_CENTER_X_RATIO;
+    const fontSize = Math.max(layout.DIFFICULTY_DROPDOWN_FONT_MIN_PX, labelSize + layout.DIFFICULTY_DROPDOWN_FONT_LABEL_PLUS_PX);
     const measurementLabel = this.add
       .text(triggerX, triggerY, 'Medium', {
         color: '#f8fafc',
@@ -861,9 +920,12 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setVisible(false);
-    const horizontalPadding = Math.max(34, Math.floor(labelSize * 1.8));
+    const horizontalPadding = Math.max(layout.DIFFICULTY_DROPDOWN_PADDING_MIN_PX, Math.floor(labelSize * layout.DIFFICULTY_DROPDOWN_PADDING_LABEL_RATIO));
     const buttonWidth = Math.ceil(measurementLabel.width + horizontalPadding);
-    const buttonHeight = Math.min(54, Math.max(42, this.scale.height * 0.08));
+    const buttonHeight = Math.min(
+      layout.DIFFICULTY_DROPDOWN_HEIGHT_MAX_PX,
+      Math.max(layout.DIFFICULTY_DROPDOWN_HEIGHT_MIN_PX, this.scale.height * layout.DIFFICULTY_DROPDOWN_HEIGHT_RATIO)
+    );
 
     const trigger = new RoundedBox(this, triggerX, triggerY, buttonWidth, buttonHeight, 0x1a2a53, 0.72)
       .setStrokeStyle(2, 0x3b82f6, 0.35)
@@ -891,17 +953,18 @@ export class SongSelectScene extends Phaser.Scene {
     buttonHeight: number,
     labelSize: number
   ): ImportSourceToggleOption[] {
+    const layout = SONG_SELECT_LAYOUT;
     const options: Array<{ mode: ImportSourceMode; label: string }> = [
       { mode: 'auto', label: 'Auto' },
       { mode: 'server', label: 'Server' },
       { mode: 'native', label: 'Native' }
     ];
-    const gap = 8;
-    const buttonWidth = (totalWidth - gap * 2) / 3;
+    const gap = layout.IMPORT_SOURCE_TOGGLE_GAP_PX;
+    const buttonWidth = (totalWidth - gap * layout.IMPORT_SOURCE_TOGGLE_GAP_COUNT) / layout.IMPORT_SOURCE_TOGGLE_OPTION_COUNT;
     const left = centerX - totalWidth / 2;
 
     return options.map((option, index) => {
-      const x = left + buttonWidth * 0.5 + index * (buttonWidth + gap);
+      const x = left + buttonWidth * layout.IMPORT_SOURCE_TOGGLE_CENTER_OFFSET_RATIO + index * (buttonWidth + gap);
       const background = new RoundedBox(this, x, centerY, buttonWidth, buttonHeight, 0x1a2a53, 0.72)
         .setStrokeStyle(1, 0x334155, 0.46)
         .setInteractive({ useHandCursor: true });
@@ -910,7 +973,7 @@ export class SongSelectScene extends Phaser.Scene {
           color: '#94a3b8',
           fontFamily: 'Montserrat, sans-serif',
           fontStyle: 'bold',
-          fontSize: `${Math.max(11, labelSize - 5)}px`
+          fontSize: `${Math.max(layout.IMPORT_SOURCE_TOGGLE_LABEL_FONT_MIN_PX, labelSize - layout.IMPORT_SOURCE_TOGGLE_LABEL_FONT_LABEL_MINUS_PX)}px`
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
