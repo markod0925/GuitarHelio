@@ -46,6 +46,7 @@
       "scripts/**/*",
       "tools/**/*",
       "third_party/**/*",
+      "src/server/**/*",
       "src/platform/converterMode.ts",
       "vite.config.ts",
       "package.json"
