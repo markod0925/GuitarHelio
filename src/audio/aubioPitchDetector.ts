@@ -58,16 +58,15 @@ const GUITAR_MIDI_CENTER = 58;
 
 export class AubioPitchDetectorService {
   private listeners = new Set<AubioPitchListener>();
-  private scriptProcessor: ScriptProcessorNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analyserBuffer: Float32Array | null = null;
+  private analyserRafId: number | null = null;
   private sink: GainNode | null = null;
   private initialized = false;
   private pitch: AubioPitch | null = null;
   private pitchOutputIsMidi = false;
-  private ringBuffer: Float32Array | null = null;
-  private frameBuffer: Float32Array | null = null;
-  private ringWriteIndex = 0;
-  private totalSamples = 0;
-  private samplesSinceLastAnalysis = 0;
+  private lastAnalysisTimeSeconds = 0;
+  private accumulatedSamples = 0;
 
   private readonly method: AubioPitchMethod;
   private readonly bufferSize: number;
@@ -124,77 +123,29 @@ export class AubioPitchDetectorService {
     sink.connect(this.ctx.destination);
     this.sink = sink;
 
-    const scriptProcessor = this.ctx.createScriptProcessor(this.hopSize, 1, 1);
-    this.ringBuffer = new Float32Array(this.bufferSize);
-    this.frameBuffer = new Float32Array(this.bufferSize);
-    this.ringWriteIndex = 0;
-    this.totalSamples = 0;
-    this.samplesSinceLastAnalysis = 0;
+    const analyser = this.ctx.createAnalyser();
+    analyser.fftSize = resolveAnalyserFftSize(this.bufferSize);
+    analyser.smoothingTimeConstant = 0;
+    this.analyserBuffer = new Float32Array(analyser.fftSize);
+    this.analyser = analyser;
+    this.lastAnalysisTimeSeconds = this.ctx.currentTime;
+    this.accumulatedSamples = 0;
 
-    scriptProcessor.onaudioprocess = (event) => {
-      const ringBuffer = this.ringBuffer;
-      const frameBuffer = this.frameBuffer;
-      if (!ringBuffer || !frameBuffer) return;
-
-      const input = event.inputBuffer.getChannelData(0);
-      for (let i = 0; i < input.length; i += 1) {
-        ringBuffer[this.ringWriteIndex] = input[i];
-        this.ringWriteIndex = (this.ringWriteIndex + 1) % this.bufferSize;
-        this.totalSamples += 1;
-        this.samplesSinceLastAnalysis += 1;
-      }
-
-      if (this.totalSamples < this.bufferSize || this.samplesSinceLastAnalysis < this.hopSize) {
-        return;
-      }
-      this.samplesSinceLastAnalysis = 0;
-      copyRingToFrame(ringBuffer, frameBuffer, this.ringWriteIndex);
-
-      const rms = computeRms(frameBuffer);
-      if (!Number.isFinite(rms) || rms < this.minRms) {
-        this.emitFrame({
-          t_seconds: this.ctx.currentTime,
-          midi_estimate: null,
-          confidence: 0
-        });
-        return;
-      }
-
-      const frequencyHz = Number(this.pitch?.do(frameBuffer) ?? 0);
-      const midiEstimateRaw = this.resolveMidiFromAubioValue(frequencyHz);
-      if (midiEstimateRaw === null) {
-        this.emitFrame({
-          t_seconds: this.ctx.currentTime,
-          midi_estimate: null,
-          confidence: 0
-        });
-        return;
-      }
-
-      const correctedMidi = applyPitchCalibration(midiEstimateRaw, this.calibrationProfile);
-      this.emitFrame({
-        t_seconds: this.ctx.currentTime,
-        midi_estimate: correctedMidi,
-        confidence: 1
-      });
-    };
-
-    source.connect(scriptProcessor);
-    scriptProcessor.connect(sink);
-    this.scriptProcessor = scriptProcessor;
+    source.connect(analyser);
+    analyser.connect(sink);
+    this.scheduleAnalysisFrame();
   }
 
   stop(): void {
-    this.scriptProcessor?.disconnect();
-    if (this.scriptProcessor) {
-      this.scriptProcessor.onaudioprocess = null;
+    this.analyser?.disconnect();
+    this.analyser = null;
+    this.analyserBuffer = null;
+    if (this.analyserRafId !== null) {
+      cancelAnimationFrame(this.analyserRafId);
+      this.analyserRafId = null;
     }
-    this.scriptProcessor = null;
-    this.ringBuffer = null;
-    this.frameBuffer = null;
-    this.ringWriteIndex = 0;
-    this.totalSamples = 0;
-    this.samplesSinceLastAnalysis = 0;
+    this.lastAnalysisTimeSeconds = 0;
+    this.accumulatedSamples = 0;
 
     this.sink?.disconnect();
     this.sink = null;
@@ -234,6 +185,57 @@ export class AubioPitchDetectorService {
     }
     return asHzMidi;
   }
+
+  private scheduleAnalysisFrame(): void {
+    this.analyserRafId = requestAnimationFrame(() => {
+      this.analyserRafId = null;
+      const analyser = this.analyser;
+      const analyserBuffer = this.analyserBuffer;
+      if (!analyser || !analyserBuffer) return;
+
+      const now = this.ctx.currentTime;
+      const elapsedSeconds = Math.max(0, now - this.lastAnalysisTimeSeconds);
+      this.lastAnalysisTimeSeconds = now;
+      this.accumulatedSamples += elapsedSeconds * this.ctx.sampleRate;
+
+      if (this.accumulatedSamples >= this.hopSize) {
+        this.accumulatedSamples -= this.hopSize;
+        analyser.getFloatTimeDomainData(analyserBuffer as any);
+
+        const rms = computeRms(analyserBuffer);
+        if (!Number.isFinite(rms) || rms < this.minRms) {
+          this.emitFrame({
+            t_seconds: this.ctx.currentTime,
+            midi_estimate: null,
+            confidence: 0
+          });
+          this.scheduleAnalysisFrame();
+          return;
+        }
+
+        const frequencyHz = Number(this.pitch?.do(analyserBuffer) ?? 0);
+        const midiEstimateRaw = this.resolveMidiFromAubioValue(frequencyHz);
+        if (midiEstimateRaw === null) {
+          this.emitFrame({
+            t_seconds: this.ctx.currentTime,
+            midi_estimate: null,
+            confidence: 0
+          });
+          this.scheduleAnalysisFrame();
+          return;
+        }
+
+        const correctedMidi = applyPitchCalibration(midiEstimateRaw, this.calibrationProfile);
+        this.emitFrame({
+          t_seconds: this.ctx.currentTime,
+          midi_estimate: correctedMidi,
+          confidence: 1
+        });
+      }
+
+      this.scheduleAnalysisFrame();
+    });
+  }
 }
 
 function computeRms(samples: Float32Array): number {
@@ -246,9 +248,14 @@ function computeRms(samples: Float32Array): number {
   return Math.sqrt(energy / samples.length);
 }
 
-function copyRingToFrame(ring: Float32Array, frame: Float32Array, writeIndex: number): void {
-  for (let i = 0; i < ring.length; i += 1) {
-    const idx = (writeIndex + i) % ring.length;
-    frame[i] = ring[idx];
+function resolveAnalyserFftSize(bufferSize: number): number {
+  const minFft = 32;
+  const maxFft = 32768;
+  if (!Number.isFinite(bufferSize) || bufferSize < minFft) return 2048;
+
+  let fftSize = minFft;
+  while (fftSize < bufferSize && fftSize < maxFft) {
+    fftSize <<= 1;
   }
+  return fftSize > maxFft ? maxFft : fftSize;
 }
