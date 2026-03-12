@@ -9,6 +9,11 @@ describe('scoring', () => {
     expect(rateHit(251).rating).toBe('Miss');
   });
 
+  test('supports no-miss mode', () => {
+    expect(rateHit(251, { noMiss: true }).rating).toBe('OK');
+    expect(rateHit(10_000, { noMiss: true })).toEqual({ rating: 'OK', points: 40 });
+  });
+
   test('summarizes events', () => {
     const summary = summarizeScores([
       { targetId: 'a', rating: 'Perfect', deltaMs: 40, points: 100 },

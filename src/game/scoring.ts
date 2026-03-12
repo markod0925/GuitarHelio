@@ -6,8 +6,16 @@ const thresholds: Array<{ rating: Rating; maxMs: number; points: number }> = [
   { rating: 'OK', maxMs: 250, points: 40 }
 ];
 
-export function rateHit(deltaMs: number): { rating: Rating; points: number } {
+export type RateHitOptions = {
+  noMiss?: boolean;
+};
+
+export function rateHit(deltaMs: number, options: RateHitOptions = {}): { rating: Rating; points: number } {
   const match = thresholds.find((t) => deltaMs <= t.maxMs);
+  if (!match && options.noMiss) {
+    const fallback = thresholds[thresholds.length - 1];
+    if (fallback) return { rating: fallback.rating, points: fallback.points };
+  }
   if (!match) return { rating: 'Miss', points: 0 };
   return { rating: match.rating, points: match.points };
 }

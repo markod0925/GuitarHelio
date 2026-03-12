@@ -213,7 +213,7 @@ function handleTransitionImpl(
     const leadTarget = resolvedGroup[0];
     const signedDeltaMs = this.measureHitSignedDeltaMs(leadTarget, previousState);
     const deltaMs = this.measureHitDeltaMs(leadTarget, previousState);
-    const rated = rateHit(deltaMs);
+    const rated = rateHit(deltaMs, { noMiss: this.sceneData?.difficulty === 'Easy' });
 
     for (const targetNote of resolvedGroup) {
       this.recordScoreEvent({ targetId: targetNote.id, rating: rated.rating, deltaMs, points: rated.points });
@@ -287,9 +287,8 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
   const active = activeGroup[0];
   const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
   const songTimeSeconds = this.getSongSecondsNow();
-  const forceTooLateForWaiting = previousState === PlayState.WaitingForHit;
-  const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, !forceTooLateForWaiting, {
-    gatingTimeoutSeconds: forceTooLateForWaiting ? 0 : this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
+  const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, true, {
+    gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
     targetTimeSeconds,
     songTimeSeconds,
     lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,

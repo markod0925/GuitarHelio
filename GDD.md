@@ -599,6 +599,7 @@ Points:
 * Great: +70
 * OK: +40
 * Miss: +0
+* Easy override: validated hits MUST never be scored as `Miss`; when `delta_ms > 250`, rating MUST be clamped to `OK` (+40), including hits validated while in `WaitingForHit`.
 
 HUD/runtime performance constraint:
 
@@ -1149,6 +1150,7 @@ Speed control requirements:
 * avg_seconds_per_note: 2.0
 * gating_timeout_seconds: null (infinite WaitingForHit)
 * pitch_tolerance: ±3
+* scoring override: once a required note is validated, it MUST be counted as correct (minimum `OK`) even if very late in `WaitingForHit` or at the edge of the early window (`0.5s` pre-hit grace)
 
 ## Medium
 
