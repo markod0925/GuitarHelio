@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
 import type { PitchFrame } from '../types/models';
-import { AubioPitchDetectorService } from '../audio/aubioPitchDetector';
+import { TuneoPitchDetectorService } from '../audio/tuneoPitchDetector';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import { createMicNode } from '../audio/micInput';
 import { loadPitchCalibrationProfile } from '../audio/pitchCalibration';
@@ -38,42 +38,44 @@ export class PracticeScene extends Phaser.Scene {
   private audioCtx?: AudioContext;
   private micStream?: MediaStream;
   private customDetector?: PitchDetectorService;
-  private aubioDetector?: AubioPitchDetectorService;
+  private tuneoDetector?: TuneoPitchDetectorService;
   private offCustomPitch?: () => void;
-  private offAubioPitch?: () => void;
-  private aubioAvailable = false;
+  private offTuneoPitch?: () => void;
+  private tuneoAvailable = false;
   private active = false;
 
   private readonly cellsByMidi = new Map<number, FretCell[]>();
   private customHighlightedMidi: number | null = null;
-  private aubioHighlightedMidi: number | null = null;
+  private tuneoHighlightedMidi: number | null = null;
   private readonly customState: DetectorState = createDetectorState();
-  private readonly aubioState: DetectorState = createDetectorState();
+  private readonly tuneoState: DetectorState = createDetectorState();
   private readonly customPitchFilter = new PitchStabilityFilter({
     minConfidence: MIN_CONFIDENCE,
     smoothingAlpha: 0.24,
     maxOutlierDeltaSemitones: 2.6,
     switchHysteresisSemitones: 0.72,
     switchConfirmFrames: 4,
-    maxMissedFrames: 4,
+    maxMissedFrames: 6,
     emitLockedMidiOnMissedFrames: true
   });
-  private readonly aubioPitchFilter = new PitchStabilityFilter({
-    minConfidence: MIN_CONFIDENCE,
-    smoothingAlpha: 0.16,
-    maxOutlierDeltaSemitones: 3.2,
-    switchHysteresisSemitones: 0.64,
-    switchConfirmFrames: 3,
-    maxMissedFrames: 4,
+  private readonly tuneoPitchFilter = new PitchStabilityFilter({
+    minConfidence: 0.5,
+    smoothingAlpha: 0.24,
+    maxOutlierDeltaSemitones: 2.4,
+    switchHysteresisSemitones: 0.76,
+    switchConfirmFrames: 4,
+    maxMissedFrames: 5,
     emitLockedMidiOnMissedFrames: true
   });
 
   private toggleButton?: RoundedBox;
   private toggleLabel?: Phaser.GameObjects.Text;
+  private benchmarkButton?: RoundedBox;
+  private benchmarkLabel?: Phaser.GameObjects.Text;
   private customDetectedLabel?: Phaser.GameObjects.Text;
-  private aubioDetectedLabel?: Phaser.GameObjects.Text;
+  private tuneoDetectedLabel?: Phaser.GameObjects.Text;
   private customDetailsLabel?: Phaser.GameObjects.Text;
-  private aubioDetailsLabel?: Phaser.GameObjects.Text;
+  private tuneoDetailsLabel?: Phaser.GameObjects.Text;
   private compareLabel?: Phaser.GameObjects.Text;
   private statusLabel?: Phaser.GameObjects.Text;
   private micStatusMessage = 'Mic inactive.';
@@ -103,7 +105,7 @@ export class PracticeScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.cellsByMidi.clear();
     this.customHighlightedMidi = null;
-    this.aubioHighlightedMidi = null;
+    this.tuneoHighlightedMidi = null;
     this.drawBackdrop(width, height);
     this.drawFretboard(width, height);
 
@@ -117,7 +119,7 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, title.y + 28, 'A/B live compare: A=custom, B=aubio(yinfft).', {
+      .text(width / 2, title.y + 28, 'A/B live compare: A=custom, B=tuneo(yin).', {
         color: '#93c5fd',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(13, Math.floor(width * 0.013))}px`
@@ -146,7 +148,20 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    this.toggleButton = new RoundedBox(this, 120, title.y + 4, 160, 44, 0x2563eb, 1)
+    this.benchmarkButton = new RoundedBox(this, 120, title.y + 4, 160, 44, 0x0f766e, 1)
+      .setStrokeStyle(2, 0x5eead4, 0.86)
+      .setInteractive({ useHandCursor: true });
+    this.benchmarkLabel = this.add
+      .text(this.benchmarkButton.x, this.benchmarkButton.y, 'Pitch Benchmark', {
+        color: '#ecfeff',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, Math.floor(width * 0.0128))}px`
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    this.toggleButton = new RoundedBox(this, 296, title.y + 4, 160, 44, 0x2563eb, 1)
       .setStrokeStyle(2, 0x93c5fd, 0.86)
       .setInteractive({ useHandCursor: true });
     this.toggleLabel = this.add
@@ -159,44 +174,45 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
+    const debugOverlayX = width - Math.max(20, Math.floor(width * 0.02));
     this.customDetectedLabel = this.add
-      .text(width / 2, height * 0.24, 'A Custom: --', {
+      .text(debugOverlayX, height * 0.24, 'A Custom: --', {
         color: '#86efac',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(1, 0.5);
     this.customDetailsLabel = this.add
-      .text(width / 2, height * 0.27, 'A raw: --  •  A conf: --', {
+      .text(debugOverlayX, height * 0.27, 'A raw: --  •  A conf: --', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
       })
-      .setOrigin(0.5);
-    this.aubioDetectedLabel = this.add
-      .text(width / 2, height * 0.3, 'B Aubio: --', {
+      .setOrigin(1, 0.5);
+    this.tuneoDetectedLabel = this.add
+      .text(debugOverlayX, height * 0.3, 'B Tuneo: --', {
         color: '#fbbf24',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
       })
-      .setOrigin(0.5);
-    this.aubioDetailsLabel = this.add
-      .text(width / 2, height * 0.33, 'B raw: --  •  B conf: --', {
+      .setOrigin(1, 0.5);
+    this.tuneoDetailsLabel = this.add
+      .text(debugOverlayX, height * 0.33, 'B raw: --  •  B conf: --', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(1, 0.5);
     this.compareLabel = this.add
-      .text(width / 2, height * 0.36, 'A/B delta: --', {
+      .text(debugOverlayX, height * 0.36, 'A/B delta: --', {
         color: '#cbd5e1',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
         fontSize: `${Math.max(13, Math.floor(width * 0.014))}px`
       })
-      .setOrigin(0.5);
+      .setOrigin(1, 0.5);
     this.statusLabel = this.add
       .text(width / 2, height - 26, 'Mic inactive.', {
         color: '#a5b4fc',
@@ -220,6 +236,12 @@ export class PracticeScene extends Phaser.Scene {
     };
     this.toggleButton.on('pointerdown', onToggleMic);
     this.toggleLabel.on('pointerdown', onToggleMic);
+
+    const onBenchmark = (): void => {
+      void this.openBenchmarkScene();
+    };
+    this.benchmarkButton.on('pointerdown', onBenchmark);
+    this.benchmarkLabel.on('pointerdown', onBenchmark);
 
     const onEsc = (): void => {
       void this.leaveToStart();
@@ -421,6 +443,17 @@ export class PracticeScene extends Phaser.Scene {
     }
   }
 
+  private async openBenchmarkScene(): Promise<void> {
+    await this.stopMetronome(true);
+    await this.stopListening();
+    await disableAndroidKeepScreenOn();
+    if (this.scene.isActive()) {
+      this.scene.start('PitchBenchmarkScene', {
+        audioInputMode: this.audioInputMode
+      });
+    }
+  }
+
   private bindNativeBackHandler(): void {
     if (!Capacitor.isNativePlatform()) return;
     if (this.nativeBackButtonListener) {
@@ -472,22 +505,25 @@ export class PracticeScene extends Phaser.Scene {
       this.offCustomPitch = customDetector.onPitch((frame) => this.handlePitchFrame(this.customState, frame, true));
       await customDetector.start(micSource);
 
-      this.aubioAvailable = false;
+      this.tuneoAvailable = false;
       try {
-        const aubioDetector = new AubioPitchDetectorService(ctx, {
-          method: 'yinfft',
+        const tuneoDetector = new TuneoPitchDetectorService(ctx, {
+          windowSize: 9000,
+          buffersPerSecond: 15,
+          minFrequencyHz: 30,
+          maxFrequencyHz: 500,
           calibrationProfile: calibrationProfile ?? undefined
         });
-        await aubioDetector.init();
-        this.aubioDetector = aubioDetector;
-        this.offAubioPitch = aubioDetector.onPitch((frame) => this.handlePitchFrame(this.aubioState, frame, false));
-        aubioDetector.start(micSource);
-        this.aubioAvailable = true;
+        await tuneoDetector.init();
+        this.tuneoDetector = tuneoDetector;
+        this.offTuneoPitch = tuneoDetector.onPitch((frame) => this.handlePitchFrame(this.tuneoState, frame, false));
+        tuneoDetector.start(micSource);
+        this.tuneoAvailable = true;
       } catch (error) {
-        console.warn('Aubio detector unavailable in practice scene', error);
-        this.aubioDetector = undefined;
-        this.offAubioPitch = undefined;
-        this.aubioAvailable = false;
+        console.warn('Tuneo detector unavailable in practice scene', error);
+        this.tuneoDetector = undefined;
+        this.offTuneoPitch = undefined;
+        this.tuneoAvailable = false;
       }
 
       this.resetPitchState();
@@ -501,9 +537,9 @@ export class PracticeScene extends Phaser.Scene {
           : ' • legacy fallback'
         : '';
       this.micStatusMessage =
-        this.aubioAvailable
+        this.tuneoAvailable
           ? `Mic active • A/B compare running • ${calibrationBadge}${fallbackBadge}`
-          : `Mic active • A only (aubio unavailable) • ${calibrationBadge}${fallbackBadge}`;
+          : `Mic active • A only (tuneo unavailable) • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
     } catch (error) {
       console.error('Failed to start practice microphone', error);
@@ -520,11 +556,11 @@ export class PracticeScene extends Phaser.Scene {
     this.offCustomPitch?.();
     this.offCustomPitch = undefined;
 
-    this.aubioDetector?.stop();
-    this.aubioDetector = undefined;
-    this.offAubioPitch?.();
-    this.offAubioPitch = undefined;
-    this.aubioAvailable = false;
+    this.tuneoDetector?.stop();
+    this.tuneoDetector = undefined;
+    this.offTuneoPitch?.();
+    this.offTuneoPitch = undefined;
+    this.tuneoAvailable = false;
 
     releaseMicStream(this.micStream);
     this.micStream = undefined;
@@ -549,7 +585,7 @@ export class PracticeScene extends Phaser.Scene {
     state.confidence = frame.confidence;
     const stabilized = isCustomDetector
       ? this.customPitchFilter.update(frame)
-      : this.aubioPitchFilter.update(frame);
+      : this.tuneoPitchFilter.update(frame);
     state.lockedMidi =
       stabilized.midi_estimate !== null && Number.isFinite(stabilized.midi_estimate)
         ? Math.round(stabilized.midi_estimate)
@@ -560,19 +596,19 @@ export class PracticeScene extends Phaser.Scene {
 
   private updateCellHighlights(): void {
     const nextCustom = this.customState.lockedMidi;
-    const nextAubio = this.aubioState.lockedMidi;
-    if (this.customHighlightedMidi === nextCustom && this.aubioHighlightedMidi === nextAubio) {
+    const nextTuneo = this.tuneoState.lockedMidi;
+    if (this.customHighlightedMidi === nextCustom && this.tuneoHighlightedMidi === nextTuneo) {
       return;
     }
 
     const touched = new Set<number>();
     if (this.customHighlightedMidi !== null) touched.add(this.customHighlightedMidi);
-    if (this.aubioHighlightedMidi !== null) touched.add(this.aubioHighlightedMidi);
+    if (this.tuneoHighlightedMidi !== null) touched.add(this.tuneoHighlightedMidi);
     if (nextCustom !== null) touched.add(nextCustom);
-    if (nextAubio !== null) touched.add(nextAubio);
+    if (nextTuneo !== null) touched.add(nextTuneo);
 
     this.customHighlightedMidi = nextCustom;
-    this.aubioHighlightedMidi = nextAubio;
+    this.tuneoHighlightedMidi = nextTuneo;
 
     touched.forEach((midi) => this.applyMidiHighlightStyle(midi));
   }
@@ -582,14 +618,14 @@ export class PracticeScene extends Phaser.Scene {
     if (cells.length === 0) return;
 
     const customMatch = this.customHighlightedMidi === midi;
-    const aubioMatch = this.aubioHighlightedMidi === midi;
+    const tuneoMatch = this.tuneoHighlightedMidi === midi;
 
     let fillColor = 0x64748b;
     let fillAlpha = 0.36;
     let strokeColor = 0x475569;
     let strokeAlpha = 0.86;
 
-    if (customMatch && aubioMatch) {
+    if (customMatch && tuneoMatch) {
       fillColor = 0x84cc16;
       fillAlpha = 0.98;
       strokeColor = 0xd9f99d;
@@ -599,7 +635,7 @@ export class PracticeScene extends Phaser.Scene {
       fillAlpha = 0.94;
       strokeColor = 0xbbf7d0;
       strokeAlpha = 0.95;
-    } else if (aubioMatch) {
+    } else if (tuneoMatch) {
       fillColor = 0xf59e0b;
       fillAlpha = 0.94;
       strokeColor = 0xfef3c7;
@@ -608,7 +644,7 @@ export class PracticeScene extends Phaser.Scene {
 
     cells.forEach((cell) => {
       if (!isGameObjectAlive(cell.node)) return;
-      if (customMatch || aubioMatch) {
+      if (customMatch || tuneoMatch) {
         cell.node.setFillStyle(fillColor, fillAlpha);
         cell.node.setStrokeStyle(1, strokeColor, strokeAlpha);
         return;
@@ -620,9 +656,9 @@ export class PracticeScene extends Phaser.Scene {
 
   private resetPitchState(): void {
     this.customPitchFilter.reset();
-    this.aubioPitchFilter.reset();
+    this.tuneoPitchFilter.reset();
     resetDetectorState(this.customState);
-    resetDetectorState(this.aubioState);
+    resetDetectorState(this.tuneoState);
     this.updateCellHighlights();
     this.updateDetectorLabels();
   }
@@ -630,49 +666,49 @@ export class PracticeScene extends Phaser.Scene {
   private updateDetectorLabels(): void {
     if (this.isShuttingDown) return;
     const customDetectedLabel = this.customDetectedLabel;
-    const aubioDetectedLabel = this.aubioDetectedLabel;
+    const tuneoDetectedLabel = this.tuneoDetectedLabel;
     const customDetailsLabel = this.customDetailsLabel;
-    const aubioDetailsLabel = this.aubioDetailsLabel;
+    const tuneoDetailsLabel = this.tuneoDetailsLabel;
     const compareLabel = this.compareLabel;
     if (
       !isGameObjectAlive(customDetectedLabel) ||
-      !isGameObjectAlive(aubioDetectedLabel) ||
+      !isGameObjectAlive(tuneoDetectedLabel) ||
       !isGameObjectAlive(customDetailsLabel) ||
-      !isGameObjectAlive(aubioDetailsLabel) ||
+      !isGameObjectAlive(tuneoDetailsLabel) ||
       !isGameObjectAlive(compareLabel)
     ) {
       return;
     }
 
     const customStable = formatStableMidi(this.customState.lockedMidi);
-    const aubioStable = this.aubioAvailable
-      ? formatStableMidi(this.aubioState.lockedMidi)
+    const tuneoStable = this.tuneoAvailable
+      ? formatStableMidi(this.tuneoState.lockedMidi)
       : 'unavailable';
 
     customDetectedLabel.setText(`A Custom: ${customStable}`);
-    aubioDetectedLabel.setText(`B Aubio: ${aubioStable}`);
+    tuneoDetectedLabel.setText(`B Tuneo: ${tuneoStable}`);
     customDetailsLabel.setText(
       `A raw: ${formatRawMidi(this.customState.rawMidi)}  •  A conf: ${formatConfidence(this.customState.confidence)}`
     );
-    aubioDetailsLabel.setText(
-      `B raw: ${formatRawMidi(this.aubioState.rawMidi)}  •  B conf: ${formatConfidence(this.aubioState.confidence)}`
+    tuneoDetailsLabel.setText(
+      `B raw: ${formatRawMidi(this.tuneoState.rawMidi)}  •  B conf: ${formatConfidence(this.tuneoState.confidence)}`
     );
 
-    if (!this.aubioAvailable) {
-      compareLabel.setText('A/B delta: aubio unavailable');
+    if (!this.tuneoAvailable) {
+      compareLabel.setText('A/B delta: tuneo unavailable');
       compareLabel.setColor('#fca5a5');
       return;
     }
 
     const customMidi = this.customState.lockedMidi;
-    const aubioMidi = this.aubioState.lockedMidi;
-    if (customMidi === null || aubioMidi === null) {
+    const tuneoMidi = this.tuneoState.lockedMidi;
+    if (customMidi === null || tuneoMidi === null) {
       compareLabel.setText('A/B delta: waiting...');
       compareLabel.setColor('#cbd5e1');
       return;
     }
 
-    const delta = customMidi - aubioMidi;
+    const delta = customMidi - tuneoMidi;
     if (delta === 0) {
       compareLabel.setText('A/B delta: 0 semitones (match)');
       compareLabel.setColor('#86efac');

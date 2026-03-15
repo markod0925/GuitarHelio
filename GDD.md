@@ -80,15 +80,15 @@ Like Yousician:
 - Vite
 - WebAudio API
 - JZZ + jzz-synth-tiny (MIDI synth playback engine)
-- WASM pitch detection
+- Tuneo-style YIN pitch detection pipeline (TypeScript)
 
 ## 2.3 Pitch detection library (MANDATORY)
 
 **Option A (selected):**
 
-- aubiojs (WASM)
+- Tuneo YIN detector pipeline (ported from `DonBraulio/tuneo`)
 
-The system MUST use a JS/WASM pitch detector and MUST NOT rely on naive autocorrelation for MVP.
+The system MUST use the Tuneo-style YIN pipeline and MUST NOT rely on naive autocorrelation as the primary detector path.
 
 ---
 
@@ -443,7 +443,7 @@ When there is no active target left (`active_target_index` past the last target)
 
 ---
 
-# 9. Pitch Detection (aubiojs)
+# 9. Pitch Detection (Tuneo YIN pipeline)
 
 ## 9.1 Input
 
@@ -495,10 +495,22 @@ corr = cross / sqrt(normA * normB)
 and confidence mapping:
 
 ```
-if rms < 0.0035 -> confidence = 0, midi_estimate = null
-else if bestCorrelation < 0.58 -> confidence = clamp01(bestCorrelation), midi_estimate = null
+base_energy_threshold = 0.0032
+base_corr_threshold = 0.58
+
+if decay_grace_active:
+  energy_threshold = base_energy_threshold * 0.55
+  corr_threshold = 0.52
+else:
+  energy_threshold = base_energy_threshold
+  corr_threshold = base_corr_threshold
+
+if rms < energy_threshold -> confidence = 0, midi_estimate = null
+else if bestCorrelation < corr_threshold -> confidence = clamp01(bestCorrelation), midi_estimate = null
 else -> confidence = clamp01((bestCorrelation - 0.45) / 0.5)
 ```
+
+`decay_grace_active` MUST stay enabled for up to 8 analysis frames after a valid pitch frame to reduce note dropouts during sustain/energy decay.
 
 where:
 
@@ -860,7 +872,7 @@ Inside this tuner menu, show a tuner panel that:
 
 * lets the user select which string to tune (1–6)
 * starts/stops microphone listening
-* shows a tuning slider/needle that moves based on cents distance from the target string pitch
+* shows a tuning slider/needle that moves based on cents distance from the target string pitch, with a visible range of `±200c` (2 semitones)
 * shows a centered green target band representing the in-tune zone `-5c .. +5c`
 
 The tuner must update in real time while active.
@@ -880,7 +892,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene), not only tuner display
 * when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
 * this summary popup MUST close on any click/tap anywhere on screen
-* while tuner is active, if current target string stays inside in-tune green band (`±5c`) for at least `2` continuous seconds:
+* while tuner is active, if current target string stays inside in-tune green band (`±5c`) for at least `0.5` continuous seconds:
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 
@@ -899,13 +911,14 @@ Practice scene requirements:
 * all note positions MUST be gray by default
 * while microphone detection is active, the scene MUST run a direct A/B compare between:
   - detector `A`: current project pitch detector (`PitchDetectorService`)
-  - detector `B`: aubiojs pitch detector
+  - detector `B`: Tuneo YIN detector (`TuneoPitchDetectorService`)
 * for each detected pitch, the scene MUST highlight all equivalent fretboard positions (same MIDI across strings/frets)
 * highlighted positions MUST be color-coded in real time:
   - `A only` -> green
   - `B only` -> amber/orange
   - `A + B` (same detected pitch) -> lime/combined highlight
 * include explicit controls for `Start Mic` / `Stop Mic`
+* include a top-left `Pitch Benchmark` button that opens a dedicated benchmark scene
 * include a metronome with:
   - a BPM scrollbar/slider control
   - an explicit `Start Metronome` / `Stop Metronome` button
@@ -914,6 +927,36 @@ Practice scene requirements:
 * on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
 * the scene SHOULD show per-detector stable note output and A/B semitone delta
 * both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
+
+### 11.11.2 Pitch benchmark scene
+
+The practice flow MUST expose a dedicated `PitchBenchmarkScene` for structured detector benchmarking.
+
+Pitch benchmark scene requirements:
+
+* it MUST open from `PracticeScene` via a top-left `Pitch Benchmark` button
+* it MUST guide the user through one note at a time (`Run Current Note` workflow), asking the user to sustain only the selected note during capture
+* each selected note MUST be evaluated by applying one detector at a time (sequential detector runs on the same mic input stream)
+* detector set MUST include:
+  - project custom detector (`PitchDetectorService`)
+  - Tuneo YIN detector (`TuneoPitchDetectorService`)
+* benchmark note set MUST include 10 notes:
+  - the 6 standard open-string targets (`E2`, `A2`, `D3`, `G3`, `B3`, `E4`)
+  - 4 additional low-frequency notes (`F2`, `G2`, `A#2`, `C3`)
+* current target-note title MUST include both note name and suggested fingering position using `Cx/Fy` notation (`Cx` = guitar string number, `Fy` = fret number)
+* per detector and per note, the scene MUST compute and display at least:
+  - detection rate
+  - in-tune rate (within a fixed cents band)
+  - median absolute cents error
+  - cents jitter
+  - octave-error rate
+* after all notes are completed, the scene MUST show a ranked summary table across detectors using aggregate score and metrics
+* final benchmark runs MUST persist locally in browser/app local storage under key `gh_pitch_benchmark_runs_v1`
+* saved benchmark entries MUST include timestamp, audio input mode, detector list, tested notes, per-note statistics, and final summary rows
+* the scene MUST provide an `Export JSON` action that exports saved benchmark runs as a downloadable `.json` file (with clipboard fallback when runtime download is unavailable)
+* on native Android runtime, `Export JSON` MUST write a physical file under `Documents/GuitarHelio/Benchmarks/` (fallback to other app-writable directories only if `Documents` is unavailable)
+* benchmark scene MUST provide `Back to Practice` navigation and, on Android native runtime, hardware/gesture back MUST trigger that same return path
+* benchmark scene SHOULD keep screen awake while active and restore normal timeout behavior on exit
 
 ---
 
@@ -937,6 +980,7 @@ Start-screen layout constraints:
 * in landscape/mobile layouts, right-side controls (`Difficulty`, `Import`, `Settings`, `Tuner`, `Practice`) and `Start Session` CTA MUST keep non-overlapping spacing
 * in all runtimes (server/web, Windows, Android), right-side action buttons (`Import`, `Settings`, `Tuner`, `Practice`) MUST use equal vertical spacing between consecutive buttons
 * in all runtimes (server/web, Windows, Android), right-side action buttons (`Import`, `Settings`, `Tuner`, `Practice`) MUST use a compact height so the top-right control zone stays clear of transient system status bar overlays
+* the start-screen title logo source MUST default to `public/ui/logo-guitarhelio-neon_2.png` for local/server builds, while GitHub CI release builds MUST switch to `public/ui/logo-guitarhelio-neon.png`
 
 ### 11.12.1 App icon and startup splash assets
 

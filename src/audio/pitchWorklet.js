@@ -4,7 +4,11 @@ const BUFFER_SIZE = 2048;
 const HOP_SIZE = 1024;
 const MIN_FREQUENCY = 65;
 const MAX_FREQUENCY = 1200;
-const ENERGY_THRESHOLD = 0.0035;
+const ENERGY_THRESHOLD = 0.0032;
+const CORRELATION_THRESHOLD = 0.58;
+const DECAY_GRACE_FRAMES = 8;
+const DECAY_ENERGY_FACTOR = 0.55;
+const DECAY_CORRELATION_THRESHOLD = 0.52;
 const MAX_DELAY_SAMPLES = 720;
 const NLMS_TAPS = 64;
 const NLMS_MU = 0.08;
@@ -26,6 +30,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.minLag = Math.max(1, Math.floor(sampleRate / MAX_FREQUENCY));
     this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / MIN_FREQUENCY));
     this.prevMicRms = 0;
+    this.decayGraceFramesRemaining = 0;
     this.audioInputMode = 'speaker';
     this.dspWasmBytes = options?.processorOptions?.dspWasmBytes ?? null;
     this.dspCore = null;
@@ -130,7 +135,16 @@ class PitchProcessor extends AudioWorkletProcessor {
     }
     this.prevMicRms = suppression.micRms;
 
-    const residualPitch = detectPitch(this.residualFrame, sampleRate, this.minLag, this.maxLag);
+    const decayActive = this.decayGraceFramesRemaining > 0;
+    const residualPitch = detectPitch(this.residualFrame, sampleRate, this.minLag, this.maxLag, {
+      energyThreshold: decayActive ? ENERGY_THRESHOLD * DECAY_ENERGY_FACTOR : ENERGY_THRESHOLD,
+      correlationThreshold: decayActive ? DECAY_CORRELATION_THRESHOLD : CORRELATION_THRESHOLD
+    });
+    if (residualPitch.frequencyHz > 0) {
+      this.decayGraceFramesRemaining = DECAY_GRACE_FRAMES;
+    } else if (this.decayGraceFramesRemaining > 0) {
+      this.decayGraceFramesRemaining -= 1;
+    }
     const referencePitch = detectPitch(this.alignedReferenceFrame, sampleRate, this.minLag, this.maxLag);
     const residualMidiEstimate = residualPitch.frequencyHz > 0 ? 69 + 12 * Math.log2(residualPitch.frequencyHz / 440) : null;
     const referenceMidiEstimate = referencePitch.frequencyHz > 0 ? 69 + 12 * Math.log2(referencePitch.frequencyHz / 440) : null;
@@ -318,7 +332,13 @@ function computeContaminationScore(referenceCorrelation, energyRatioDb, onsetStr
   return clamp01(corrScore * 0.65 + bleedScore * 0.35 - onsetRelief * 0.25);
 }
 
-function detectPitch(samples, sampleRateHz, minLag, maxLag) {
+function detectPitch(samples, sampleRateHz, minLag, maxLag, options = {}) {
+  const energyThreshold = Number.isFinite(options.energyThreshold)
+    ? Math.max(0, options.energyThreshold)
+    : ENERGY_THRESHOLD;
+  const correlationThreshold = Number.isFinite(options.correlationThreshold)
+    ? clamp01(options.correlationThreshold)
+    : CORRELATION_THRESHOLD;
   const count = samples.length;
   let mean = 0;
   for (let i = 0; i < count; i += 1) {
@@ -332,7 +352,7 @@ function detectPitch(samples, sampleRateHz, minLag, maxLag) {
     energy += centered * centered;
   }
   const rms = Math.sqrt(energy / count);
-  if (!Number.isFinite(rms) || rms < ENERGY_THRESHOLD) {
+  if (!Number.isFinite(rms) || rms < energyThreshold) {
     return { frequencyHz: 0, confidence: 0 };
   }
 
@@ -360,7 +380,7 @@ function detectPitch(samples, sampleRateHz, minLag, maxLag) {
     }
   }
 
-  if (bestLag <= 0 || bestCorrelation < 0.58) {
+  if (bestLag <= 0 || bestCorrelation < correlationThreshold) {
     return { frequencyHz: 0, confidence: clamp01(bestCorrelation) };
   }
 

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
 import { BootScene } from '../ui/BootScene';
 import { PlayScene } from '../ui/PlayScene';
+import { PitchBenchmarkScene } from '../ui/PitchBenchmarkScene';
 import { PracticeScene } from '../ui/PracticeScene';
 import { SongSelectScene } from '../ui/SongSelectScene';
 import '@fontsource/montserrat/400.css';
@@ -87,7 +88,7 @@ const game = new Phaser.Game({
     mode: IS_NATIVE_RUNTIME ? Phaser.Scale.RESIZE : Phaser.Scale.FIT,
     autoCenter: IS_NATIVE_RUNTIME ? undefined : Phaser.Scale.CENTER_BOTH
   },
-  scene: [BootScene, SongSelectScene, PlayScene, PracticeScene]
+  scene: [BootScene, SongSelectScene, PlayScene, PracticeScene, PitchBenchmarkScene]
 });
 
 const rendererName = game.renderer.type === Phaser.WEBGL ? 'WEBGL' : 'CANVAS';

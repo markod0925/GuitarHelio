@@ -8,6 +8,8 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      VITE_RELEASE_LOGO: classic
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +57,8 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    env:
+      VITE_RELEASE_LOGO: classic
 
     steps:
       - uses: actions/checkout@v4

@@ -18,6 +18,7 @@ import { RoundedBox } from '../../RoundedBox';
 import {
   TUNER_AUTO_ADVANCE_HOLD_SECONDS,
   TUNER_IN_TUNE_CENTS,
+  TUNER_NEEDLE_RANGE_CENTS,
   TUNER_SEQUENCE
 } from '../constants';
 import type { ToggleOption, TunerPanel } from '../types';
@@ -301,7 +302,7 @@ export class SongTunerController {
     const meterCenterX = panelX;
     const meterY = panelY + panelHeight * 0.08;
     const meterHalfWidth = panelWidth * 0.33;
-    const meterGreenBandHalfWidth = (5 / 50) * meterHalfWidth;
+    const meterGreenBandHalfWidth = (TUNER_IN_TUNE_CENTS / TUNER_NEEDLE_RANGE_CENTS) * meterHalfWidth;
 
     const meterBase = new RoundedBox(this.scene, meterCenterX, meterY, meterHalfWidth * 2, 12, 0x1f2937, 0.95)
       .setStrokeStyle(1, 0x60a5fa, 0.35);
@@ -493,8 +494,8 @@ export class SongTunerController {
       return;
     }
 
-    const clamped = Phaser.Math.Clamp(cents, -50, 50);
-    needle.x = this.panel.meterCenterX + (clamped / 50) * this.panel.meterHalfWidth;
+    const clamped = Phaser.Math.Clamp(cents, -TUNER_NEEDLE_RANGE_CENTS, TUNER_NEEDLE_RANGE_CENTS);
+    needle.x = this.panel.meterCenterX + (clamped / TUNER_NEEDLE_RANGE_CENTS) * this.panel.meterHalfWidth;
 
     const abs = Math.abs(clamped);
     const color = abs <= TUNER_IN_TUNE_CENTS ? 0x22c55e : abs <= 15 ? 0xf59e0b : 0xef4444;

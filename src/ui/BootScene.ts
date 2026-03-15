@@ -6,10 +6,15 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    const isGitHubReleaseBuild = import.meta.env.VITE_RELEASE_LOGO === 'classic';
+    const logoPath = isGitHubReleaseBuild
+      ? '/ui/logo-guitarhelio-neon.png'
+      : '/ui/logo-guitarhelio-neon_2.png';
+
     this.load.text('songManifest', '/songs/manifest.json');
     this.load.image('handReminder', '/ui/hand-reminder.png');
     this.load.image('defaultSongCover', '/ui/song-cover-placeholder-neon.png');
-    this.load.image('logoGuitarHelio', '/ui/logo-guitarhelio-neon.png');
+    this.load.image('logoGuitarHelio', logoPath);
     this.load.image('uiSettingsIcon', '/ui/icon-settings-neon.png');
     this.load.image('uiTunerIcon', '/ui/icon-tuner-neon.png');
     this.load.image('uiPlayIcon', '/ui/icon-play-neon.png');

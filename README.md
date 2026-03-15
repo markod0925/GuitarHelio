@@ -29,7 +29,14 @@ npm run build:windows  # build Windows installer (.exe) + portable package
 npm run build:windows:clean # force clean locked win-unpacked folder, then build Windows artifacts
 npm run test           # unit tests (Vitest)
 npm run lint           # TypeScript typecheck without emit
+npm run pitch:offline:manifest # generate offline benchmark session manifest
+npm run pitch:offline:infer-manifest # infer manifest timings directly from a WAV take
+npm run pitch:offline:bench # run offline pitch benchmark (pass --manifest/--wav/--out args)
 ```
+
+## Offline Pitch Benchmark
+
+- Workflow and scripts are documented in `tools/pitch-offline-bench/README.md`.
 
 ## Packages and References
 
@@ -43,7 +50,6 @@ Direct npm packages used by this repository.
 | `@capacitor/filesystem` | Cross-platform file persistence APIs | https://capacitorjs.com/docs/apis/filesystem |
 | `@fontsource/montserrat` | Embedded Montserrat font files | https://fontsource.org/fonts/montserrat |
 | `@tonejs/midi` | MIDI parsing/writing utilities | https://github.com/Tonejs/Midi |
-| `aubiojs` | WASM pitch detection backend | https://github.com/qiuxiang/aubiojs |
 | `audio-decode` | Browser/Node audio decode helper | https://github.com/audiojs/audio-decode |
 | `jzz` | MIDI I/O and routing toolkit | https://jazz-soft.net/doc/JZZ/ |
 | `jzz-synth-tiny` | Tiny synth used for MIDI playback | https://github.com/jazz-soft/JZZ-synth-Tiny |

@@ -179,7 +179,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       maxOutlierDeltaSemitones: 2.6,
       switchHysteresisSemitones: 0.72,
       switchConfirmFrames: 4,
-      maxMissedFrames: 4,
+      maxMissedFrames: 6,
       emitLockedMidiOnMissedFrames: true
     });
     this.gameplayPitchStabilizer = gameplayPitchStabilizer;

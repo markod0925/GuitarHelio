@@ -28,6 +28,11 @@ type WorkletStatusPayload = {
 
 type WorkletMessagePayload = WorkletPitchPayload | WorkletStatusPayload;
 let dspWasmBytesPromise: Promise<ArrayBuffer | null> | null = null;
+const FALLBACK_ENERGY_THRESHOLD = 0.0032;
+const FALLBACK_CORRELATION_THRESHOLD = 0.58;
+const FALLBACK_DECAY_GRACE_FRAMES = 8;
+const FALLBACK_DECAY_ENERGY_FACTOR = 0.55;
+const FALLBACK_DECAY_CORRELATION_THRESHOLD = 0.52;
 
 export class PitchDetectorService {
   private listeners = new Set<PitchListener>();
@@ -52,6 +57,7 @@ export class PitchDetectorService {
   private silentReferenceSource: ConstantSourceNode | null = null;
   private backendStatusResolver: (() => void) | null = null;
   private backendStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private analyserDecayGraceFrames = 0;
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
@@ -97,6 +103,7 @@ export class PitchDetectorService {
     if (!this.initialized) throw new Error('PitchDetectorService not initialized');
     this.stop();
     this.smoothedMidiEstimate = null;
+    this.analyserDecayGraceFrames = 0;
 
     const sink = this.ctx.createGain();
     sink.gain.value = 0;
@@ -239,6 +246,7 @@ export class PitchDetectorService {
     this.sink?.disconnect();
     this.sink = null;
     this.smoothedMidiEstimate = null;
+    this.analyserDecayGraceFrames = 0;
   }
 
   onPitch(listener: PitchListener): () => void {
@@ -312,7 +320,16 @@ export class PitchDetectorService {
       this.analyserRafId = null;
       if (!this.analyser || !this.analyserBuffer) return;
       this.analyser.getFloatTimeDomainData(this.analyserBuffer as any);
-      const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate);
+      const decayActive = this.analyserDecayGraceFrames > 0;
+      const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate, {
+        energyThreshold: decayActive ? FALLBACK_ENERGY_THRESHOLD * FALLBACK_DECAY_ENERGY_FACTOR : FALLBACK_ENERGY_THRESHOLD,
+        correlationThreshold: decayActive ? FALLBACK_DECAY_CORRELATION_THRESHOLD : FALLBACK_CORRELATION_THRESHOLD
+      });
+      if (estimation.midiEstimate !== null) {
+        this.analyserDecayGraceFrames = FALLBACK_DECAY_GRACE_FRAMES;
+      } else if (this.analyserDecayGraceFrames > 0) {
+        this.analyserDecayGraceFrames -= 1;
+      }
       const midi = this.normalizeMidiEstimate(estimation.midiEstimate);
       const correctedMidi =
         midi === null || !Number.isFinite(midi) ? null : applyPitchCalibration(midi, this.calibrationProfile);
@@ -461,8 +478,20 @@ export function isValidHeldHit(
 
 function estimatePitch(
   samples: ArrayLike<number>,
-  sampleRate: number
+  sampleRate: number,
+  options: {
+    energyThreshold?: number;
+    correlationThreshold?: number;
+  } = {}
 ): { midiEstimate: number | null; confidence: number } {
+  const rawEnergyThreshold = options.energyThreshold;
+  const rawCorrelationThreshold = options.correlationThreshold;
+  const energyThreshold = typeof rawEnergyThreshold === 'number' && Number.isFinite(rawEnergyThreshold)
+    ? Math.max(0, rawEnergyThreshold)
+    : FALLBACK_ENERGY_THRESHOLD;
+  const correlationThreshold = typeof rawCorrelationThreshold === 'number' && Number.isFinite(rawCorrelationThreshold)
+    ? clamp01(rawCorrelationThreshold)
+    : FALLBACK_CORRELATION_THRESHOLD;
   const minFrequency = 65;
   const maxFrequency = 1200;
   const minLag = Math.max(1, Math.floor(sampleRate / maxFrequency));
@@ -480,7 +509,7 @@ function estimatePitch(
     energy += centered * centered;
   }
   const rms = Math.sqrt(energy / samples.length);
-  if (!Number.isFinite(rms) || rms < 0.0035) {
+  if (!Number.isFinite(rms) || rms < energyThreshold) {
     return { midiEstimate: null, confidence: 0 };
   }
 
@@ -506,7 +535,7 @@ function estimatePitch(
     }
   }
 
-  if (bestLag <= 0 || bestCorrelation < 0.58) {
+  if (bestLag <= 0 || bestCorrelation < correlationThreshold) {
     return { midiEstimate: null, confidence: clamp01(bestCorrelation) };
   }
 

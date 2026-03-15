@@ -1,0 +1,134 @@
+{
+  "evaluation": {
+    "min_confidence": 0.25,
+    "in_tune_cents": 35,
+    "octave_error_min_semitones": 5.5,
+    "quality_weight": 0.8,
+    "speed_weight": 0.2
+  },
+  "candidates": [
+    {
+      "id": "tuneo_ref",
+      "label": "Tuneo reference (adaptive)",
+      "algorithm": "tuneo",
+      "params": {
+        "window_seconds": 0.2040816327,
+        "chunk_seconds": 0.0666666667,
+        "min_freq_hz": 30,
+        "max_freq_hz": 500,
+        "threshold_default": 0.15,
+        "threshold_noisy": 0.6,
+        "max_pitch_dev": 0.2,
+        "rms_gap": 1.1,
+        "adaptive": true,
+        "min_rms": 0.0008
+      }
+    },
+    {
+      "id": "tuneo_stable",
+      "label": "Tuneo stable (tighter adaptive filter)",
+      "algorithm": "tuneo",
+      "params": {
+        "window_seconds": 0.2040816327,
+        "chunk_seconds": 0.0666666667,
+        "min_freq_hz": 30,
+        "max_freq_hz": 500,
+        "threshold_default": 0.15,
+        "threshold_noisy": 0.5,
+        "max_pitch_dev": 0.15,
+        "rms_gap": 1.08,
+        "adaptive": true,
+        "min_rms": 0.0008
+      }
+    },
+    {
+      "id": "tuneo_fast",
+      "label": "Tuneo fast (smaller window, faster cadence)",
+      "algorithm": "tuneo",
+      "params": {
+        "window_seconds": 0.16,
+        "chunk_seconds": 0.05,
+        "min_freq_hz": 35,
+        "max_freq_hz": 550,
+        "threshold_default": 0.17,
+        "threshold_noisy": 0.62,
+        "max_pitch_dev": 0.22,
+        "rms_gap": 1.1,
+        "adaptive": true,
+        "min_rms": 0.001
+      }
+    },
+    {
+      "id": "tuneo_static",
+      "label": "Tuneo static range (no adaptive filter)",
+      "algorithm": "tuneo",
+      "params": {
+        "window_seconds": 0.2040816327,
+        "chunk_seconds": 0.0666666667,
+        "min_freq_hz": 30,
+        "max_freq_hz": 500,
+        "threshold_default": 0.15,
+        "threshold_noisy": 0.6,
+        "max_pitch_dev": 0.2,
+        "rms_gap": 1.1,
+        "adaptive": false,
+        "min_rms": 0.0008
+      }
+    },
+    {
+      "id": "autocorr_fast",
+      "label": "Autocorrelation baseline (fast)",
+      "algorithm": "autocorr",
+      "params": {
+        "window_seconds": 0.14,
+        "chunk_seconds": 0.04,
+        "min_freq_hz": 55,
+        "max_freq_hz": 1200,
+        "energy_threshold": 0.0025,
+        "correlation_threshold": 0.58
+      }
+    },
+    {
+      "id": "custom_zero_ref",
+      "label": "Custom detector (zero reference)",
+      "algorithm": "custom_zero_ref",
+      "params": {
+        "window_seconds": 0.0464399093,
+        "chunk_seconds": 0.0232199546,
+        "min_freq_hz": 65,
+        "max_freq_hz": 1200,
+        "energy_threshold": 0.0032,
+        "correlation_threshold": 0.58
+      }
+    },
+    {
+      "id": "custom_zero_ref_decay",
+      "label": "Custom detector (decay-aware zero reference)",
+      "algorithm": "custom_zero_ref",
+      "params": {
+        "window_seconds": 0.0464399093,
+        "chunk_seconds": 0.0232199546,
+        "min_freq_hz": 65,
+        "max_freq_hz": 1200,
+        "energy_threshold": 0.0032,
+        "correlation_threshold": 0.58,
+        "decay_grace_frames": 8,
+        "decay_energy_factor": 0.55,
+        "decay_correlation_threshold": 0.52
+      }
+    },
+    {
+      "id": "custom_zero_ref_offline_tuned",
+      "label": "Custom detector (offline tuned, long window)",
+      "algorithm": "custom_zero_ref",
+      "params": {
+        "window_seconds": 0.093,
+        "chunk_seconds": 0.0465,
+        "min_freq_hz": 65,
+        "max_freq_hz": 1200,
+        "energy_threshold": 0.002,
+        "correlation_threshold": 0.52
+      }
+    }
+  ]
+}
