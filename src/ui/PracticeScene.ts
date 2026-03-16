@@ -69,8 +69,6 @@ export class PracticeScene extends Phaser.Scene {
 
   private toggleButton?: RoundedBox;
   private toggleLabel?: Phaser.GameObjects.Text;
-  private benchmarkButton?: RoundedBox;
-  private benchmarkLabel?: Phaser.GameObjects.Text;
   private customDetectedLabel?: Phaser.GameObjects.Text;
   private tuneoDetectedLabel?: Phaser.GameObjects.Text;
   private customDetailsLabel?: Phaser.GameObjects.Text;
@@ -134,7 +132,8 @@ export class PracticeScene extends Phaser.Scene {
 
     this.createMetronomeControls(width, title.y);
 
-    const backButton = new RoundedBox(this, width - 86, title.y + 4, 140, 42, 0x1e293b, 0.96)
+    const topControlsY = title.y + 9;
+    const backButton = new RoundedBox(this, width - 86, topControlsY, 140, 42, 0x1e293b, 0.96)
       .setStrokeStyle(2, 0x64748b, 0.84)
       .setInteractive({ useHandCursor: true });
     const backLabel = this.add
@@ -147,20 +146,8 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    this.benchmarkButton = new RoundedBox(this, 120, title.y + 4, 160, 44, 0x0f766e, 1)
-      .setStrokeStyle(2, 0x5eead4, 0.86)
-      .setInteractive({ useHandCursor: true });
-    this.benchmarkLabel = this.add
-      .text(this.benchmarkButton.x, this.benchmarkButton.y, 'Pitch Benchmark', {
-        color: '#ecfeff',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(12, Math.floor(width * 0.0128))}px`
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-
-    this.toggleButton = new RoundedBox(this, 296, title.y + 4, 160, 44, 0x2563eb, 1)
+    const toggleButtonX = width - backButton.x;
+    this.toggleButton = new RoundedBox(this, toggleButtonX, topControlsY, 140, 42, 0x2563eb, 1)
       .setStrokeStyle(2, 0x93c5fd, 0.86)
       .setInteractive({ useHandCursor: true });
     this.toggleLabel = this.add
@@ -174,8 +161,9 @@ export class PracticeScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     const debugOverlayX = width - Math.max(20, Math.floor(width * 0.02));
+    const debugOverlayYOffset = -20;
     this.customDetectedLabel = this.add
-      .text(debugOverlayX, height * 0.24, 'A Custom: --', {
+      .text(debugOverlayX, height * 0.24 + debugOverlayYOffset, 'A Custom: --', {
         color: '#86efac',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -183,14 +171,14 @@ export class PracticeScene extends Phaser.Scene {
       })
       .setOrigin(1, 0.5);
     this.customDetailsLabel = this.add
-      .text(debugOverlayX, height * 0.27, 'A raw: --  •  A conf: --', {
+      .text(debugOverlayX, height * 0.27 + debugOverlayYOffset, 'A raw: --  •  A conf: --', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
       })
       .setOrigin(1, 0.5);
     this.tuneoDetectedLabel = this.add
-      .text(debugOverlayX, height * 0.3, 'B AC-14 (Rust): --', {
+      .text(debugOverlayX, height * 0.3 + debugOverlayYOffset, 'B AC-14 (Rust): --', {
         color: '#fbbf24',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -198,14 +186,14 @@ export class PracticeScene extends Phaser.Scene {
       })
       .setOrigin(1, 0.5);
     this.tuneoDetailsLabel = this.add
-      .text(debugOverlayX, height * 0.33, 'B raw: --  •  B conf: --', {
+      .text(debugOverlayX, height * 0.33 + debugOverlayYOffset, 'B raw: --  •  B conf: --', {
         color: '#94a3b8',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
       })
       .setOrigin(1, 0.5);
     this.compareLabel = this.add
-      .text(debugOverlayX, height * 0.36, 'A/B delta: --', {
+      .text(debugOverlayX, height * 0.36 + debugOverlayYOffset, 'A/B delta: --', {
         color: '#cbd5e1',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -235,12 +223,6 @@ export class PracticeScene extends Phaser.Scene {
     };
     this.toggleButton.on('pointerdown', onToggleMic);
     this.toggleLabel.on('pointerdown', onToggleMic);
-
-    const onBenchmark = (): void => {
-      void this.openBenchmarkScene();
-    };
-    this.benchmarkButton.on('pointerdown', onBenchmark);
-    this.benchmarkLabel.on('pointerdown', onBenchmark);
 
     const onEsc = (): void => {
       void this.leaveToStart();
@@ -329,7 +311,7 @@ export class PracticeScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x93c5fd, 0.86)
       .setInteractive({ useHandCursor: true });
     this.metronomeButtonLabel = this.add
-      .text(this.metronomeButton.x, this.metronomeButton.y, 'Avvio Metronomo', {
+      .text(this.metronomeButton.x, this.metronomeButton.y, 'Start Metronome', {
         color: '#eff6ff',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -439,17 +421,6 @@ export class PracticeScene extends Phaser.Scene {
     await disableAndroidKeepScreenOn();
     if (this.scene.isActive()) {
       this.scene.start('SongSelectScene');
-    }
-  }
-
-  private async openBenchmarkScene(): Promise<void> {
-    await this.stopMetronome(true);
-    await this.stopListening();
-    await disableAndroidKeepScreenOn();
-    if (this.scene.isActive()) {
-      this.scene.start('PitchBenchmarkScene', {
-        audioInputMode: this.audioInputMode
-      });
     }
   }
 
@@ -766,7 +737,7 @@ export class PracticeScene extends Phaser.Scene {
     if (!isGameObjectAlive(metronomeButton) || !isGameObjectAlive(metronomeButtonLabel)) return;
     metronomeButton.setFillStyle(this.metronomeRunning ? 0x7f1d1d : 0x2563eb, 1);
     metronomeButton.setStrokeStyle(2, this.metronomeRunning ? 0xfca5a5 : 0x93c5fd, 0.86);
-    metronomeButtonLabel.setText(this.metronomeRunning ? 'Stop Metronomo' : 'Avvio Metronomo');
+    metronomeButtonLabel.setText(this.metronomeRunning ? 'Stop Metronome' : 'Start Metronome');
     metronomeButtonLabel.setColor(this.metronomeRunning ? '#ffe4e6' : '#eff6ff');
   }
 

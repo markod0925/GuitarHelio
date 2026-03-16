@@ -918,7 +918,6 @@ Practice scene requirements:
   - `B only` -> amber/orange
   - `A + B` (same detected pitch) -> lime/combined highlight
 * include explicit controls for `Start Mic` / `Stop Mic`
-* include a top-left `Pitch Benchmark` button that opens a dedicated benchmark scene
 * include a metronome with:
   - a BPM scrollbar/slider control
   - an explicit `Start Metronome` / `Stop Metronome` button
@@ -927,36 +926,6 @@ Practice scene requirements:
 * on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
 * the scene SHOULD show per-detector stable note output and A/B semitone delta
 * both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
-
-### 11.11.2 Pitch benchmark scene
-
-The practice flow MUST expose a dedicated `PitchBenchmarkScene` for structured detector benchmarking.
-
-Pitch benchmark scene requirements:
-
-* it MUST open from `PracticeScene` via a top-left `Pitch Benchmark` button
-* it MUST guide the user through one note at a time (`Run Current Note` workflow), asking the user to sustain only the selected note during capture
-* each selected note MUST be evaluated by applying one detector at a time (sequential detector runs on the same mic input stream)
-* detector set MUST include:
-  - project custom detector (`PitchDetectorService`)
-  - Tuneo YIN detector (`TuneoPitchDetectorService`)
-* benchmark note set MUST include 10 notes:
-  - the 6 standard open-string targets (`E2`, `A2`, `D3`, `G3`, `B3`, `E4`)
-  - 4 additional low-frequency notes (`F2`, `G2`, `A#2`, `C3`)
-* current target-note title MUST include both note name and suggested fingering position using `Cx/Fy` notation (`Cx` = guitar string number, `Fy` = fret number)
-* per detector and per note, the scene MUST compute and display at least:
-  - detection rate
-  - in-tune rate (within a fixed cents band)
-  - median absolute cents error
-  - cents jitter
-  - octave-error rate
-* after all notes are completed, the scene MUST show a ranked summary table across detectors using aggregate score and metrics
-* final benchmark runs MUST persist locally in browser/app local storage under key `gh_pitch_benchmark_runs_v1`
-* saved benchmark entries MUST include timestamp, audio input mode, detector list, tested notes, per-note statistics, and final summary rows
-* the scene MUST provide an `Export JSON` action that exports saved benchmark runs as a downloadable `.json` file (with clipboard fallback when runtime download is unavailable)
-* on native Android runtime, `Export JSON` MUST write a physical file under `Documents/GuitarHelio/Benchmarks/` (fallback to other app-writable directories only if `Documents` is unavailable)
-* benchmark scene MUST provide `Back to Practice` navigation and, on Android native runtime, hardware/gesture back MUST trigger that same return path
-* benchmark scene SHOULD keep screen awake while active and restore normal timeout behavior on exit
 
 ---
 
