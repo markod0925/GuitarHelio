@@ -154,7 +154,8 @@ class PitchProcessor extends AudioWorkletProcessor {
               this.referenceFrame,
               this.alignedReferenceFrame,
               this.residualFrame,
-              this.prevMicRms
+              this.prevMicRms,
+              this.detectorPreset
             )
           : processEchoSuppression(
               this.micFrame,
@@ -178,6 +179,27 @@ class PitchProcessor extends AudioWorkletProcessor {
       );
     }
     this.prevMicRms = suppression.micRms;
+
+    if (this.detectorPreset === 'ac14' && suppression.referencePolicyApplied) {
+      this.decayGraceFramesRemaining = 0;
+      const midiEstimate = sanitizeMidiEstimate(suppression.midiEstimate);
+      const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
+      this.port.postMessage({
+        type: 'frame',
+        t_seconds: currentTime,
+        midi_estimate: midiEstimate,
+        confidence: midiEstimate === null ? 0 : clamp01(suppression.confidence),
+        reference_midi: referenceMidi,
+        reference_correlation: suppression.referenceCorrelation,
+        energy_ratio_db: suppression.energyRatioDb,
+        onset_strength: suppression.onsetStrength,
+        contamination_score: suppression.contaminationScore,
+        rejected_as_reference_bleed: Boolean(suppression.rejectedAsReferenceBleed),
+        reference_policy_applied: true,
+        delay_samples: suppression.delaySamples
+      });
+      return true;
+    }
 
     const hasRustPitch = Number.isFinite(suppression.pitchHz) && suppression.pitchHz > 0;
     let residualPitchHz = hasRustPitch ? suppression.pitchHz : 0;
@@ -241,7 +263,8 @@ function processEchoSuppressionWithCore(
   reference,
   alignedReference,
   residual,
-  previousMicRms
+  previousMicRms,
+  detectorPreset
 ) {
   dspCore.set_reference_block(reference);
   const output = dspCore.process_block(mic) ?? {};
@@ -251,9 +274,32 @@ function processEchoSuppressionWithCore(
   const energyRatioDb = sanitizeNumber(output.energy_ratio_db);
   const onsetStrength = sanitizeNumber(output.onset_strength);
   const contaminationScore = sanitizeNumber(output.contamination_score);
+  const midiEstimate = sanitizeNumber(output.midi_estimate);
+  const confidence = clamp01(output.confidence);
+  const referenceMidi = sanitizeNumber(output.reference_midi);
   const pitchHz = sanitizeNumber(output.pitch_hz);
   const pitchConfidence = clamp01(output.pitch_confidence);
+  const rejectedAsReferenceBleed = Boolean(output.rejected_as_reference_bleed);
+  const referencePolicyApplied = Boolean(output.reference_policy_applied);
   const residualBlock = output.residual_block;
+
+  if (detectorPreset === 'ac14' && referencePolicyApplied) {
+    return {
+      delaySamples,
+      referenceCorrelation,
+      energyRatioDb: Number.isFinite(energyRatioDb) ? energyRatioDb : 0,
+      onsetStrength: Number.isFinite(onsetStrength) ? clamp01(onsetStrength) : 0,
+      contaminationScore: Number.isFinite(contaminationScore) ? clamp01(contaminationScore) : 0,
+      micRms: previousMicRms,
+      midiEstimate,
+      confidence,
+      referenceMidi,
+      pitchHz,
+      pitchConfidence,
+      rejectedAsReferenceBleed,
+      referencePolicyApplied
+    };
+  }
 
   alignReference(reference, alignedReference, delaySamples);
   copyResidualBlock(residualBlock, residual);
@@ -276,8 +322,13 @@ function processEchoSuppressionWithCore(
     onsetStrength: safeOnsetStrength,
     contaminationScore: safeContaminationScore,
     micRms,
+    midiEstimate,
+    confidence,
+    referenceMidi,
     pitchHz,
-    pitchConfidence
+    pitchConfidence,
+    rejectedAsReferenceBleed,
+    referencePolicyApplied
   };
 }
 
@@ -482,6 +533,10 @@ function sanitizeDelay(value) {
 function sanitizeNumber(value) {
   if (!Number.isFinite(value)) return Number.NaN;
   return value;
+}
+
+function sanitizeMidiEstimate(value) {
+  return Number.isFinite(value) ? value : null;
 }
 
 function normalizeDetectorPreset(value) {

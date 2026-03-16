@@ -139,8 +139,36 @@ impl GhDspCore {
             self.mode,
         );
         self.prev_mic_rms = mic_rms;
+        let config = self.pitch_config();
 
-        let (pitch_hz, pitch_confidence) = self.detect_pitch_on_residual();
+        let (pitch_hz, pitch_confidence) = self.detect_pitch_on_residual(config);
+        let (reference_hz, _) = detect_pitch_autocorr(
+            &self.aligned_reference,
+            self.sample_rate as f32,
+            config.min_freq_hz,
+            config.max_freq_hz,
+            config.energy_threshold,
+            config.correlation_threshold,
+        );
+        let reference_midi = reference_hz.map(midi_from_hz);
+        let raw_midi = pitch_hz.map(midi_from_hz);
+        let (midi_estimate, confidence, rejected_as_reference_bleed, reference_policy_applied) =
+            if matches!(self.pitch_preset, PitchDetectorPreset::Ac14) {
+                let (policy_midi, policy_confidence, rejected) =
+                    apply_reference_contamination_policy(
+                        raw_midi,
+                        pitch_confidence,
+                        reference_midi,
+                        reference_correlation,
+                        energy_ratio_db,
+                        onset_strength,
+                        contamination_score,
+                        self.mode,
+                    );
+                (policy_midi, policy_confidence, rejected, true)
+            } else {
+                (raw_midi, clamp01(pitch_confidence), false, false)
+            };
 
         let output = js_sys::Object::new();
         set_number(&output, "delay_samples", delay_samples as f64);
@@ -154,10 +182,31 @@ impl GhDspCore {
         set_number(&output, "contamination_score", contamination_score as f64);
         set_number(
             &output,
+            "midi_estimate",
+            midi_estimate.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(&output, "confidence", confidence as f64);
+        set_number(
+            &output,
+            "reference_midi",
+            reference_midi.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(
+            &output,
             "pitch_hz",
             pitch_hz.map_or(f64::NAN, |value| value as f64),
         );
         set_number(&output, "pitch_confidence", pitch_confidence as f64);
+        set_bool(
+            &output,
+            "rejected_as_reference_bleed",
+            rejected_as_reference_bleed,
+        );
+        set_bool(
+            &output,
+            "reference_policy_applied",
+            reference_policy_applied,
+        );
         let residual = js_sys::Float32Array::from(self.residual_block.as_slice());
         set_value(&output, "residual_block", residual.as_ref());
         output.into()
@@ -175,8 +224,7 @@ impl GhDspCore {
 }
 
 impl GhDspCore {
-    fn detect_pitch_on_residual(&mut self) -> (Option<f32>, f32) {
-        let config = self.pitch_config();
+    fn detect_pitch_on_residual(&mut self, config: PitchDetectorConfig) -> (Option<f32>, f32) {
         let decay_active = self.pitch_decay_frames_remaining > 0;
         let energy_threshold = if decay_active {
             config.energy_threshold * config.decay_energy_factor
@@ -306,6 +354,75 @@ fn detect_pitch_autocorr(
     (Some(frequency_hz), confidence)
 }
 
+fn midi_from_hz(frequency_hz: f32) -> f32 {
+    69.0 + 12.0 * (frequency_hz / 440.0).log2()
+}
+
+fn apply_reference_contamination_policy(
+    midi_estimate: Option<f32>,
+    confidence: f32,
+    reference_midi: Option<f32>,
+    reference_correlation: f32,
+    energy_ratio_db: f32,
+    onset_strength: f32,
+    contamination_score: f32,
+    mode: DspMode,
+) -> (Option<f32>, f32, bool) {
+    let midi = if let Some(value) = midi_estimate {
+        if value.is_finite() {
+            value
+        } else {
+            return (None, 0.0, false);
+        }
+    } else {
+        return (None, 0.0, false);
+    };
+
+    let reference = if let Some(value) = reference_midi {
+        if value.is_finite() {
+            value
+        } else {
+            return (Some(midi), clamp01(confidence), false);
+        }
+    } else {
+        return (Some(midi), clamp01(confidence), false);
+    };
+
+    let pitch_match = (midi - reference).abs() <= 0.25;
+    if !pitch_match {
+        return (Some(midi), clamp01(confidence), false);
+    }
+
+    match mode {
+        DspMode::Headphones => {
+            if reference_correlation >= 0.94 && energy_ratio_db <= -14.0 {
+                (None, 0.0, true)
+            } else {
+                (
+                    Some(midi),
+                    clamp01(confidence * (1.0 - 0.3 * contamination_score)),
+                    false,
+                )
+            }
+        }
+        DspMode::Speaker => {
+            let high_correlation = reference_correlation >= 0.86;
+            let low_mic_dominance = energy_ratio_db <= -10.0;
+            let strong_onset = onset_strength >= 0.22;
+            let mic_dominant = energy_ratio_db >= 4.0;
+            if high_correlation && low_mic_dominance && !strong_onset && !mic_dominant {
+                (None, 0.0, true)
+            } else {
+                (
+                    Some(midi),
+                    clamp01(confidence * (1.0 - 0.45 * contamination_score)),
+                    false,
+                )
+            }
+        }
+    }
+}
+
 fn estimate_delay_and_correlation(mic: &[f32], reference: &[f32]) -> (isize, f32) {
     let max_delay = MAX_DELAY_SAMPLES
         .min(mic.len() as isize - 2)
@@ -426,6 +543,10 @@ fn clamp_signed(value: f32) -> f32 {
 
 fn set_number(object: &js_sys::Object, key: &str, value: f64) {
     let _ = js_sys::Reflect::set(object, &JsValue::from_str(key), &JsValue::from_f64(value));
+}
+
+fn set_bool(object: &js_sys::Object, key: &str, value: bool) {
+    let _ = js_sys::Reflect::set(object, &JsValue::from_str(key), &JsValue::from_bool(value));
 }
 
 fn set_value(object: &js_sys::Object, key: &str, value: &JsValue) {

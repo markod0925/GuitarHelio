@@ -20,6 +20,7 @@ type PitchDetectorOptions = {
 type WorkletPitchPayload = PitchFrame & {
   type?: 'frame';
   delay_samples?: number;
+  reference_policy_applied?: boolean;
 };
 
 type WorkletStatusPayload = {
@@ -184,9 +185,16 @@ export class PitchDetectorService {
             return;
           }
 
-          const rawMidi = this.normalizeMidiEstimate(sanitizeMidi(payload.midi_estimate));
-          const correctedMidi =
-            rawMidi === null || !Number.isFinite(rawMidi) ? null : applyPitchCalibration(rawMidi, this.calibrationProfile);
+          const rustManagedFrame = this.detectorPreset === 'ac14' && payload.reference_policy_applied === true;
+          const incomingMidi = sanitizeMidi(payload.midi_estimate);
+          const normalizedMidi = rustManagedFrame
+            ? incomingMidi
+            : this.normalizeMidiEstimate(incomingMidi);
+          const correctedMidi = rustManagedFrame
+            ? normalizedMidi
+            : normalizedMidi === null || !Number.isFinite(normalizedMidi)
+              ? null
+              : applyPitchCalibration(normalizedMidi, this.calibrationProfile);
 
           const baseFrame: PitchFrame = {
             t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
@@ -196,9 +204,12 @@ export class PitchDetectorService {
             reference_correlation: sanitizeSigned(payload.reference_correlation),
             energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
             onset_strength: clamp01(payload.onset_strength ?? 0),
-            contamination_score: clamp01(payload.contamination_score ?? 0)
+            contamination_score: clamp01(payload.contamination_score ?? 0),
+            rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed)
           };
-          const gated = applyReferenceContaminationPolicy(baseFrame, this.audioInputMode);
+          const gated = rustManagedFrame
+            ? baseFrame
+            : applyReferenceContaminationPolicy(baseFrame, this.audioInputMode);
           const frame: PitchFrame = {
             ...gated,
             midi_estimate:
