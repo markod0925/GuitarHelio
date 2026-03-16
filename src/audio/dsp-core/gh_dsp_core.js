@@ -47,6 +47,12 @@ export class GhDspCore {
         wasm.ghdspcore_reset(this.__wbg_ptr);
     }
     /**
+     * @param {PitchDetectorPreset} preset
+     */
+    set_pitch_detector_preset(preset) {
+        wasm.ghdspcore_set_pitch_detector_preset(this.__wbg_ptr, preset);
+    }
+    /**
      * @param {Float32Array} reference_block
      */
     set_reference_block(reference_block) {
@@ -56,6 +62,14 @@ export class GhDspCore {
     }
 }
 if (Symbol.dispose) GhDspCore.prototype[Symbol.dispose] = GhDspCore.prototype.free;
+
+/**
+ * @enum {0 | 1}
+ */
+export const PitchDetectorPreset = Object.freeze({
+    Baseline: 0, "0": "Baseline",
+    Ac14: 1, "1": "Ac14",
+});
 
 function __wbg_get_imports() {
     const import0 = {

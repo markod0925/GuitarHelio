@@ -1,14 +1,31 @@
-import initDspCore, { DspMode, GhDspCore } from './dsp-core/gh_dsp_core.js';
+import initDspCore, { DspMode, GhDspCore, PitchDetectorPreset } from './dsp-core/gh_dsp_core.js';
 
-const BUFFER_SIZE = 2048;
-const HOP_SIZE = 1024;
-const MIN_FREQUENCY = 65;
-const MAX_FREQUENCY = 1200;
-const ENERGY_THRESHOLD = 0.0032;
-const CORRELATION_THRESHOLD = 0.58;
-const DECAY_GRACE_FRAMES = 8;
-const DECAY_ENERGY_FACTOR = 0.55;
-const DECAY_CORRELATION_THRESHOLD = 0.52;
+const DETECTOR_PRESETS = {
+  baseline: {
+    windowSeconds: 2048 / 48000,
+    chunkSeconds: 1024 / 48000,
+    minFrequencyHz: 65,
+    maxFrequencyHz: 1200,
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
+  },
+  ac14: {
+    windowSeconds: 0.08534542062883915,
+    chunkSeconds: 0.03524227822491771,
+    minFrequencyHz: 55,
+    maxFrequencyHz: 1200,
+    energyThreshold: 0.003074202393734413,
+    correlationThreshold: 0.6559736283225794,
+    decayGraceFrames: 4,
+    decayEnergyFactor: 0.4157769062463687,
+    decayCorrelationThreshold: 0.6288579679610562
+  }
+};
+
+const DEFAULT_DETECTOR_PRESET = 'baseline';
 const MAX_DELAY_SAMPLES = 720;
 const NLMS_TAPS = 64;
 const NLMS_MU = 0.08;
@@ -17,20 +34,10 @@ const NLMS_EPS = 1e-6;
 class PitchProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    this.micRing = new Float32Array(BUFFER_SIZE);
-    this.referenceRing = new Float32Array(BUFFER_SIZE);
-    this.micFrame = new Float32Array(BUFFER_SIZE);
-    this.referenceFrame = new Float32Array(BUFFER_SIZE);
-    this.alignedReferenceFrame = new Float32Array(BUFFER_SIZE);
-    this.residualFrame = new Float32Array(BUFFER_SIZE);
-    this.nlmsWeights = new Float32Array(NLMS_TAPS);
-    this.writeIndex = 0;
-    this.totalSamples = 0;
-    this.samplesSinceLastAnalysis = 0;
-    this.minLag = Math.max(1, Math.floor(sampleRate / MAX_FREQUENCY));
-    this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / MIN_FREQUENCY));
-    this.prevMicRms = 0;
-    this.decayGraceFramesRemaining = 0;
+    this.detectorPreset = normalizeDetectorPreset(options?.processorOptions?.detectorPreset);
+    this.detectorConfig = getDetectorPresetConfig(this.detectorPreset);
+    this.configureAnalysisWindow(this.detectorConfig);
+    this.resetAnalysisState();
     this.audioInputMode = 'speaker';
     this.dspWasmBytes = options?.processorOptions?.dspWasmBytes ?? null;
     this.dspCore = null;
@@ -45,7 +52,8 @@ class PitchProcessor extends AudioWorkletProcessor {
       const moduleOrPath = this.dspWasmBytes ?? './dsp-core/gh_dsp_core_bg.wasm';
       await initDspCore({ module_or_path: moduleOrPath });
       const core = new GhDspCore();
-      core.prepare(sampleRate, BUFFER_SIZE, this.resolveDspMode(this.audioInputMode));
+      core.prepare(sampleRate, this.bufferSize, this.resolveDspMode(this.audioInputMode));
+      core.set_pitch_detector_preset(this.resolvePitchPreset(this.detectorPreset));
       this.dspCore = core;
       this.legacyFallback = false;
       this.publishBackendStatus(false);
@@ -60,13 +68,49 @@ class PitchProcessor extends AudioWorkletProcessor {
     if (!payload || payload.type !== 'config') return;
     if (payload.audioInputMode !== 'speaker' && payload.audioInputMode !== 'headphones') return;
     this.audioInputMode = payload.audioInputMode;
+    const nextPreset = normalizeDetectorPreset(payload.detectorPreset);
+    if (nextPreset !== this.detectorPreset) {
+      this.detectorPreset = nextPreset;
+      this.detectorConfig = getDetectorPresetConfig(this.detectorPreset);
+      this.configureAnalysisWindow(this.detectorConfig);
+      this.resetAnalysisState();
+    }
     if (!this.dspCore) return;
-    this.dspCore.prepare(sampleRate, BUFFER_SIZE, this.resolveDspMode(this.audioInputMode));
+    this.dspCore.prepare(sampleRate, this.bufferSize, this.resolveDspMode(this.audioInputMode));
+    this.dspCore.set_pitch_detector_preset(this.resolvePitchPreset(this.detectorPreset));
     this.dspCore.reset();
   }
 
   resolveDspMode(audioInputMode) {
     return audioInputMode === 'headphones' ? DspMode.Headphones : DspMode.Speaker;
+  }
+
+  resolvePitchPreset(detectorPreset) {
+    return detectorPreset === 'ac14' ? PitchDetectorPreset.Ac14 : PitchDetectorPreset.Baseline;
+  }
+
+  configureAnalysisWindow(detectorConfig) {
+    const windowSamples = Math.floor(detectorConfig.windowSeconds * sampleRate);
+    const hopSamples = Math.floor(detectorConfig.chunkSeconds * sampleRate);
+    this.bufferSize = clampInteger(windowSamples, 512, 8192);
+    this.hopSize = clampInteger(hopSamples, 128, this.bufferSize);
+    this.minLag = Math.max(1, Math.floor(sampleRate / detectorConfig.maxFrequencyHz));
+    this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / detectorConfig.minFrequencyHz));
+  }
+
+  resetAnalysisState() {
+    this.micRing = new Float32Array(this.bufferSize);
+    this.referenceRing = new Float32Array(this.bufferSize);
+    this.micFrame = new Float32Array(this.bufferSize);
+    this.referenceFrame = new Float32Array(this.bufferSize);
+    this.alignedReferenceFrame = new Float32Array(this.bufferSize);
+    this.residualFrame = new Float32Array(this.bufferSize);
+    this.nlmsWeights = new Float32Array(NLMS_TAPS);
+    this.writeIndex = 0;
+    this.totalSamples = 0;
+    this.samplesSinceLastAnalysis = 0;
+    this.prevMicRms = 0;
+    this.decayGraceFramesRemaining = 0;
   }
 
   publishBackendStatus(legacyFallback, reason) {
@@ -87,12 +131,12 @@ class PitchProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < micChannel.length; i += 1) {
       this.micRing[this.writeIndex] = micChannel[i];
       this.referenceRing[this.writeIndex] = referenceChannel ? referenceChannel[i] : 0;
-      this.writeIndex = (this.writeIndex + 1) % BUFFER_SIZE;
+      this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
       this.totalSamples += 1;
       this.samplesSinceLastAnalysis += 1;
     }
 
-    if (this.totalSamples < BUFFER_SIZE || this.samplesSinceLastAnalysis < HOP_SIZE) {
+    if (this.totalSamples < this.bufferSize || this.samplesSinceLastAnalysis < this.hopSize) {
       return true;
     }
     this.samplesSinceLastAnalysis = 0;
@@ -135,25 +179,42 @@ class PitchProcessor extends AudioWorkletProcessor {
     }
     this.prevMicRms = suppression.micRms;
 
-    const decayActive = this.decayGraceFramesRemaining > 0;
-    const residualPitch = detectPitch(this.residualFrame, sampleRate, this.minLag, this.maxLag, {
-      energyThreshold: decayActive ? ENERGY_THRESHOLD * DECAY_ENERGY_FACTOR : ENERGY_THRESHOLD,
-      correlationThreshold: decayActive ? DECAY_CORRELATION_THRESHOLD : CORRELATION_THRESHOLD
-    });
-    if (residualPitch.frequencyHz > 0) {
-      this.decayGraceFramesRemaining = DECAY_GRACE_FRAMES;
-    } else if (this.decayGraceFramesRemaining > 0) {
-      this.decayGraceFramesRemaining -= 1;
+    const hasRustPitch = Number.isFinite(suppression.pitchHz) && suppression.pitchHz > 0;
+    let residualPitchHz = hasRustPitch ? suppression.pitchHz : 0;
+    let residualPitchConfidence = hasRustPitch ? suppression.pitchConfidence : 0;
+    if (!hasRustPitch) {
+      const decayActive = this.decayGraceFramesRemaining > 0;
+      const fallbackPitch = detectPitch(this.residualFrame, sampleRate, this.minLag, this.maxLag, {
+        energyThreshold: decayActive
+          ? this.detectorConfig.energyThreshold * this.detectorConfig.decayEnergyFactor
+          : this.detectorConfig.energyThreshold,
+        correlationThreshold: decayActive
+          ? this.detectorConfig.decayCorrelationThreshold
+          : this.detectorConfig.correlationThreshold
+      });
+      residualPitchHz = fallbackPitch.frequencyHz;
+      residualPitchConfidence = fallbackPitch.confidence;
+      if (fallbackPitch.frequencyHz > 0) {
+        this.decayGraceFramesRemaining = this.detectorConfig.decayGraceFrames;
+      } else if (this.decayGraceFramesRemaining > 0) {
+        this.decayGraceFramesRemaining -= 1;
+      }
+    } else {
+      this.decayGraceFramesRemaining = 0;
     }
-    const referencePitch = detectPitch(this.alignedReferenceFrame, sampleRate, this.minLag, this.maxLag);
-    const residualMidiEstimate = residualPitch.frequencyHz > 0 ? 69 + 12 * Math.log2(residualPitch.frequencyHz / 440) : null;
+
+    const referencePitch = detectPitch(this.alignedReferenceFrame, sampleRate, this.minLag, this.maxLag, {
+      energyThreshold: this.detectorConfig.energyThreshold,
+      correlationThreshold: this.detectorConfig.correlationThreshold
+    });
+    const residualMidiEstimate = residualPitchHz > 0 ? 69 + 12 * Math.log2(residualPitchHz / 440) : null;
     const referenceMidiEstimate = referencePitch.frequencyHz > 0 ? 69 + 12 * Math.log2(referencePitch.frequencyHz / 440) : null;
 
     this.port.postMessage({
       type: 'frame',
       t_seconds: currentTime,
       midi_estimate: residualMidiEstimate,
-      confidence: residualMidiEstimate === null ? 0 : residualPitch.confidence,
+      confidence: residualMidiEstimate === null ? 0 : clamp01(residualPitchConfidence),
       reference_midi: referenceMidiEstimate,
       reference_correlation: suppression.referenceCorrelation,
       energy_ratio_db: suppression.energyRatioDb,
@@ -165,8 +226,8 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 
   copyRingToFrame(ring, frame) {
-    for (let i = 0; i < BUFFER_SIZE; i += 1) {
-      const idx = (this.writeIndex + i) % BUFFER_SIZE;
+    for (let i = 0; i < this.bufferSize; i += 1) {
+      const idx = (this.writeIndex + i) % this.bufferSize;
       frame[i] = ring[idx];
     }
   }
@@ -190,6 +251,8 @@ function processEchoSuppressionWithCore(
   const energyRatioDb = sanitizeNumber(output.energy_ratio_db);
   const onsetStrength = sanitizeNumber(output.onset_strength);
   const contaminationScore = sanitizeNumber(output.contamination_score);
+  const pitchHz = sanitizeNumber(output.pitch_hz);
+  const pitchConfidence = clamp01(output.pitch_confidence);
   const residualBlock = output.residual_block;
 
   alignReference(reference, alignedReference, delaySamples);
@@ -212,7 +275,9 @@ function processEchoSuppressionWithCore(
     energyRatioDb: safeEnergyRatioDb,
     onsetStrength: safeOnsetStrength,
     contaminationScore: safeContaminationScore,
-    micRms
+    micRms,
+    pitchHz,
+    pitchConfidence
   };
 }
 
@@ -335,10 +400,10 @@ function computeContaminationScore(referenceCorrelation, energyRatioDb, onsetStr
 function detectPitch(samples, sampleRateHz, minLag, maxLag, options = {}) {
   const energyThreshold = Number.isFinite(options.energyThreshold)
     ? Math.max(0, options.energyThreshold)
-    : ENERGY_THRESHOLD;
+    : DETECTOR_PRESETS.baseline.energyThreshold;
   const correlationThreshold = Number.isFinite(options.correlationThreshold)
     ? clamp01(options.correlationThreshold)
-    : CORRELATION_THRESHOLD;
+    : DETECTOR_PRESETS.baseline.correlationThreshold;
   const count = samples.length;
   let mean = 0;
   for (let i = 0; i < count; i += 1) {
@@ -417,6 +482,19 @@ function sanitizeDelay(value) {
 function sanitizeNumber(value) {
   if (!Number.isFinite(value)) return Number.NaN;
   return value;
+}
+
+function normalizeDetectorPreset(value) {
+  return value === 'ac14' ? 'ac14' : DEFAULT_DETECTOR_PRESET;
+}
+
+function getDetectorPresetConfig(detectorPreset) {
+  return detectorPreset === 'ac14' ? DETECTOR_PRESETS.ac14 : DETECTOR_PRESETS.baseline;
+}
+
+function clampInteger(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
 function toErrorMessage(error) {

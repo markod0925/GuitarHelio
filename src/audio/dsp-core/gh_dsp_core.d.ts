@@ -13,7 +13,13 @@ export class GhDspCore {
     prepare(sample_rate: number, block_size: number, mode: DspMode): void;
     process_block(mic_block: Float32Array): any;
     reset(): void;
+    set_pitch_detector_preset(preset: PitchDetectorPreset): void;
     set_reference_block(reference_block: Float32Array): void;
+}
+
+export enum PitchDetectorPreset {
+    Baseline = 0,
+    Ac14 = 1,
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -25,6 +31,7 @@ export interface InitOutput {
     readonly ghdspcore_prepare: (a: number, b: number, c: number, d: number) => void;
     readonly ghdspcore_process_block: (a: number, b: number, c: number) => any;
     readonly ghdspcore_reset: (a: number) => void;
+    readonly ghdspcore_set_pitch_detector_preset: (a: number, b: number) => void;
     readonly ghdspcore_set_reference_block: (a: number, b: number, c: number) => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
 import type { PitchFrame } from '../types/models';
-import { TuneoPitchDetectorService } from '../audio/tuneoPitchDetector';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import { createMicNode } from '../audio/micInput';
 import { loadPitchCalibrationProfile } from '../audio/pitchCalibration';
@@ -38,7 +37,7 @@ export class PracticeScene extends Phaser.Scene {
   private audioCtx?: AudioContext;
   private micStream?: MediaStream;
   private customDetector?: PitchDetectorService;
-  private tuneoDetector?: TuneoPitchDetectorService;
+  private tuneoDetector?: PitchDetectorService;
   private offCustomPitch?: () => void;
   private offTuneoPitch?: () => void;
   private tuneoAvailable = false;
@@ -119,7 +118,7 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, title.y + 28, 'A/B live compare: A=custom, B=tuneo(yin).', {
+      .text(width / 2, title.y + 28, 'A/B live compare: A=custom, B=ac_14 (Rust).', {
         color: '#93c5fd',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(13, Math.floor(width * 0.013))}px`
@@ -191,7 +190,7 @@ export class PracticeScene extends Phaser.Scene {
       })
       .setOrigin(1, 0.5);
     this.tuneoDetectedLabel = this.add
-      .text(debugOverlayX, height * 0.3, 'B Tuneo: --', {
+      .text(debugOverlayX, height * 0.3, 'B AC-14 (Rust): --', {
         color: '#fbbf24',
         fontFamily: 'Montserrat, sans-serif',
         fontStyle: 'bold',
@@ -507,21 +506,27 @@ export class PracticeScene extends Phaser.Scene {
 
       this.tuneoAvailable = false;
       try {
-        const tuneoDetector = new TuneoPitchDetectorService(ctx, {
-          windowSize: 9000,
-          buffersPerSecond: 15,
-          minFrequencyHz: 30,
-          maxFrequencyHz: 500,
-          calibrationProfile: calibrationProfile ?? undefined
+        const tuneoDetector = new PitchDetectorService(ctx, {
+          roundMidi: false,
+          smoothingAlpha: 0,
+          calibrationProfile: calibrationProfile ?? undefined,
+          audioInputMode: this.audioInputMode,
+          enableDspCore: true,
+          detectorPreset: 'ac14'
         });
         await tuneoDetector.init();
         this.tuneoDetector = tuneoDetector;
         this.offTuneoPitch = tuneoDetector.onPitch((frame) => this.handlePitchFrame(this.tuneoState, frame, false));
-        tuneoDetector.start(micSource);
+        await tuneoDetector.start(micSource);
+        if (tuneoDetector.isLegacyFallback()) {
+          throw new Error('AC-14 requires Rust DSP backend');
+        }
         this.tuneoAvailable = true;
       } catch (error) {
-        console.warn('Tuneo detector unavailable in practice scene', error);
+        console.warn('AC-14 detector unavailable in practice scene', error);
+        this.tuneoDetector?.stop();
         this.tuneoDetector = undefined;
+        this.offTuneoPitch?.();
         this.offTuneoPitch = undefined;
         this.tuneoAvailable = false;
       }
@@ -539,7 +544,7 @@ export class PracticeScene extends Phaser.Scene {
       this.micStatusMessage =
         this.tuneoAvailable
           ? `Mic active • A/B compare running • ${calibrationBadge}${fallbackBadge}`
-          : `Mic active • A only (tuneo unavailable) • ${calibrationBadge}${fallbackBadge}`;
+          : `Mic active • A only (AC-14 unavailable) • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
     } catch (error) {
       console.error('Failed to start practice microphone', error);
@@ -686,7 +691,7 @@ export class PracticeScene extends Phaser.Scene {
       : 'unavailable';
 
     customDetectedLabel.setText(`A Custom: ${customStable}`);
-    tuneoDetectedLabel.setText(`B Tuneo: ${tuneoStable}`);
+    tuneoDetectedLabel.setText(`B AC-14 (Rust): ${tuneoStable}`);
     customDetailsLabel.setText(
       `A raw: ${formatRawMidi(this.customState.rawMidi)}  •  A conf: ${formatConfidence(this.customState.confidence)}`
     );
@@ -695,7 +700,7 @@ export class PracticeScene extends Phaser.Scene {
     );
 
     if (!this.tuneoAvailable) {
-      compareLabel.setText('A/B delta: tuneo unavailable');
+      compareLabel.setText('A/B delta: AC-14 unavailable');
       compareLabel.setColor('#fca5a5');
       return;
     }

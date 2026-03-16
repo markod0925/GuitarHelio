@@ -6,6 +6,7 @@ import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?url';
 
 export type PitchListener = (frame: PitchFrame) => void;
+export type PitchDetectorPreset = 'baseline' | 'ac14';
 
 type PitchDetectorOptions = {
   roundMidi?: boolean;
@@ -13,6 +14,7 @@ type PitchDetectorOptions = {
   calibrationProfile?: PitchCalibrationProfile | null;
   audioInputMode?: AudioInputMode;
   enableDspCore?: boolean;
+  detectorPreset?: PitchDetectorPreset;
 };
 
 type WorkletPitchPayload = PitchFrame & {
@@ -28,11 +30,31 @@ type WorkletStatusPayload = {
 
 type WorkletMessagePayload = WorkletPitchPayload | WorkletStatusPayload;
 let dspWasmBytesPromise: Promise<ArrayBuffer | null> | null = null;
-const FALLBACK_ENERGY_THRESHOLD = 0.0032;
-const FALLBACK_CORRELATION_THRESHOLD = 0.58;
-const FALLBACK_DECAY_GRACE_FRAMES = 8;
-const FALLBACK_DECAY_ENERGY_FACTOR = 0.55;
-const FALLBACK_DECAY_CORRELATION_THRESHOLD = 0.52;
+const FALLBACK_PRESET_CONFIG: Record<
+  PitchDetectorPreset,
+  {
+    energyThreshold: number;
+    correlationThreshold: number;
+    decayGraceFrames: number;
+    decayEnergyFactor: number;
+    decayCorrelationThreshold: number;
+  }
+> = {
+  baseline: {
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
+  },
+  ac14: {
+    energyThreshold: 0.003074202393734413,
+    correlationThreshold: 0.6559736283225794,
+    decayGraceFrames: 4,
+    decayEnergyFactor: 0.4157769062463687,
+    decayCorrelationThreshold: 0.6288579679610562
+  }
+};
 
 export class PitchDetectorService {
   private listeners = new Set<PitchListener>();
@@ -48,6 +70,7 @@ export class PitchDetectorService {
   private readonly calibrationProfile: PitchCalibrationProfile | null;
   private readonly audioInputMode: AudioInputMode;
   private readonly enableDspCore: boolean;
+  private readonly detectorPreset: PitchDetectorPreset;
   private smoothedMidiEstimate: number | null = null;
   private legacyFallback = false;
   private legacyFallbackReason: string | null = null;
@@ -65,6 +88,7 @@ export class PitchDetectorService {
     this.calibrationProfile = options.calibrationProfile ?? null;
     this.audioInputMode = options.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.enableDspCore = options.enableDspCore ?? true;
+    this.detectorPreset = options.detectorPreset ?? 'baseline';
   }
 
   async init(): Promise<void> {
@@ -142,7 +166,11 @@ export class PitchDetectorService {
 
         merger.connect(workletNode);
         workletNode.connect(sink);
-        workletNode.port.postMessage({ type: 'config', audioInputMode: this.audioInputMode });
+        workletNode.port.postMessage({
+          type: 'config',
+          audioInputMode: this.audioInputMode,
+          detectorPreset: this.detectorPreset
+        });
         workletNode.port.onmessage = (event: MessageEvent<WorkletMessagePayload>) => {
           const payload = event.data;
           if (!payload) return;
@@ -198,7 +226,7 @@ export class PitchDetectorService {
 
     // Fallback path for environments without AudioWorklet support.
     const analyser = this.ctx.createAnalyser();
-    analyser.fftSize = 2048;
+    analyser.fftSize = this.detectorPreset === 'ac14' ? 4096 : 2048;
     analyser.smoothingTimeConstant = 0;
     this.analyserBuffer = new Float32Array(analyser.fftSize);
     source.connect(analyser);
@@ -283,7 +311,15 @@ export class PitchDetectorService {
   }
 
   private createWorkletNode(dspWasmBytes: ArrayBuffer | null): AudioWorkletNode {
-    const processorOptions = dspWasmBytes ? { dspWasmBytes } : undefined;
+    const processorOptions: {
+      detectorPreset: PitchDetectorPreset;
+      dspWasmBytes?: ArrayBuffer;
+    } = {
+      detectorPreset: this.detectorPreset
+    };
+    if (dspWasmBytes) {
+      processorOptions.dspWasmBytes = dspWasmBytes;
+    }
     const primaryOptions: AudioWorkletNodeOptions = {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -320,13 +356,18 @@ export class PitchDetectorService {
       this.analyserRafId = null;
       if (!this.analyser || !this.analyserBuffer) return;
       this.analyser.getFloatTimeDomainData(this.analyserBuffer as any);
+      const presetConfig = FALLBACK_PRESET_CONFIG[this.detectorPreset];
       const decayActive = this.analyserDecayGraceFrames > 0;
       const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate, {
-        energyThreshold: decayActive ? FALLBACK_ENERGY_THRESHOLD * FALLBACK_DECAY_ENERGY_FACTOR : FALLBACK_ENERGY_THRESHOLD,
-        correlationThreshold: decayActive ? FALLBACK_DECAY_CORRELATION_THRESHOLD : FALLBACK_CORRELATION_THRESHOLD
+        energyThreshold: decayActive
+          ? presetConfig.energyThreshold * presetConfig.decayEnergyFactor
+          : presetConfig.energyThreshold,
+        correlationThreshold: decayActive
+          ? presetConfig.decayCorrelationThreshold
+          : presetConfig.correlationThreshold
       });
       if (estimation.midiEstimate !== null) {
-        this.analyserDecayGraceFrames = FALLBACK_DECAY_GRACE_FRAMES;
+        this.analyserDecayGraceFrames = presetConfig.decayGraceFrames;
       } else if (this.analyserDecayGraceFrames > 0) {
         this.analyserDecayGraceFrames -= 1;
       }
@@ -488,10 +529,10 @@ function estimatePitch(
   const rawCorrelationThreshold = options.correlationThreshold;
   const energyThreshold = typeof rawEnergyThreshold === 'number' && Number.isFinite(rawEnergyThreshold)
     ? Math.max(0, rawEnergyThreshold)
-    : FALLBACK_ENERGY_THRESHOLD;
+    : FALLBACK_PRESET_CONFIG.baseline.energyThreshold;
   const correlationThreshold = typeof rawCorrelationThreshold === 'number' && Number.isFinite(rawCorrelationThreshold)
     ? clamp01(rawCorrelationThreshold)
-    : FALLBACK_CORRELATION_THRESHOLD;
+    : FALLBACK_PRESET_CONFIG.baseline.correlationThreshold;
   const minFrequency = 65;
   const maxFrequency = 1200;
   const minLag = Math.max(1, Math.floor(sampleRate / maxFrequency));
