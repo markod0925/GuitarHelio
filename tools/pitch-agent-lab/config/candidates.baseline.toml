@@ -1,0 +1,84 @@
+[[candidates]]
+id = "baseline_yin"
+label = "Baseline YIN"
+algorithm = "yin"
+[candidates.params]
+window_seconds = 0.2040816327
+chunk_seconds = 0.0666666667
+min_freq_hz = 30.0
+max_freq_hz = 500.0
+threshold_default = 0.15
+threshold_noisy = 0.60
+max_pitch_dev = 0.20
+rms_gap = 1.10
+adaptive = 1.0
+min_rms = 0.0008
+[candidates.source]
+kind = "internal"
+reference = "src/audio/tuneoPitchDetector.ts"
+license = "MIT"
+vendored = false
+notes = "Rust baseline port of Tuneo-like YIN."
+
+[[candidates]]
+id = "baseline_autocorr"
+label = "Baseline custom autocorr"
+algorithm = "autocorr"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0232199546
+min_freq_hz = 65.0
+max_freq_hz = 1200.0
+energy_threshold = 0.0032
+correlation_threshold = 0.58
+decay_grace_frames = 8.0
+decay_energy_factor = 0.55
+decay_correlation_threshold = 0.52
+[candidates.source]
+kind = "internal"
+reference = "src/audio/pitchWorklet.js"
+license = "MIT"
+vendored = false
+notes = "Rust baseline port of existing worklet detector."
+
+[[candidates]]
+id = "baseline_mpm"
+label = "Baseline MPM"
+algorithm = "mpm"
+[candidates.params]
+window_seconds = 0.065
+chunk_seconds = 0.0232199546
+min_freq_hz = 65.0
+max_freq_hz = 1200.0
+min_rms = 0.0025
+nsdf_threshold = 0.60
+[candidates.source]
+kind = "web_research"
+reference = "McLeod Pitch Method (NSDF)"
+source_url = "https://www.researchgate.net/publication/230554927_A_smarter_way_to_find_pitch"
+license = "Algorithm reference"
+vendored = false
+notes = "Reimplemented in Rust from method literature."
+
+[[candidates]]
+id = "baseline_hybrid"
+label = "Baseline Hybrid (YIN+MPM)"
+algorithm = "hybrid"
+[candidates.params]
+window_seconds = 0.093
+chunk_seconds = 0.0232199546
+min_freq_hz = 65.0
+max_freq_hz = 1200.0
+threshold_default = 0.16
+threshold_noisy = 0.55
+max_pitch_dev = 0.20
+rms_gap = 1.08
+adaptive = 1.0
+min_rms = 0.001
+nsdf_threshold = 0.58
+[candidates.source]
+kind = "internal"
+reference = "Hybrid arbitration"
+license = "MIT"
+vendored = false
+notes = "Combines YIN and MPM confidence."

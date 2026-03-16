@@ -1,0 +1,11 @@
+[package]
+name = "pitch_bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+pitch_core = { path = "../pitch_core" }
+serde_json.workspace = true

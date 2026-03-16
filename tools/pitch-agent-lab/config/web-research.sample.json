@@ -1,0 +1,18 @@
+[
+  {
+    "algorithm": "mpm",
+    "source_url": "https://www.researchgate.net/publication/230554927_A_smarter_way_to_find_pitch",
+    "license": "Algorithm reference",
+    "vendored": false,
+    "notes": "McLeod Pitch Method notes for NSDF peak picking.",
+    "reference": "A Smarter Way to Find Pitch"
+  },
+  {
+    "algorithm": "yin",
+    "source_url": "https://doi.org/10.1121/1.1458024",
+    "license": "Algorithm reference",
+    "vendored": false,
+    "notes": "YIN autocorrelation-difference method reference.",
+    "reference": "YIN, a fundamental frequency estimator"
+  }
+]

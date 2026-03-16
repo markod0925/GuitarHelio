@@ -1,0 +1,115 @@
+[[families]]
+name = "yin_explore"
+algorithm = "yin"
+count = 24
+id_prefix = "yin"
+[families.fixed]
+adaptive = 1.0
+min_freq_hz = 30.0
+max_freq_hz = 550.0
+[families.ranges.window_seconds]
+min = 0.15
+max = 0.24
+[families.ranges.chunk_seconds]
+min = 0.04
+max = 0.08
+[families.ranges.threshold_default]
+min = 0.10
+max = 0.24
+[families.ranges.threshold_noisy]
+min = 0.45
+max = 0.75
+[families.ranges.max_pitch_dev]
+min = 0.08
+max = 0.28
+[families.ranges.rms_gap]
+min = 1.02
+max = 1.18
+[families.ranges.min_rms]
+min = 0.0005
+max = 0.0035
+
+[[families]]
+name = "autocorr_explore"
+algorithm = "autocorr"
+count = 24
+id_prefix = "ac"
+[families.fixed]
+min_freq_hz = 55.0
+max_freq_hz = 1200.0
+[families.ranges.window_seconds]
+min = 0.035
+max = 0.11
+[families.ranges.chunk_seconds]
+min = 0.012
+max = 0.05
+[families.ranges.energy_threshold]
+min = 0.0012
+max = 0.0050
+[families.ranges.correlation_threshold]
+min = 0.45
+max = 0.74
+[families.ranges.decay_grace_frames]
+min = 2
+max = 18
+[families.ranges.decay_energy_factor]
+min = 0.35
+max = 0.9
+[families.ranges.decay_correlation_threshold]
+min = 0.35
+max = 0.70
+
+[[families]]
+name = "mpm_explore"
+algorithm = "mpm"
+count = 20
+id_prefix = "mpm"
+[families.fixed]
+min_freq_hz = 55.0
+max_freq_hz = 1200.0
+[families.ranges.window_seconds]
+min = 0.04
+max = 0.12
+[families.ranges.chunk_seconds]
+min = 0.012
+max = 0.05
+[families.ranges.min_rms]
+min = 0.001
+max = 0.006
+[families.ranges.nsdf_threshold]
+min = 0.45
+max = 0.82
+
+[[families]]
+name = "hybrid_explore"
+algorithm = "hybrid"
+count = 16
+id_prefix = "hyb"
+[families.fixed]
+adaptive = 1.0
+min_freq_hz = 55.0
+max_freq_hz = 1200.0
+[families.ranges.window_seconds]
+min = 0.05
+max = 0.14
+[families.ranges.chunk_seconds]
+min = 0.012
+max = 0.05
+[families.ranges.threshold_default]
+min = 0.10
+max = 0.24
+[families.ranges.threshold_noisy]
+min = 0.45
+max = 0.74
+[families.ranges.max_pitch_dev]
+min = 0.08
+max = 0.28
+[families.ranges.rms_gap]
+min = 1.02
+max = 1.2
+[families.ranges.min_rms]
+min = 0.0005
+max = 0.004
+[families.ranges.nsdf_threshold]
+min = 0.45
+max = 0.80

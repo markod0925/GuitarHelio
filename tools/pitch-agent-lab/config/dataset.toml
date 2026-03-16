@@ -1,0 +1,14 @@
+[[takes]]
+id = "take1"
+manifest = "../../pitch-offline-bench/input/manifest.take1.json"
+wav = "../../pitch-offline-bench/input/wav/take1.wav"
+
+[[takes]]
+id = "take2"
+manifest = "../../pitch-offline-bench/input/manifest.take2.json"
+wav = "../../pitch-offline-bench/input/wav/take2.wav"
+
+[[takes]]
+id = "take3"
+manifest = "../../pitch-offline-bench/input/manifest.take3.json"
+wav = "../../pitch-offline-bench/input/wav/take3.wav"

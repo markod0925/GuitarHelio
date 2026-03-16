@@ -1,0 +1,10 @@
+min_confidence = 0.70
+required_detect_rate = 1.0
+min_realtime_factor = 8.0
+adaptive_trim = true
+trim_attack_min_ms = 20.0
+trim_attack_max_ms = 120.0
+trim_release_min_ms = 20.0
+trim_release_max_ms = 100.0
+trim_attack_ratio = 0.08
+trim_release_ratio = 0.06
