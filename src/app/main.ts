@@ -21,6 +21,25 @@ const STARTUP_SPLASH_MIN_DURATION_MS = 2000;
 const STARTUP_SPLASH_FADE_DURATION_MS = 350;
 const STARTUP_SPLASH_FALLBACK_HIDE_MS = 8000;
 
+function installDynamicViewportSizing(): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+
+  const syncViewportSize = () => {
+    const viewport = window.visualViewport;
+    const width = viewport?.width ?? window.innerWidth;
+    const height = viewport?.height ?? window.innerHeight;
+    document.documentElement.style.setProperty('--app-viewport-width', `${Math.round(width)}px`);
+    document.documentElement.style.setProperty('--app-viewport-height', `${Math.round(height)}px`);
+  };
+
+  syncViewportSize();
+  window.addEventListener('resize', syncViewportSize, { passive: true });
+  window.visualViewport?.addEventListener('resize', syncViewportSize, { passive: true });
+  window.visualViewport?.addEventListener('scroll', syncViewportSize, { passive: true });
+}
+
 function installStartupSplash(): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;
@@ -69,6 +88,9 @@ function installStartupSplash(): void {
 
 if (typeof document !== 'undefined') {
   document.documentElement.classList.add(IS_NATIVE_RUNTIME ? 'platform-native' : 'platform-web');
+  if (!IS_NATIVE_RUNTIME) {
+    installDynamicViewportSizing();
+  }
   installStartupSplash();
 }
 
