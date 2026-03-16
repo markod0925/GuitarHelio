@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
 import { resolveSongHighScore } from '../../../app/sessionPersistence';
+import { toPublicAssetUrl } from '../../../app/publicAssetUrl';
 import {
   ASSET_NEGATIVE_CACHE_TTL_MS,
   DEFAULT_SONG_COVER_TEXTURE_KEY,
@@ -60,7 +61,7 @@ export class SongCatalogService {
 
   async fetchManifestText(): Promise<string | null> {
     try {
-      const response = await fetch(`/songs/manifest.json?t=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(toPublicAssetUrl(`songs/manifest.json?t=${Date.now()}`), { cache: 'no-store' });
       if (response.ok) {
         const manifestRaw = await response.text();
         if (this.scene.cache.text.exists('songManifest')) {

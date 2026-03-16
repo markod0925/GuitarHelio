@@ -1,7 +1,8 @@
 import type { SongCatalogLoadPolicy } from './types';
+import { toPublicAssetUrl } from '../../app/publicAssetUrl';
 
 export const DEFAULT_SONG_COVER_TEXTURE_KEY = 'defaultSongCover';
-export const DEFAULT_SONG_COVER_URL = '/ui/song-cover-placeholder-neon.png';
+export const DEFAULT_SONG_COVER_URL = toPublicAssetUrl('ui/song-cover-placeholder-neon.png');
 export const IMPORT_STATUS_POLL_MS = 700;
 export const IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
 export const IMPORT_SOURCE_STORAGE_KEY = 'gh_import_source_mode';

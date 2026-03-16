@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { toPublicAssetUrl } from '../app/publicAssetUrl';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -8,18 +9,18 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     const isGitHubReleaseBuild = import.meta.env.VITE_RELEASE_LOGO === 'classic';
     const logoPath = isGitHubReleaseBuild
-      ? '/ui/logo-guitarhelio-neon.png'
-      : '/ui/logo-guitarhelio-neon_2.png';
+      ? toPublicAssetUrl('ui/logo-guitarhelio-neon.png')
+      : toPublicAssetUrl('ui/logo-guitarhelio-neon_2.png');
 
-    this.load.text('songManifest', '/songs/manifest.json');
-    this.load.image('handReminder', '/ui/hand-reminder.png');
-    this.load.image('defaultSongCover', '/ui/song-cover-placeholder-neon.png');
+    this.load.text('songManifest', toPublicAssetUrl('songs/manifest.json'));
+    this.load.image('handReminder', toPublicAssetUrl('ui/hand-reminder.png'));
+    this.load.image('defaultSongCover', toPublicAssetUrl('ui/song-cover-placeholder-neon.png'));
     this.load.image('logoGuitarHelio', logoPath);
-    this.load.image('uiSettingsIcon', '/ui/icon-settings-neon.png');
-    this.load.image('uiTunerIcon', '/ui/icon-tuner-neon.png');
-    this.load.image('uiPlayIcon', '/ui/icon-play-neon.png');
-    this.load.image('uiImportIcon', '/ui/icon-import-neon.png');
-    this.load.image('uiGuitarIcon', '/ui/icon-guitar-neon.png');
+    this.load.image('uiSettingsIcon', toPublicAssetUrl('ui/icon-settings-neon.png'));
+    this.load.image('uiTunerIcon', toPublicAssetUrl('ui/icon-tuner-neon.png'));
+    this.load.image('uiPlayIcon', toPublicAssetUrl('ui/icon-play-neon.png'));
+    this.load.image('uiImportIcon', toPublicAssetUrl('ui/icon-import-neon.png'));
+    this.load.image('uiGuitarIcon', toPublicAssetUrl('ui/icon-guitar-neon.png'));
   }
 
   create(): void {

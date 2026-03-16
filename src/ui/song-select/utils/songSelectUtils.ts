@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { toPublicAssetUrl } from '../../../app/publicAssetUrl';
 import {
   DEBUG_CONVERTER_MODE_STORAGE_KEY,
   IMPORT_SOURCE_STORAGE_KEY
@@ -63,12 +64,15 @@ export function encodePathSegments(value: string): string {
 
 export function resolveSongAssetPath(folder: string, value: string): string {
   const trimmed = value.trim();
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+  if (/^[a-z][a-z\d+\-.]*:/i.test(trimmed) || trimmed.startsWith('//')) {
     return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return toPublicAssetUrl(trimmed);
   }
 
   const relativeValue = trimmed.replace(/^\.?\//, '');
-  return `/songs/${encodePathSegments(folder)}/${encodePathSegments(relativeValue)}`;
+  return toPublicAssetUrl(`songs/${encodePathSegments(folder)}/${encodePathSegments(relativeValue)}`);
 }
 
 export function waitMs(ms: number): Promise<void> {
