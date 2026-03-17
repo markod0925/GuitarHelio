@@ -715,7 +715,8 @@ function updateHudImpl(this: PlaySceneContext): void {
 
   const topMessage = this.resolveTopFeedbackMessage(now);
   const completed = Math.min(this.runtime.active_target_index, this.targets.length);
-  const liveScoreText = `${this.totalScore}  |  ${completed}/${this.targets.length}`;
+  const fps = Math.max(0, Math.round(this.game.loop.actualFps));
+  const liveScoreText = `${this.totalScore}  |  ${completed}/${this.targets.length}  |  ${fps} FPS`;
 
   if (this.lastHudStatusText !== status) {
     this.statusText.setText(status);

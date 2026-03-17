@@ -1,32 +1,43 @@
 import Phaser from 'phaser';
-import { FINGER_COLORS } from '../app/config';
+import { FINGER_COLORS, PLAY_SCENE_MINIMAP_UPDATE_INTERVAL_MS } from '../app/config';
 import type { TargetNote } from '../types/models';
 import { RoundedBox } from './RoundedBox';
 import type { SongMinimapLayout } from './playSceneTypes';
 
+type MinimapNoteRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+};
+
 export class MinimapRenderer {
   private background?: RoundedBox;
-  private staticLayer?: Phaser.GameObjects.Graphics;
-  private hitOverlays: Phaser.GameObjects.Rectangle[] = [];
+  private gridLayer?: Phaser.GameObjects.Graphics;
+  private notesLayer?: Phaser.GameObjects.RenderTexture;
+  private hitLayer?: Phaser.GameObjects.RenderTexture;
+  private hitStampScratch?: Phaser.GameObjects.Graphics;
   private progressFill?: Phaser.GameObjects.Rectangle;
   private progressCursor?: Phaser.GameObjects.Line;
   private layout?: SongMinimapLayout;
   private cachedTargets?: TargetNote[];
   private cachedTargetTicks: number[] = [];
-  private lastProgressTick = Number.NaN;
+  private noteRects: MinimapNoteRect[] = [];
+  private lastProgressPixelX = Number.NaN;
   private lastPassedTargetIndex = -1;
   private lastCorrectHitCount = -1;
+  private lastProgressUpdateAtMs = Number.NEGATIVE_INFINITY;
 
   constructor(private readonly scene: Phaser.Scene) {}
 
   setVisible(visible: boolean): void {
     this.background?.setVisible(visible);
-    this.staticLayer?.setVisible(visible);
+    this.gridLayer?.setVisible(visible);
+    this.notesLayer?.setVisible(visible);
+    this.hitLayer?.setVisible(visible);
     this.progressFill?.setVisible(visible);
     this.progressCursor?.setVisible(visible);
-    for (const overlay of this.hitOverlays) {
-      overlay.setVisible(visible && overlay.visible);
-    }
   }
 
   layoutMinimap(
@@ -63,7 +74,7 @@ export class MinimapRenderer {
       this.background = new RoundedBox(this.scene, centerX, centerY, minimapWidth, minimapHeight, 0x0b1228, 0.9)
         .setStrokeStyle(1, 0x334155, 0.85)
         .setDepth(286);
-      this.staticLayer = this.scene.add.graphics().setDepth(287);
+      this.gridLayer = this.scene.add.graphics().setDepth(287);
       this.progressFill = this.scene.add
         .rectangle(0, 0, 1, innerHeight, 0x22c55e, 0.18)
         .setOrigin(0, 0)
@@ -75,7 +86,7 @@ export class MinimapRenderer {
         .setDepth(289);
     } else {
       this.background.setPosition(centerX, centerY).setBoxSize(minimapWidth, minimapHeight);
-      this.staticLayer?.setDepth(287);
+      this.gridLayer?.setDepth(287);
       this.progressFill?.setDepth(288);
       this.progressCursor?.setDepth(289);
     }
@@ -93,27 +104,31 @@ export class MinimapRenderer {
       totalTicks
     };
 
+    this.recreateRasterLayers();
+
     this.progressFill?.setPosition(this.layout.innerLeft, this.layout.innerTop).setSize(1, this.layout.innerHeight);
     this.progressCursor?.setPosition(this.layout.innerLeft, this.layout.innerTop - 1);
     this.background?.setVisible(true);
-    this.staticLayer?.setVisible(true);
+    this.gridLayer?.setVisible(true);
+    this.notesLayer?.setVisible(true);
+    this.hitLayer?.setVisible(true);
     this.progressFill?.setVisible(true);
     this.progressCursor?.setVisible(true);
     this.resetProgressCache();
   }
 
   redrawStatic(targets: TargetNote[], ticksPerQuarter: number): void {
-    if (!this.staticLayer || !this.layout) return;
+    if (!this.gridLayer || !this.layout || !this.notesLayer) return;
     const layout = this.layout;
-    this.staticLayer.clear();
+    this.gridLayer.clear();
 
-    this.staticLayer.lineStyle(1, 0x1e293b, 0.7);
+    this.gridLayer.lineStyle(1, 0x1e293b, 0.7);
     for (let i = 0; i <= 6; i += 1) {
       const y = layout.innerTop + i * layout.rowHeight;
-      this.staticLayer.beginPath();
-      this.staticLayer.moveTo(layout.innerLeft, y);
-      this.staticLayer.lineTo(layout.innerLeft + layout.innerWidth, y);
-      this.staticLayer.strokePath();
+      this.gridLayer.beginPath();
+      this.gridLayer.moveTo(layout.innerLeft, y);
+      this.gridLayer.lineTo(layout.innerLeft + layout.innerWidth, y);
+      this.gridLayer.strokePath();
     }
 
     const measureTicks = ticksPerQuarter * 4;
@@ -121,106 +136,138 @@ export class MinimapRenderer {
       for (let tick = 0; tick <= layout.totalTicks; tick += measureTicks) {
         const markerX = layout.innerLeft + (tick / layout.totalTicks) * layout.innerWidth;
         const isMajor = tick % (measureTicks * 4) === 0;
-        this.staticLayer.lineStyle(1, isMajor ? 0xfacc15 : 0x64748b, isMajor ? 0.7 : 0.35);
-        this.staticLayer.beginPath();
-        this.staticLayer.moveTo(markerX, layout.innerTop);
-        this.staticLayer.lineTo(markerX, layout.innerTop + layout.innerHeight);
-        this.staticLayer.strokePath();
+        this.gridLayer.lineStyle(1, isMajor ? 0xfacc15 : 0x64748b, isMajor ? 0.7 : 0.35);
+        this.gridLayer.beginPath();
+        this.gridLayer.moveTo(markerX, layout.innerTop);
+        this.gridLayer.lineTo(markerX, layout.innerTop + layout.innerHeight);
+        this.gridLayer.strokePath();
       }
     }
 
-    for (const target of targets) {
-      const { x, y, width, height, radius } = this.getSongMinimapNoteRect(target, layout);
-      this.staticLayer.fillStyle(FINGER_COLORS[target.finger] ?? 0xffffff, 0.9);
-      this.staticLayer.fillRoundedRect(x, y, width, height, radius);
+    this.cacheNoteRects(targets, layout);
+    this.notesLayer.clear();
+    if (targets.length > 0) {
+      const noteBatch = this.scene.add.graphics().setVisible(false);
+      for (let i = 0; i < targets.length; i += 1) {
+        const rect = this.noteRects[i];
+        noteBatch.fillStyle(FINGER_COLORS[targets[i].finger] ?? 0xffffff, 0.9);
+        noteBatch.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, rect.radius);
+      }
+      this.notesLayer.draw(noteBatch, 0, 0);
+      noteBatch.destroy();
     }
 
-    this.layoutHitOverlays(targets, layout);
+    this.hitLayer?.clear();
+    this.resetProgressCache();
   }
 
   updateProgress(runtimeTick: number, targets: TargetNote[], correctlyHitTargetIds: ReadonlySet<string>): void {
     if (!this.layout || !this.progressFill || !this.progressCursor) return;
-    const layout = this.layout;
-    const clampedTick = Phaser.Math.Clamp(runtimeTick, 0, layout.totalTicks);
-    const progressX = layout.innerLeft + (clampedTick / layout.totalTicks) * layout.innerWidth;
-    const playedWidth = Math.max(1, progressX - layout.innerLeft);
-
-    this.progressFill
-      .setPosition(layout.innerLeft, layout.innerTop)
-      .setSize(playedWidth, layout.innerHeight)
-      .setDisplaySize(playedWidth, layout.innerHeight);
-    this.progressCursor
-      .setPosition(progressX, layout.innerTop - 1)
-      .setTo(0, 0, 0, layout.innerHeight + 2)
-      .setVisible(true);
-
-    const correctHitCount = correctlyHitTargetIds.size;
-    if (clampedTick === this.lastProgressTick && correctHitCount === this.lastCorrectHitCount) {
+    const now = performance.now();
+    if (now - this.lastProgressUpdateAtMs < PLAY_SCENE_MINIMAP_UPDATE_INTERVAL_MS) {
       return;
     }
 
-    const targetCacheChanged = this.ensureTargetTickCache(targets);
-    const passedTargetIndex = this.findLastTargetIndexAtOrBeforeTick(clampedTick);
-    const isForwardTick = Number.isFinite(this.lastProgressTick) && clampedTick >= this.lastProgressTick;
-    const canApplyIncremental =
-      !targetCacheChanged &&
-      isForwardTick &&
-      correctHitCount === this.lastCorrectHitCount;
+    const layout = this.layout;
+    const clampedTick = Phaser.Math.Clamp(runtimeTick, 0, layout.totalTicks);
+    const progressX = layout.innerLeft + (clampedTick / layout.totalTicks) * layout.innerWidth;
+    const progressPixelX = Math.round(progressX);
+    const playedWidth = Math.max(1, progressPixelX - layout.innerLeft);
 
-    if (canApplyIncremental && passedTargetIndex > this.lastPassedTargetIndex) {
-      for (let i = this.lastPassedTargetIndex + 1; i <= passedTargetIndex; i += 1) {
-        const overlay = this.hitOverlays[i];
-        if (!overlay) continue;
-        overlay.setVisible(correctlyHitTargetIds.has(targets[i].id));
-      }
-    } else {
-      for (let i = 0; i < targets.length; i += 1) {
-        const overlay = this.hitOverlays[i];
-        if (!overlay) continue;
-        const show = i <= passedTargetIndex && correctlyHitTargetIds.has(targets[i].id);
-        overlay.setVisible(show);
-      }
+    if (progressPixelX !== this.lastProgressPixelX) {
+      this.progressFill
+        .setPosition(layout.innerLeft, layout.innerTop)
+        .setSize(playedWidth, layout.innerHeight)
+        .setDisplaySize(playedWidth, layout.innerHeight);
+      this.progressCursor
+        .setPosition(progressPixelX, layout.innerTop - 1)
+        .setTo(0, 0, 0, layout.innerHeight + 2)
+        .setVisible(true);
+      this.lastProgressPixelX = progressPixelX;
     }
 
-    this.lastProgressTick = clampedTick;
+    const correctHitCount = correctlyHitTargetIds.size;
+    const targetCacheChanged = this.ensureTargetTickCache(targets);
+    const passedTargetIndex = this.findLastTargetIndexAtOrBeforeTick(clampedTick);
+
+    if (!targetCacheChanged && passedTargetIndex === this.lastPassedTargetIndex && correctHitCount === this.lastCorrectHitCount) {
+      this.lastProgressUpdateAtMs = now;
+      return;
+    }
+
+    const canApplyIncremental =
+      !targetCacheChanged &&
+      correctHitCount === this.lastCorrectHitCount &&
+      passedTargetIndex >= this.lastPassedTargetIndex;
+    const passedTargetAdvanced = passedTargetIndex > this.lastPassedTargetIndex;
+
+    if (canApplyIncremental) {
+      if (passedTargetAdvanced) {
+        for (let i = this.lastPassedTargetIndex + 1; i <= passedTargetIndex; i += 1) {
+          if (!correctlyHitTargetIds.has(targets[i].id)) continue;
+          this.drawCorrectHitNote(i);
+        }
+      }
+    } else {
+      this.rebuildCorrectHitLayer(passedTargetIndex, targets, correctlyHitTargetIds);
+    }
+
     this.lastPassedTargetIndex = passedTargetIndex;
     this.lastCorrectHitCount = correctHitCount;
+    this.lastProgressUpdateAtMs = now;
   }
 
   destroy(): void {
     this.background?.destroy();
     this.background = undefined;
-    this.staticLayer?.destroy();
-    this.staticLayer = undefined;
-    for (const overlay of this.hitOverlays) {
-      overlay.destroy();
-    }
-    this.hitOverlays = [];
+    this.gridLayer?.destroy();
+    this.gridLayer = undefined;
+    this.notesLayer?.destroy();
+    this.notesLayer = undefined;
+    this.hitLayer?.destroy();
+    this.hitLayer = undefined;
+    this.hitStampScratch?.destroy();
+    this.hitStampScratch = undefined;
     this.progressFill?.destroy();
     this.progressFill = undefined;
     this.progressCursor?.destroy();
     this.progressCursor = undefined;
     this.layout = undefined;
+    this.noteRects = [];
     this.resetProgressCache();
+  }
+
+  private recreateRasterLayers(): void {
+    const layout = this.layout;
+    if (!layout) return;
+    const rasterWidth = Math.max(1, Math.ceil(layout.innerWidth));
+    const rasterHeight = Math.max(1, Math.ceil(layout.innerHeight));
+
+    this.notesLayer?.destroy();
+    this.notesLayer = this.scene.add
+      .renderTexture(layout.innerLeft, layout.innerTop, rasterWidth, rasterHeight)
+      .setOrigin(0, 0)
+      .setDepth(287.4);
+    this.notesLayer.clear();
+
+    this.hitLayer?.destroy();
+    this.hitLayer = this.scene.add
+      .renderTexture(layout.innerLeft, layout.innerTop, rasterWidth, rasterHeight)
+      .setOrigin(0, 0)
+      .setDepth(288.5);
+    this.hitLayer.clear();
   }
 
   private getSongMinimapNoteRect(
     target: TargetNote,
     layout: SongMinimapLayout
-  ): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    radius: number;
-  } {
+  ): MinimapNoteRect {
     const noteHeight = Math.max(1.4, layout.rowHeight * 0.62);
-    const startX = layout.innerLeft + (target.tick / layout.totalTicks) * layout.innerWidth;
-    const endX =
-      layout.innerLeft + ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
+    const startX = (target.tick / layout.totalTicks) * layout.innerWidth;
+    const endX = ((target.tick + Math.max(target.duration_ticks, 1)) / layout.totalTicks) * layout.innerWidth;
     const noteWidth = Math.max(1.6, endX - startX);
     const rowIndex = Phaser.Math.Clamp(target.string - 1, 0, 5);
-    const y = layout.innerTop + rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
+    const y = rowIndex * layout.rowHeight + (layout.rowHeight - noteHeight) / 2;
     return {
       x: startX,
       y,
@@ -230,34 +277,43 @@ export class MinimapRenderer {
     };
   }
 
-  private layoutHitOverlays(targets: TargetNote[], layout: SongMinimapLayout): void {
+  private cacheNoteRects(targets: TargetNote[], layout: SongMinimapLayout): void {
+    this.noteRects = new Array(targets.length);
     for (let i = 0; i < targets.length; i += 1) {
-      const target = targets[i];
-      const rect = this.getSongMinimapNoteRect(target, layout);
-      const overlay = this.getOrCreateHitOverlay(i);
-      overlay
-        .setPosition(rect.x, rect.y)
-        .setSize(rect.width, rect.height)
-        .setDisplaySize(rect.width, rect.height)
-        .setVisible(false);
+      this.noteRects[i] = this.getSongMinimapNoteRect(targets[i], layout);
     }
-    for (let i = targets.length; i < this.hitOverlays.length; i += 1) {
-      this.hitOverlays[i].setVisible(false);
-    }
-    this.resetProgressCache();
   }
 
-  private getOrCreateHitOverlay(index: number): Phaser.GameObjects.Rectangle {
-    const existing = this.hitOverlays[index];
-    if (existing) return existing;
+  private drawCorrectHitNote(index: number): void {
+    const layer = this.hitLayer;
+    const rect = this.noteRects[index];
+    if (!layer || !rect) return;
+    const scratch = this.getOrCreateHitStampScratch();
+    scratch.clear();
+    scratch.fillStyle(0x22c55e, 0.95);
+    scratch.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, rect.radius);
+    layer.draw(scratch, 0, 0);
+  }
 
-    const overlay = this.scene.add
-      .rectangle(0, 0, 1, 1, 0x22c55e, 0.95)
-      .setOrigin(0, 0)
-      .setDepth(288.5)
-      .setVisible(false);
-    this.hitOverlays.push(overlay);
-    return overlay;
+  private rebuildCorrectHitLayer(
+    passedTargetIndex: number,
+    targets: TargetNote[],
+    correctlyHitTargetIds: ReadonlySet<string>
+  ): void {
+    if (!this.hitLayer) return;
+    this.hitLayer.clear();
+    const endIndex = Math.min(passedTargetIndex, targets.length - 1);
+    if (endIndex < 0) return;
+    for (let i = 0; i <= endIndex; i += 1) {
+      if (!correctlyHitTargetIds.has(targets[i].id)) continue;
+      this.drawCorrectHitNote(i);
+    }
+  }
+
+  private getOrCreateHitStampScratch(): Phaser.GameObjects.Graphics {
+    if (this.hitStampScratch) return this.hitStampScratch;
+    this.hitStampScratch = this.scene.add.graphics().setVisible(false);
+    return this.hitStampScratch;
   }
 
   private ensureTargetTickCache(targets: TargetNote[]): boolean {
@@ -290,8 +346,10 @@ export class MinimapRenderer {
   private resetProgressCache(): void {
     this.cachedTargets = undefined;
     this.cachedTargetTicks = [];
-    this.lastProgressTick = Number.NaN;
+    this.lastProgressPixelX = Number.NaN;
     this.lastPassedTargetIndex = -1;
     this.lastCorrectHitCount = -1;
+    this.lastProgressUpdateAtMs = Number.NEGATIVE_INFINITY;
+    this.hitLayer?.clear();
   }
 }

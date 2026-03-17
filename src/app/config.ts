@@ -8,6 +8,8 @@ export const DEFAULT_GATING_TIMEOUT_SECONDS = 2.5;
 export const SCHEDULER_LOOKAHEAD_SECONDS = 0.15;
 export const SCHEDULER_UPDATE_MS = 25;
 export const PLAY_SCENE_NOTE_START_CUTOFF_SECONDS = 3;
+export const PLAY_SCENE_MINIMAP_ENABLED = true;
+export const PLAY_SCENE_MINIMAP_UPDATE_INTERVAL_MS = 1000;
 
 // Increase/decrease this to tune how tall the ball jump looks on beat.
 export const BALL_BOUNCE_AMPLITUDE_FACTOR = 0.8;

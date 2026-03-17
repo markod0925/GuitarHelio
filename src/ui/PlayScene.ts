@@ -3,6 +3,7 @@ import {
   BALL_GHOST_TRAIL_COUNT,
   BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS,
   BALL_GHOST_TRAIL_SAMPLE_STEP,
+  PLAY_SCENE_MINIMAP_ENABLED,
   DIFFICULTY_PRESETS,
   PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
 } from '../app/config';
@@ -472,6 +473,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   public layoutSongMinimap(): void {
+    if (!PLAY_SCENE_MINIMAP_ENABLED) return;
     this.layoutController.layoutSongMinimap();
   }
 
@@ -534,10 +536,12 @@ export class PlayScene extends Phaser.Scene {
   }
 
   public redrawSongMinimapStatic(): void {
+    if (!PLAY_SCENE_MINIMAP_ENABLED) return;
     this.minimapRenderer.redrawStatic(this.targets, this.ticksPerQuarter);
   }
 
   public updateSongMinimapProgress(): void {
+    if (!PLAY_SCENE_MINIMAP_ENABLED) return;
     this.minimapRenderer.updateProgress(this.runtime.current_tick, this.targets, this.correctlyHitTargetIds);
   }
 
