@@ -1,0 +1,26 @@
+candidate_model = "candidate-model.guitar-standard.toml"
+
+[[takes]]
+id = "00_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "04_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "00_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "01_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "00_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp_mic.wav"

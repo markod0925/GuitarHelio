@@ -1,0 +1,62 @@
+[[candidates]]
+id = "ac_14"
+label = "autocorr_explore #14"
+algorithm = "autocorr"
+[candidates.params]
+window_seconds = 0.085345420629
+chunk_seconds = 0.035242278225
+min_freq_hz = 55.0
+max_freq_hz = 1200.0
+energy_threshold = 0.003074202394
+correlation_threshold = 0.655973628323
+decay_grace_frames = 4.110656460793
+decay_energy_factor = 0.415776906246
+decay_correlation_threshold = 0.628857967961
+[candidates.source]
+kind = "web_research"
+reference = "OneBitPitch (OBP): Ultra-High-Speed Pitch Detection Algorithm Based on ..."
+source_url = "https://www.mdpi.com/2076-3417/13/14/8191"
+vendored = false
+notes = "In this paper, a novel algorithm was proposed for ultra-fast pitch detection for real-time applications, based on a modified autocorrelation implemented on a single-bit signal."
+[[candidates]]
+id = "spectral_game_runtime_unified_v3"
+label = "Spectral game runtime unified v3"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+min_freq_hz = 75.0
+fft_size = 4096.0
+max_harmonic_freq_hz = 3600.0
+max_harmonics = 4.0
+base_bandwidth_hz = 17.3
+relative_bandwidth = 0.0148
+magnitude_compression_gamma = 0.24
+use_log_magnitude = 0.0
+use_local_whitening = 1.0
+whitening_radius_bins = 10.0
+use_harmonic_penalty = 0.0
+subharmonic_penalty_alpha = 0.0
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00005
+confidence_contrast_weight = 0.575
+confidence_energy_weight = 0.425
+confidence_gain = 2.28
+confidence_bias = 0.915
+emit_frame_traces = 0.0
+polyphony_max_notes = 3.0
+emit_chord_scores = 1.0
+use_expected_polyphony_prior = 1.0
+expected_prior_midi_tolerance_cents = 43.0
+expected_prior_mode = 1.0
+expected_prior_soft_weight = 0.66
+expected_prior_soft_bonus = 0.23
+expected_prior_soft_offtarget_multiplier = 0.9465
+[candidates.source]
+kind = "internal"
+reference = "game unified profile benchmark"
+license = "MIT"
+vendored = false
+notes = "Single static runtime profile to avoid in-game parameter switching."

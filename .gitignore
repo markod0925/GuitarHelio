@@ -7,3 +7,5 @@ third_party/*/build/
 *.tsbuildinfo
 AGENTS.md
 tsconfig.tsbuildinfo
+*.jams
+*.wav

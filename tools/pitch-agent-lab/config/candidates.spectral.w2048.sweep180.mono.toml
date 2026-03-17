@@ -1,0 +1,7199 @@
+[[candidates]]
+id = "w2048_v000_base"
+label = "W2048 v000_base mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20
+chunk_seconds = 0.0116099773
+confidence_bias = 0.88
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.2
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3
+max_harmonic_freq_hz = 4050
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02
+subharmonic_penalty_alpha = 0.03
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v001"
+label = "W2048 v001 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.164
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7915
+confidence_contrast_weight = 0.5908
+confidence_energy_weight = 0.4092
+confidence_gain = 1.9949
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.542
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3257
+max_harmonic_freq_hz = 4290.421
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.54e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01974
+subharmonic_penalty_alpha = 0.0339
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v002"
+label = "W2048 v002 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.07
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9021
+confidence_contrast_weight = 0.5514
+confidence_energy_weight = 0.4486
+confidence_gain = 2.2827
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.257
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2796
+max_harmonic_freq_hz = 4079.03
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.92e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02305
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v003"
+label = "W2048 v003 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.385
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8527
+confidence_contrast_weight = 0.5047
+confidence_energy_weight = 0.4953
+confidence_gain = 2.3457
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.272
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2153
+max_harmonic_freq_hz = 3694.917
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.27e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02534
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v004"
+label = "W2048 v004 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.947
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8132
+confidence_contrast_weight = 0.5587
+confidence_energy_weight = 0.4413
+confidence_gain = 2.3864
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 40.195
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2266
+max_harmonic_freq_hz = 4399.977
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.49e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01607
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v005"
+label = "W2048 v005 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.511
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8219
+confidence_contrast_weight = 0.4544
+confidence_energy_weight = 0.5456
+confidence_gain = 1.9879
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 44.292
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.546
+max_harmonic_freq_hz = 3758.483
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.97e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01822
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v006"
+label = "W2048 v006 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.249
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9317
+confidence_contrast_weight = 0.6486
+confidence_energy_weight = 0.3514
+confidence_gain = 2.1087
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.683
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5151
+max_harmonic_freq_hz = 4407.737
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.79e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01765
+subharmonic_penalty_alpha = 0.0239
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v007"
+label = "W2048 v007 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.09
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7895
+confidence_contrast_weight = 0.5143
+confidence_energy_weight = 0.4857
+confidence_gain = 1.9871
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 52.582
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5057
+max_harmonic_freq_hz = 3614.686
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.32e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01629
+subharmonic_penalty_alpha = 0.0282
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v008"
+label = "W2048 v008 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.889
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7841
+confidence_contrast_weight = 0.4537
+confidence_energy_weight = 0.5463
+confidence_gain = 2.052
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.145
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2951
+max_harmonic_freq_hz = 4301.021
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.43e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02066
+subharmonic_penalty_alpha = 0.0702
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v009"
+label = "W2048 v009 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.555
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7966
+confidence_contrast_weight = 0.4778
+confidence_energy_weight = 0.5222
+confidence_gain = 2.2321
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.704
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4027
+max_harmonic_freq_hz = 4199.776
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.69e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02158
+subharmonic_penalty_alpha = 0.0422
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v010"
+label = "W2048 v010 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.122
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8986
+confidence_contrast_weight = 0.5914
+confidence_energy_weight = 0.4086
+confidence_gain = 1.8416
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.113
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4705
+max_harmonic_freq_hz = 3675.281
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.34e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02519
+subharmonic_penalty_alpha = 0.01
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v011"
+label = "W2048 v011 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.829
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7836
+confidence_contrast_weight = 0.5245
+confidence_energy_weight = 0.4755
+confidence_gain = 2.1372
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.347
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3691
+max_harmonic_freq_hz = 3736.652
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.19e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02441
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v012"
+label = "W2048 v012 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.912
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8528
+confidence_contrast_weight = 0.4851
+confidence_energy_weight = 0.5149
+confidence_gain = 1.8067
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 58.825
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5039
+max_harmonic_freq_hz = 3975.965
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.66e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01714
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v013"
+label = "W2048 v013 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.859
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8559
+confidence_contrast_weight = 0.5024
+confidence_energy_weight = 0.4976
+confidence_gain = 2.3971
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.58
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3626
+max_harmonic_freq_hz = 4357.548
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.09e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02291
+subharmonic_penalty_alpha = 0.024
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v014"
+label = "W2048 v014 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.837
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8198
+confidence_contrast_weight = 0.5496
+confidence_energy_weight = 0.4504
+confidence_gain = 2.0064
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.942
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3981
+max_harmonic_freq_hz = 3995.385
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.5e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02588
+subharmonic_penalty_alpha = 0.0557
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v015"
+label = "W2048 v015 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.543
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8052
+confidence_contrast_weight = 0.6419
+confidence_energy_weight = 0.3581
+confidence_gain = 2.2914
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.101
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5224
+max_harmonic_freq_hz = 4592.204
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.78e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02249
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v016"
+label = "W2048 v016 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.02
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8268
+confidence_contrast_weight = 0.4652
+confidence_energy_weight = 0.5348
+confidence_gain = 2.3497
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.138
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2431
+max_harmonic_freq_hz = 3884.978
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 2.98e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02515
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v017"
+label = "W2048 v017 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.094
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8979
+confidence_contrast_weight = 0.5509
+confidence_energy_weight = 0.4491
+confidence_gain = 1.8398
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.065
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5391
+max_harmonic_freq_hz = 4503.445
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.72e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02291
+subharmonic_penalty_alpha = 0.0378
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v018"
+label = "W2048 v018 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.4
+chunk_seconds = 0.0116099773
+confidence_bias = 0.849
+confidence_contrast_weight = 0.5276
+confidence_energy_weight = 0.4724
+confidence_gain = 1.9795
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.882
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4258
+max_harmonic_freq_hz = 4342.507
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 6e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01608
+subharmonic_penalty_alpha = 0.058
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v019"
+label = "W2048 v019 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.085
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7997
+confidence_contrast_weight = 0.5747
+confidence_energy_weight = 0.4253
+confidence_gain = 2.0201
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.202
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5472
+max_harmonic_freq_hz = 3832.16
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.51e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01864
+subharmonic_penalty_alpha = 0.0172
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v020"
+label = "W2048 v020 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.282
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9303
+confidence_contrast_weight = 0.4561
+confidence_energy_weight = 0.5439
+confidence_gain = 2.411
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.783
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3781
+max_harmonic_freq_hz = 3953.993
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.26e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01955
+subharmonic_penalty_alpha = 0.0299
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v021"
+label = "W2048 v021 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.857
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8104
+confidence_contrast_weight = 0.5452
+confidence_energy_weight = 0.4548
+confidence_gain = 2.1727
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 58.745
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4184
+max_harmonic_freq_hz = 3998.528
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 3.69e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02094
+subharmonic_penalty_alpha = 0.0573
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v022"
+label = "W2048 v022 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.323
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8954
+confidence_contrast_weight = 0.6341
+confidence_energy_weight = 0.3659
+confidence_gain = 1.9112
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 39.728
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5027
+max_harmonic_freq_hz = 4136.531
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 3.69e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01475
+subharmonic_penalty_alpha = 0.0047
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v023"
+label = "W2048 v023 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.932
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8624
+confidence_contrast_weight = 0.5658
+confidence_energy_weight = 0.4342
+confidence_gain = 2.2173
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.81
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5477
+max_harmonic_freq_hz = 3896.726
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.22e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01854
+subharmonic_penalty_alpha = 0.0436
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v024"
+label = "W2048 v024 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.345
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8916
+confidence_contrast_weight = 0.519
+confidence_energy_weight = 0.481
+confidence_gain = 2.4403
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.97
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3557
+max_harmonic_freq_hz = 3629.715
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.94e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01762
+subharmonic_penalty_alpha = 0.0291
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v025"
+label = "W2048 v025 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.701
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9366
+confidence_contrast_weight = 0.5193
+confidence_energy_weight = 0.4807
+confidence_gain = 1.9562
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 51.105
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2272
+max_harmonic_freq_hz = 4495.922
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 3.35e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02508
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v026"
+label = "W2048 v026 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.321
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8291
+confidence_contrast_weight = 0.5866
+confidence_energy_weight = 0.4134
+confidence_gain = 2.0995
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.729
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3625
+max_harmonic_freq_hz = 3769.572
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 2.42e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02593
+subharmonic_penalty_alpha = 0.0602
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v027"
+label = "W2048 v027 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.431
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8885
+confidence_contrast_weight = 0.5573
+confidence_energy_weight = 0.4427
+confidence_gain = 2.2848
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.777
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2259
+max_harmonic_freq_hz = 4205.979
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.49e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02025
+subharmonic_penalty_alpha = 0.0503
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v028"
+label = "W2048 v028 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.998
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8707
+confidence_contrast_weight = 0.5449
+confidence_energy_weight = 0.4551
+confidence_gain = 2.4344
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.199
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4238
+max_harmonic_freq_hz = 4193.336
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.11e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02033
+subharmonic_penalty_alpha = 0.0765
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v029"
+label = "W2048 v029 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.057
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8671
+confidence_contrast_weight = 0.5529
+confidence_energy_weight = 0.4471
+confidence_gain = 2.263
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.965
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3989
+max_harmonic_freq_hz = 3898.728
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.59e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02304
+subharmonic_penalty_alpha = 0.0491
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v030"
+label = "W2048 v030 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.522
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8413
+confidence_contrast_weight = 0.4726
+confidence_energy_weight = 0.5274
+confidence_gain = 2.4121
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.812
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4105
+max_harmonic_freq_hz = 3948.733
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.14e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02086
+subharmonic_penalty_alpha = 0.0543
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v031"
+label = "W2048 v031 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.994
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8795
+confidence_contrast_weight = 0.4666
+confidence_energy_weight = 0.5334
+confidence_gain = 2.0814
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.368
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2257
+max_harmonic_freq_hz = 3650.361
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 3.32e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02517
+subharmonic_penalty_alpha = 0.0352
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v032"
+label = "W2048 v032 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.803
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8351
+confidence_contrast_weight = 0.563
+confidence_energy_weight = 0.437
+confidence_gain = 2.0847
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.134
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2722
+max_harmonic_freq_hz = 4290.386
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.04e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0257
+subharmonic_penalty_alpha = 0.0077
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v033"
+label = "W2048 v033 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.853
+chunk_seconds = 0.0116099773
+confidence_bias = 0.859
+confidence_contrast_weight = 0.4521
+confidence_energy_weight = 0.5479
+confidence_gain = 1.8269
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 58.48
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2351
+max_harmonic_freq_hz = 4474.977
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.63e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02529
+subharmonic_penalty_alpha = 0.0692
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v034"
+label = "W2048 v034 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.322
+chunk_seconds = 0.0116099773
+confidence_bias = 0.904
+confidence_contrast_weight = 0.6213
+confidence_energy_weight = 0.3787
+confidence_gain = 2.5559
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.761
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3639
+max_harmonic_freq_hz = 4507.604
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.02e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02381
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v035"
+label = "W2048 v035 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.787
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8769
+confidence_contrast_weight = 0.5921
+confidence_energy_weight = 0.4079
+confidence_gain = 2.0628
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.66
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5184
+max_harmonic_freq_hz = 4522.752
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.67e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01771
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v036"
+label = "W2048 v036 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.303
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8759
+confidence_contrast_weight = 0.4909
+confidence_energy_weight = 0.5091
+confidence_gain = 2.5994
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.149
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3057
+max_harmonic_freq_hz = 4292.672
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.48e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01425
+subharmonic_penalty_alpha = 0.0642
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v037"
+label = "W2048 v037 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.781
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8656
+confidence_contrast_weight = 0.6212
+confidence_energy_weight = 0.3788
+confidence_gain = 1.9133
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.659
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4144
+max_harmonic_freq_hz = 4588.548
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.16e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01478
+subharmonic_penalty_alpha = 0.0102
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v038"
+label = "W2048 v038 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.312
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7911
+confidence_contrast_weight = 0.4515
+confidence_energy_weight = 0.5485
+confidence_gain = 2.2832
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.345
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.544
+max_harmonic_freq_hz = 3778.812
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.73e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02318
+subharmonic_penalty_alpha = 0.0025
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v039"
+label = "W2048 v039 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.314
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8917
+confidence_contrast_weight = 0.6021
+confidence_energy_weight = 0.3979
+confidence_gain = 2.0569
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.533
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2387
+max_harmonic_freq_hz = 3604.531
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.95e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02124
+subharmonic_penalty_alpha = 0.0585
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v040"
+label = "W2048 v040 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.863
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7823
+confidence_contrast_weight = 0.5076
+confidence_energy_weight = 0.4924
+confidence_gain = 2.1673
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.798
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3213
+max_harmonic_freq_hz = 4560.792
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01898
+subharmonic_penalty_alpha = 0.0509
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v041"
+label = "W2048 v041 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.579
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7801
+confidence_contrast_weight = 0.5203
+confidence_energy_weight = 0.4797
+confidence_gain = 2.1795
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.434
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.293
+max_harmonic_freq_hz = 3966.352
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.52e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01567
+subharmonic_penalty_alpha = 0.0621
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v042"
+label = "W2048 v042 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.507
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8583
+confidence_contrast_weight = 0.628
+confidence_energy_weight = 0.372
+confidence_gain = 1.9306
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.879
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3719
+max_harmonic_freq_hz = 3613.713
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.93e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02369
+subharmonic_penalty_alpha = 0.0659
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v043"
+label = "W2048 v043 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.806
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8209
+confidence_contrast_weight = 0.6137
+confidence_energy_weight = 0.3863
+confidence_gain = 2.4999
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 35.581
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2128
+max_harmonic_freq_hz = 3980.717
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.07e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02022
+subharmonic_penalty_alpha = 0.0678
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v044"
+label = "W2048 v044 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.843
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8772
+confidence_contrast_weight = 0.6175
+confidence_energy_weight = 0.3825
+confidence_gain = 2.4512
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 44.025
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2014
+max_harmonic_freq_hz = 3807.357
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.28e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01408
+subharmonic_penalty_alpha = 0.0117
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v045"
+label = "W2048 v045 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.922
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8371
+confidence_contrast_weight = 0.5184
+confidence_energy_weight = 0.4816
+confidence_gain = 1.8991
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.119
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4314
+max_harmonic_freq_hz = 4502.73
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 2.48e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01478
+subharmonic_penalty_alpha = 0.0362
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v046"
+label = "W2048 v046 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.686
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8886
+confidence_contrast_weight = 0.4876
+confidence_energy_weight = 0.5124
+confidence_gain = 2.2825
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.851
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2653
+max_harmonic_freq_hz = 4042.513
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.33e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02007
+subharmonic_penalty_alpha = 0.0501
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v047"
+label = "W2048 v047 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.288
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9293
+confidence_contrast_weight = 0.6284
+confidence_energy_weight = 0.3716
+confidence_gain = 1.9908
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.994
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5487
+max_harmonic_freq_hz = 3861.283
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.26e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02381
+subharmonic_penalty_alpha = 0.024
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v048"
+label = "W2048 v048 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.269
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8154
+confidence_contrast_weight = 0.5957
+confidence_energy_weight = 0.4043
+confidence_gain = 2.275
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.879
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2747
+max_harmonic_freq_hz = 4328.899
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.65e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02149
+subharmonic_penalty_alpha = 0.0101
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v049"
+label = "W2048 v049 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.447
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8999
+confidence_contrast_weight = 0.5968
+confidence_energy_weight = 0.4032
+confidence_gain = 2.3451
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 52.798
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4009
+max_harmonic_freq_hz = 4058.824
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.26e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01424
+subharmonic_penalty_alpha = 0.0065
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v050"
+label = "W2048 v050 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.08
+chunk_seconds = 0.0116099773
+confidence_bias = 0.799
+confidence_contrast_weight = 0.5833
+confidence_energy_weight = 0.4167
+confidence_gain = 1.8957
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.512
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3842
+max_harmonic_freq_hz = 4247.009
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.98e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01983
+subharmonic_penalty_alpha = 0.079
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v051"
+label = "W2048 v051 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.099
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9019
+confidence_contrast_weight = 0.4735
+confidence_energy_weight = 0.5265
+confidence_gain = 2.5158
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 58.96
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3525
+max_harmonic_freq_hz = 4257.257
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.98e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01574
+subharmonic_penalty_alpha = 0.0201
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v052"
+label = "W2048 v052 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.501
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7856
+confidence_contrast_weight = 0.6205
+confidence_energy_weight = 0.3795
+confidence_gain = 2.5151
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 44.907
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4007
+max_harmonic_freq_hz = 3888.241
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.81e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0159
+subharmonic_penalty_alpha = 0.057
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v053"
+label = "W2048 v053 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.752
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8911
+confidence_contrast_weight = 0.5021
+confidence_energy_weight = 0.4979
+confidence_gain = 1.8536
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 35.962
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4187
+max_harmonic_freq_hz = 4228.911
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.05e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01816
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v054"
+label = "W2048 v054 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.559
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9118
+confidence_contrast_weight = 0.5832
+confidence_energy_weight = 0.4168
+confidence_gain = 1.85
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.179
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2501
+max_harmonic_freq_hz = 3770.218
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 1.82e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02475
+subharmonic_penalty_alpha = 0.0656
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v055"
+label = "W2048 v055 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.896
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7896
+confidence_contrast_weight = 0.5568
+confidence_energy_weight = 0.4432
+confidence_gain = 2.1458
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.152
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4302
+max_harmonic_freq_hz = 3891.86
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.61e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01853
+subharmonic_penalty_alpha = 0.0366
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v056"
+label = "W2048 v056 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.387
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8977
+confidence_contrast_weight = 0.5683
+confidence_energy_weight = 0.4317
+confidence_gain = 2.5925
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 35.194
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2122
+max_harmonic_freq_hz = 4505.661
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 3.94e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02109
+subharmonic_penalty_alpha = 0.0411
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v057"
+label = "W2048 v057 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.68
+chunk_seconds = 0.0116099773
+confidence_bias = 0.891
+confidence_contrast_weight = 0.4998
+confidence_energy_weight = 0.5002
+confidence_gain = 1.8815
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 52.643
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3724
+max_harmonic_freq_hz = 4041.521
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.81e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0154
+subharmonic_penalty_alpha = 0.0001
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v058"
+label = "W2048 v058 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.522
+chunk_seconds = 0.0116099773
+confidence_bias = 0.833
+confidence_contrast_weight = 0.4687
+confidence_energy_weight = 0.5313
+confidence_gain = 2.438
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.284
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2628
+max_harmonic_freq_hz = 4163.784
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.75e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02252
+subharmonic_penalty_alpha = 0.0429
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v059"
+label = "W2048 v059 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.869
+chunk_seconds = 0.0116099773
+confidence_bias = 0.852
+confidence_contrast_weight = 0.5968
+confidence_energy_weight = 0.4032
+confidence_gain = 1.9789
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.242
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5006
+max_harmonic_freq_hz = 4531.101
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 1.2e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02184
+subharmonic_penalty_alpha = 0.0721
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v060"
+label = "W2048 v060 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.461
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8106
+confidence_contrast_weight = 0.4652
+confidence_energy_weight = 0.5348
+confidence_gain = 2.4405
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.852
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2514
+max_harmonic_freq_hz = 4221.796
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.96e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01976
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v061"
+label = "W2048 v061 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.248
+chunk_seconds = 0.0116099773
+confidence_bias = 0.884
+confidence_contrast_weight = 0.5993
+confidence_energy_weight = 0.4007
+confidence_gain = 2.295
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 52.286
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4918
+max_harmonic_freq_hz = 3699.544
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.35e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02179
+subharmonic_penalty_alpha = 0.0631
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v062"
+label = "W2048 v062 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.055
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8773
+confidence_contrast_weight = 0.567
+confidence_energy_weight = 0.433
+confidence_gain = 2.3706
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.367
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.258
+max_harmonic_freq_hz = 3938.679
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.39e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0251
+subharmonic_penalty_alpha = 0.0506
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v063"
+label = "W2048 v063 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.551
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8628
+confidence_contrast_weight = 0.6431
+confidence_energy_weight = 0.3569
+confidence_gain = 2.5305
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.6
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5113
+max_harmonic_freq_hz = 4363.321
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.96e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01998
+subharmonic_penalty_alpha = 0.0692
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v064"
+label = "W2048 v064 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.61
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7903
+confidence_contrast_weight = 0.5326
+confidence_energy_weight = 0.4674
+confidence_gain = 1.9242
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 42.842
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.487
+max_harmonic_freq_hz = 4525.166
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.51e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02004
+subharmonic_penalty_alpha = 0.019
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v065"
+label = "W2048 v065 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.939
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8992
+confidence_contrast_weight = 0.4925
+confidence_energy_weight = 0.5075
+confidence_gain = 2.2349
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 52.585
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.539
+max_harmonic_freq_hz = 4286.24
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.65e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02267
+subharmonic_penalty_alpha = 0.0767
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v066"
+label = "W2048 v066 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.715
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7968
+confidence_contrast_weight = 0.5784
+confidence_energy_weight = 0.4216
+confidence_gain = 2.4506
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 35.839
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3579
+max_harmonic_freq_hz = 3640.693
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.35e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01442
+subharmonic_penalty_alpha = 0.077
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v067"
+label = "W2048 v067 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.83
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9149
+confidence_contrast_weight = 0.6322
+confidence_energy_weight = 0.3678
+confidence_gain = 1.9006
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.438
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4743
+max_harmonic_freq_hz = 4389.618
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.51e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01813
+subharmonic_penalty_alpha = 0.0172
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v068"
+label = "W2048 v068 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.125
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8389
+confidence_contrast_weight = 0.4717
+confidence_energy_weight = 0.5283
+confidence_gain = 2.5439
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 42.333
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2569
+max_harmonic_freq_hz = 4303.422
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.86e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01808
+subharmonic_penalty_alpha = 0.0076
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v069"
+label = "W2048 v069 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.127
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9209
+confidence_contrast_weight = 0.5737
+confidence_energy_weight = 0.4263
+confidence_gain = 1.9596
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.679
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4697
+max_harmonic_freq_hz = 3902.361
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.21e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01748
+subharmonic_penalty_alpha = 0.0177
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v070"
+label = "W2048 v070 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.29
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8191
+confidence_contrast_weight = 0.5149
+confidence_energy_weight = 0.4851
+confidence_gain = 2.4683
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.532
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2668
+max_harmonic_freq_hz = 4342.716
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.8e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02543
+subharmonic_penalty_alpha = 0.0562
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v071"
+label = "W2048 v071 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.147
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8071
+confidence_contrast_weight = 0.5116
+confidence_energy_weight = 0.4884
+confidence_gain = 2.4412
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.168
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4236
+max_harmonic_freq_hz = 3979.629
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.7e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02207
+subharmonic_penalty_alpha = 0.0346
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v072"
+label = "W2048 v072 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.592
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8991
+confidence_contrast_weight = 0.5775
+confidence_energy_weight = 0.4225
+confidence_gain = 2.4348
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.307
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4794
+max_harmonic_freq_hz = 3724.836
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 2.78e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01521
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v073"
+label = "W2048 v073 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.149
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9204
+confidence_contrast_weight = 0.4633
+confidence_energy_weight = 0.5367
+confidence_gain = 2.2592
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.022
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2441
+max_harmonic_freq_hz = 3981.725
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.03e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01683
+subharmonic_penalty_alpha = 0.073
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v074"
+label = "W2048 v074 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.18
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7947
+confidence_contrast_weight = 0.4986
+confidence_energy_weight = 0.5014
+confidence_gain = 1.8855
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.802
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2811
+max_harmonic_freq_hz = 4132.971
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.34e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01733
+subharmonic_penalty_alpha = 0.0248
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v075"
+label = "W2048 v075 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.132
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8367
+confidence_contrast_weight = 0.4945
+confidence_energy_weight = 0.5055
+confidence_gain = 2.1977
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.6
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3787
+max_harmonic_freq_hz = 4588.315
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.99e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02516
+subharmonic_penalty_alpha = 0.0363
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v076"
+label = "W2048 v076 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.424
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9354
+confidence_contrast_weight = 0.6191
+confidence_energy_weight = 0.3809
+confidence_gain = 2.4928
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.144
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2572
+max_harmonic_freq_hz = 4576.66
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.07e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01835
+subharmonic_penalty_alpha = 0.0172
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v077"
+label = "W2048 v077 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.44
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8896
+confidence_contrast_weight = 0.5
+confidence_energy_weight = 0.5
+confidence_gain = 1.8761
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.412
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3453
+max_harmonic_freq_hz = 4424.514
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.7e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0146
+subharmonic_penalty_alpha = 0.0122
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v078"
+label = "W2048 v078 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.769
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9314
+confidence_contrast_weight = 0.6231
+confidence_energy_weight = 0.3769
+confidence_gain = 1.9864
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.739
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.358
+max_harmonic_freq_hz = 3670.561
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 3.92e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02374
+subharmonic_penalty_alpha = 0.0232
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v079"
+label = "W2048 v079 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.229
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9008
+confidence_contrast_weight = 0.5744
+confidence_energy_weight = 0.4256
+confidence_gain = 1.8686
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 39.46
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4643
+max_harmonic_freq_hz = 4135.876
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 2.61e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01773
+subharmonic_penalty_alpha = 0.0233
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v080"
+label = "W2048 v080 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.768
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8145
+confidence_contrast_weight = 0.5494
+confidence_energy_weight = 0.4506
+confidence_gain = 2.0977
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.393
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4382
+max_harmonic_freq_hz = 4425.666
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.83e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02044
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v081"
+label = "W2048 v081 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.851
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8879
+confidence_contrast_weight = 0.5564
+confidence_energy_weight = 0.4436
+confidence_gain = 1.9491
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.402
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4174
+max_harmonic_freq_hz = 3900.809
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.93e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02225
+subharmonic_penalty_alpha = 0.0239
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v082"
+label = "W2048 v082 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.9
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7959
+confidence_contrast_weight = 0.601
+confidence_energy_weight = 0.399
+confidence_gain = 2.0116
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.763
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4605
+max_harmonic_freq_hz = 4413.975
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 2.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01754
+subharmonic_penalty_alpha = 0.0694
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v083"
+label = "W2048 v083 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.759
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8468
+confidence_contrast_weight = 0.5185
+confidence_energy_weight = 0.4815
+confidence_gain = 2.2475
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.505
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4024
+max_harmonic_freq_hz = 3635.759
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.12e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02061
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v084"
+label = "W2048 v084 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.214
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7998
+confidence_contrast_weight = 0.5288
+confidence_energy_weight = 0.4712
+confidence_gain = 1.92
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.728
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2714
+max_harmonic_freq_hz = 4334.699
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 1.42e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02385
+subharmonic_penalty_alpha = 0.0541
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v085"
+label = "W2048 v085 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.899
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8946
+confidence_contrast_weight = 0.5729
+confidence_energy_weight = 0.4271
+confidence_gain = 1.9739
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.555
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4381
+max_harmonic_freq_hz = 4273.438
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 3.83e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02429
+subharmonic_penalty_alpha = 0.0387
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v086"
+label = "W2048 v086 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.745
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9274
+confidence_contrast_weight = 0.4857
+confidence_energy_weight = 0.5143
+confidence_gain = 2.3558
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.111
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5379
+max_harmonic_freq_hz = 4014.823
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.29e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01631
+subharmonic_penalty_alpha = 0.0438
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v087"
+label = "W2048 v087 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.223
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8109
+confidence_contrast_weight = 0.4646
+confidence_energy_weight = 0.5354
+confidence_gain = 2.4829
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.32
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2517
+max_harmonic_freq_hz = 3705.63
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.66e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02356
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v088"
+label = "W2048 v088 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.394
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8904
+confidence_contrast_weight = 0.6359
+confidence_energy_weight = 0.3641
+confidence_gain = 1.8158
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.49
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5038
+max_harmonic_freq_hz = 4126.273
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.41e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01502
+subharmonic_penalty_alpha = 0.0374
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v089"
+label = "W2048 v089 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.356
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8149
+confidence_contrast_weight = 0.489
+confidence_energy_weight = 0.511
+confidence_gain = 2.1639
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.209
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4859
+max_harmonic_freq_hz = 3915.276
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.39e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0194
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v090"
+label = "W2048 v090 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.286
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8462
+confidence_contrast_weight = 0.5686
+confidence_energy_weight = 0.4314
+confidence_gain = 2.5989
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.545
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3152
+max_harmonic_freq_hz = 4032.025
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.74e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02488
+subharmonic_penalty_alpha = 0.0214
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v091"
+label = "W2048 v091 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.508
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7807
+confidence_contrast_weight = 0.6236
+confidence_energy_weight = 0.3764
+confidence_gain = 2.3397
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.685
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4573
+max_harmonic_freq_hz = 4384.193
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.96e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02069
+subharmonic_penalty_alpha = 0.0636
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v092"
+label = "W2048 v092 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.46
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8228
+confidence_contrast_weight = 0.5575
+confidence_energy_weight = 0.4425
+confidence_gain = 2.0702
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.544
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.49
+max_harmonic_freq_hz = 3821.813
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.71e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01781
+subharmonic_penalty_alpha = 0.0606
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v093"
+label = "W2048 v093 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.014
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8169
+confidence_contrast_weight = 0.6021
+confidence_energy_weight = 0.3979
+confidence_gain = 1.8643
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.891
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4269
+max_harmonic_freq_hz = 4305.596
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02437
+subharmonic_penalty_alpha = 0.0206
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v094"
+label = "W2048 v094 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.427
+chunk_seconds = 0.0116099773
+confidence_bias = 0.892
+confidence_contrast_weight = 0.5505
+confidence_energy_weight = 0.4495
+confidence_gain = 2.3401
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.522
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4208
+max_harmonic_freq_hz = 4030.912
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.22e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01622
+subharmonic_penalty_alpha = 0.0796
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v095"
+label = "W2048 v095 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.191
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9232
+confidence_contrast_weight = 0.4794
+confidence_energy_weight = 0.5206
+confidence_gain = 2.0936
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.244
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5265
+max_harmonic_freq_hz = 3685.721
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 1.97e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01892
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v096"
+label = "W2048 v096 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.555
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8895
+confidence_contrast_weight = 0.5531
+confidence_energy_weight = 0.4469
+confidence_gain = 2.3368
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.401
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3178
+max_harmonic_freq_hz = 4022.013
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.47e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02471
+subharmonic_penalty_alpha = 0.0647
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v097"
+label = "W2048 v097 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.826
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8494
+confidence_contrast_weight = 0.5917
+confidence_energy_weight = 0.4083
+confidence_gain = 2.3794
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.223
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3901
+max_harmonic_freq_hz = 4035.758
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.78e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01614
+subharmonic_penalty_alpha = 0.0434
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v098"
+label = "W2048 v098 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.043
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8429
+confidence_contrast_weight = 0.6026
+confidence_energy_weight = 0.3974
+confidence_gain = 2.0881
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.119
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4264
+max_harmonic_freq_hz = 4360.854
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.35e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01715
+subharmonic_penalty_alpha = 0.0004
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v099"
+label = "W2048 v099 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.102
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9065
+confidence_contrast_weight = 0.544
+confidence_energy_weight = 0.456
+confidence_gain = 1.8264
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.225
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5156
+max_harmonic_freq_hz = 3634.742
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.83e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01617
+subharmonic_penalty_alpha = 0.0289
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v100"
+label = "W2048 v100 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.707
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8271
+confidence_contrast_weight = 0.4837
+confidence_energy_weight = 0.5163
+confidence_gain = 2.5076
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.026
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4962
+max_harmonic_freq_hz = 3838.008
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.57e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02009
+subharmonic_penalty_alpha = 0.0018
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v101"
+label = "W2048 v101 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.389
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9047
+confidence_contrast_weight = 0.6109
+confidence_energy_weight = 0.3891
+confidence_gain = 2.1902
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.466
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5078
+max_harmonic_freq_hz = 3934.833
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.61e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0167
+subharmonic_penalty_alpha = 0.0696
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v102"
+label = "W2048 v102 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.652
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9371
+confidence_contrast_weight = 0.5891
+confidence_energy_weight = 0.4109
+confidence_gain = 2.5288
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.458
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5182
+max_harmonic_freq_hz = 4111.512
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.27e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01404
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v103"
+label = "W2048 v103 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.707
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8076
+confidence_contrast_weight = 0.5767
+confidence_energy_weight = 0.4233
+confidence_gain = 2.3811
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.117
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4649
+max_harmonic_freq_hz = 4522.007
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.78e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01805
+subharmonic_penalty_alpha = 0.0301
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v104"
+label = "W2048 v104 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.209
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8447
+confidence_contrast_weight = 0.6155
+confidence_energy_weight = 0.3845
+confidence_gain = 1.9268
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.532
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5004
+max_harmonic_freq_hz = 3605.832
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.07e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01541
+subharmonic_penalty_alpha = 0.014
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v105"
+label = "W2048 v105 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.407
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8055
+confidence_contrast_weight = 0.5095
+confidence_energy_weight = 0.4905
+confidence_gain = 2.4548
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.037
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.349
+max_harmonic_freq_hz = 3819.957
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 3.63e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02373
+subharmonic_penalty_alpha = 0.0137
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v106"
+label = "W2048 v106 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.725
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9288
+confidence_contrast_weight = 0.5434
+confidence_energy_weight = 0.4566
+confidence_gain = 2.4183
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.715
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2098
+max_harmonic_freq_hz = 4173.629
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.83e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01927
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v107"
+label = "W2048 v107 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.423
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8699
+confidence_contrast_weight = 0.595
+confidence_energy_weight = 0.405
+confidence_gain = 2.2399
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.467
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3929
+max_harmonic_freq_hz = 4061.496
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 5.44e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01638
+subharmonic_penalty_alpha = 0.0669
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v108"
+label = "W2048 v108 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.311
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8052
+confidence_contrast_weight = 0.5901
+confidence_energy_weight = 0.4099
+confidence_gain = 2.3252
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.106
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4498
+max_harmonic_freq_hz = 3834.201
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.53e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01523
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v109"
+label = "W2048 v109 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.966
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8406
+confidence_contrast_weight = 0.5075
+confidence_energy_weight = 0.4925
+confidence_gain = 2.3429
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.274
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2017
+max_harmonic_freq_hz = 3625.26
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 2.87e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02292
+subharmonic_penalty_alpha = 0.0079
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v110"
+label = "W2048 v110 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.807
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8509
+confidence_contrast_weight = 0.4712
+confidence_energy_weight = 0.5288
+confidence_gain = 1.8555
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 38.853
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4975
+max_harmonic_freq_hz = 4069.482
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.07e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01941
+subharmonic_penalty_alpha = 0.0689
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v111"
+label = "W2048 v111 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.521
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9111
+confidence_contrast_weight = 0.6274
+confidence_energy_weight = 0.3726
+confidence_gain = 2.387
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.946
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5404
+max_harmonic_freq_hz = 3626.809
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.43e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02086
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v112"
+label = "W2048 v112 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.509
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7898
+confidence_contrast_weight = 0.6076
+confidence_energy_weight = 0.3924
+confidence_gain = 2.416
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.427
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3226
+max_harmonic_freq_hz = 4213.503
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.91e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02447
+subharmonic_penalty_alpha = 0.0209
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v113"
+label = "W2048 v113 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.378
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8855
+confidence_contrast_weight = 0.6143
+confidence_energy_weight = 0.3857
+confidence_gain = 1.9954
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.571
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4082
+max_harmonic_freq_hz = 4538.755
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.08e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01548
+subharmonic_penalty_alpha = 0.0278
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v114"
+label = "W2048 v114 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.202
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9233
+confidence_contrast_weight = 0.5837
+confidence_energy_weight = 0.4163
+confidence_gain = 2.0073
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 51.992
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3606
+max_harmonic_freq_hz = 3993.985
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.56e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01769
+subharmonic_penalty_alpha = 0.0198
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v115"
+label = "W2048 v115 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.544
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7997
+confidence_contrast_weight = 0.475
+confidence_energy_weight = 0.525
+confidence_gain = 2.5401
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.371
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3132
+max_harmonic_freq_hz = 3654.188
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.36e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02061
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v116"
+label = "W2048 v116 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.135
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7909
+confidence_contrast_weight = 0.5259
+confidence_energy_weight = 0.4741
+confidence_gain = 2.0082
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.159
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3809
+max_harmonic_freq_hz = 4435.424
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 4.26e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01617
+subharmonic_penalty_alpha = 0.0149
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v117"
+label = "W2048 v117 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.238
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8721
+confidence_contrast_weight = 0.5774
+confidence_energy_weight = 0.4226
+confidence_gain = 2.1317
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.735
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4978
+max_harmonic_freq_hz = 4056.984
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.96e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02452
+subharmonic_penalty_alpha = 0.0795
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v118"
+label = "W2048 v118 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.99
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8642
+confidence_contrast_weight = 0.5614
+confidence_energy_weight = 0.4386
+confidence_gain = 2.2196
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.049
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3281
+max_harmonic_freq_hz = 3737.596
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.88e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02227
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v119"
+label = "W2048 v119 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.379
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8235
+confidence_contrast_weight = 0.5274
+confidence_energy_weight = 0.4726
+confidence_gain = 2.5566
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 51.395
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5495
+max_harmonic_freq_hz = 4327.303
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.86e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01581
+subharmonic_penalty_alpha = 0.0597
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v120"
+label = "W2048 v120 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.018
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8929
+confidence_contrast_weight = 0.581
+confidence_energy_weight = 0.419
+confidence_gain = 2.5779
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 44.481
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5121
+max_harmonic_freq_hz = 4049.01
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.15e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02313
+subharmonic_penalty_alpha = 0.0729
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v121"
+label = "W2048 v121 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.809
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8842
+confidence_contrast_weight = 0.6365
+confidence_energy_weight = 0.3635
+confidence_gain = 2.0358
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.363
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2718
+max_harmonic_freq_hz = 4502.904
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.21e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01454
+subharmonic_penalty_alpha = 0.036
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v122"
+label = "W2048 v122 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.089
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9211
+confidence_contrast_weight = 0.5245
+confidence_energy_weight = 0.4755
+confidence_gain = 2.118
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.756
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2181
+max_harmonic_freq_hz = 3968.47
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.81e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01594
+subharmonic_penalty_alpha = 0.0692
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v123"
+label = "W2048 v123 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.975
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8889
+confidence_contrast_weight = 0.5819
+confidence_energy_weight = 0.4181
+confidence_gain = 2.1478
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.512
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2348
+max_harmonic_freq_hz = 3997.948
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 2.79e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02406
+subharmonic_penalty_alpha = 0.0439
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v124"
+label = "W2048 v124 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.23
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8791
+confidence_contrast_weight = 0.647
+confidence_energy_weight = 0.353
+confidence_gain = 2.3202
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.591
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2372
+max_harmonic_freq_hz = 4351.529
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.92e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0172
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v125"
+label = "W2048 v125 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.66
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8388
+confidence_contrast_weight = 0.5714
+confidence_energy_weight = 0.4286
+confidence_gain = 2.3643
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.095
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3455
+max_harmonic_freq_hz = 3996.367
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.27e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01432
+subharmonic_penalty_alpha = 0.059
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v126"
+label = "W2048 v126 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.501
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8805
+confidence_contrast_weight = 0.5837
+confidence_energy_weight = 0.4163
+confidence_gain = 2.4867
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.088
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2357
+max_harmonic_freq_hz = 4107.008
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 4.08e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01516
+subharmonic_penalty_alpha = 0.0415
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v127"
+label = "W2048 v127 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.706
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9324
+confidence_contrast_weight = 0.5209
+confidence_energy_weight = 0.4791
+confidence_gain = 2.1639
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 39.72
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3528
+max_harmonic_freq_hz = 4028.334
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.06e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01939
+subharmonic_penalty_alpha = 0.0715
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v128"
+label = "W2048 v128 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.357
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8827
+confidence_contrast_weight = 0.5613
+confidence_energy_weight = 0.4387
+confidence_gain = 2.497
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.859
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.203
+max_harmonic_freq_hz = 3685.037
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.89e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02523
+subharmonic_penalty_alpha = 0.0161
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v129"
+label = "W2048 v129 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.817
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8174
+confidence_contrast_weight = 0.6272
+confidence_energy_weight = 0.3728
+confidence_gain = 2.062
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 39.221
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4615
+max_harmonic_freq_hz = 4095.838
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 3.14e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01912
+subharmonic_penalty_alpha = 0.0375
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v130"
+label = "W2048 v130 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.306
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8305
+confidence_contrast_weight = 0.632
+confidence_energy_weight = 0.368
+confidence_gain = 2.0341
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.96
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3424
+max_harmonic_freq_hz = 3800.499
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.43e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02507
+subharmonic_penalty_alpha = 0.0211
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v131"
+label = "W2048 v131 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.55
+chunk_seconds = 0.0116099773
+confidence_bias = 0.914
+confidence_contrast_weight = 0.6355
+confidence_energy_weight = 0.3645
+confidence_gain = 2.4138
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.327
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2731
+max_harmonic_freq_hz = 4305.155
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 2.77e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02069
+subharmonic_penalty_alpha = 0.0093
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v132"
+label = "W2048 v132 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.548
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8564
+confidence_contrast_weight = 0.4574
+confidence_energy_weight = 0.5426
+confidence_gain = 2.2157
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 39.79
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2714
+max_harmonic_freq_hz = 3676.082
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.33e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02313
+subharmonic_penalty_alpha = 0.0352
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v133"
+label = "W2048 v133 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.527
+chunk_seconds = 0.0116099773
+confidence_bias = 0.81
+confidence_contrast_weight = 0.6465
+confidence_energy_weight = 0.3535
+confidence_gain = 1.8431
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.92
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3814
+max_harmonic_freq_hz = 4122.034
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.47e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02117
+subharmonic_penalty_alpha = 0.0325
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v134"
+label = "W2048 v134 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.003
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8534
+confidence_contrast_weight = 0.6486
+confidence_energy_weight = 0.3514
+confidence_gain = 1.9207
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.602
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4968
+max_harmonic_freq_hz = 4291.327
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.77e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01989
+subharmonic_penalty_alpha = 0.0357
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v135"
+label = "W2048 v135 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.084
+chunk_seconds = 0.0116099773
+confidence_bias = 0.79
+confidence_contrast_weight = 0.6246
+confidence_energy_weight = 0.3754
+confidence_gain = 2.4314
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 35.863
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3828
+max_harmonic_freq_hz = 3843.653
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.28e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02201
+subharmonic_penalty_alpha = 0.0277
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v136"
+label = "W2048 v136 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.129
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7933
+confidence_contrast_weight = 0.4771
+confidence_energy_weight = 0.5229
+confidence_gain = 2.1909
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.641
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2137
+max_harmonic_freq_hz = 3830.468
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.51e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02081
+subharmonic_penalty_alpha = 0.0738
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v137"
+label = "W2048 v137 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.853
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7856
+confidence_contrast_weight = 0.537
+confidence_energy_weight = 0.463
+confidence_gain = 2.3939
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.671
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5281
+max_harmonic_freq_hz = 4362.955
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.81e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01808
+subharmonic_penalty_alpha = 0.0593
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v138"
+label = "W2048 v138 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.235
+chunk_seconds = 0.0116099773
+confidence_bias = 0.906
+confidence_contrast_weight = 0.6077
+confidence_energy_weight = 0.3923
+confidence_gain = 2.1374
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.996
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2339
+max_harmonic_freq_hz = 3833.654
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.08e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01524
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v139"
+label = "W2048 v139 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.196
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7804
+confidence_contrast_weight = 0.5215
+confidence_energy_weight = 0.4785
+confidence_gain = 1.9013
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.105
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.247
+max_harmonic_freq_hz = 3689.543
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.21e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02368
+subharmonic_penalty_alpha = 0.0081
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v140"
+label = "W2048 v140 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.321
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8587
+confidence_contrast_weight = 0.4975
+confidence_energy_weight = 0.5025
+confidence_gain = 2.1185
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.088
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.444
+max_harmonic_freq_hz = 4125.956
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.08e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0252
+subharmonic_penalty_alpha = 0.04
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v141"
+label = "W2048 v141 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.958
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7819
+confidence_contrast_weight = 0.5349
+confidence_energy_weight = 0.4651
+confidence_gain = 2.356
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.484
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2377
+max_harmonic_freq_hz = 4030.317
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.55e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01742
+subharmonic_penalty_alpha = 0.0023
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v142"
+label = "W2048 v142 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.895
+chunk_seconds = 0.0116099773
+confidence_bias = 0.933
+confidence_contrast_weight = 0.5359
+confidence_energy_weight = 0.4641
+confidence_gain = 2.0235
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.489
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3059
+max_harmonic_freq_hz = 4075.489
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.86e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02117
+subharmonic_penalty_alpha = 0.0611
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v143"
+label = "W2048 v143 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.616
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8782
+confidence_contrast_weight = 0.4659
+confidence_energy_weight = 0.5341
+confidence_gain = 2.5845
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4336
+max_harmonic_freq_hz = 4352.525
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.01e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02458
+subharmonic_penalty_alpha = 0.0095
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v144"
+label = "W2048 v144 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.686
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8095
+confidence_contrast_weight = 0.5855
+confidence_energy_weight = 0.4145
+confidence_gain = 2.554
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.684
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2621
+max_harmonic_freq_hz = 4187.876
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 3.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01518
+subharmonic_penalty_alpha = 0.0314
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v145"
+label = "W2048 v145 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.5
+chunk_seconds = 0.0116099773
+confidence_bias = 0.881
+confidence_contrast_weight = 0.5679
+confidence_energy_weight = 0.4321
+confidence_gain = 2.0984
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.177
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2663
+max_harmonic_freq_hz = 4061.674
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01682
+subharmonic_penalty_alpha = 0.0798
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v146"
+label = "W2048 v146 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.177
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8897
+confidence_contrast_weight = 0.5048
+confidence_energy_weight = 0.4952
+confidence_gain = 2.1979
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.618
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4071
+max_harmonic_freq_hz = 4045.427
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.18e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02237
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v147"
+label = "W2048 v147 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.743
+chunk_seconds = 0.0116099773
+confidence_bias = 0.907
+confidence_contrast_weight = 0.5122
+confidence_energy_weight = 0.4878
+confidence_gain = 2.5623
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.246
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5111
+max_harmonic_freq_hz = 4579.861
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.86e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02105
+subharmonic_penalty_alpha = 0.0694
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v148"
+label = "W2048 v148 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.065
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8702
+confidence_contrast_weight = 0.6117
+confidence_energy_weight = 0.3883
+confidence_gain = 2.0661
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.961
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2384
+max_harmonic_freq_hz = 4055.965
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.74e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01482
+subharmonic_penalty_alpha = 0.0044
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v149"
+label = "W2048 v149 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.526
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8998
+confidence_contrast_weight = 0.4556
+confidence_energy_weight = 0.5444
+confidence_gain = 2.0403
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.024
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3795
+max_harmonic_freq_hz = 4278.467
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3.46e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01869
+subharmonic_penalty_alpha = 0.0371
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v150"
+label = "W2048 v150 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.887
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7946
+confidence_contrast_weight = 0.6116
+confidence_energy_weight = 0.3884
+confidence_gain = 2.3992
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 41.914
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2927
+max_harmonic_freq_hz = 4300.922
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.79e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01464
+subharmonic_penalty_alpha = 0.0105
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v151"
+label = "W2048 v151 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.803
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8279
+confidence_contrast_weight = 0.5621
+confidence_energy_weight = 0.4379
+confidence_gain = 2.5722
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.538
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4228
+max_harmonic_freq_hz = 4156.123
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 4.79e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02336
+subharmonic_penalty_alpha = 0.0067
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v152"
+label = "W2048 v152 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.562
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7993
+confidence_contrast_weight = 0.5034
+confidence_energy_weight = 0.4966
+confidence_gain = 1.9182
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 42.41
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5053
+max_harmonic_freq_hz = 3649.759
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 3.87e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0217
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v153"
+label = "W2048 v153 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.658
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7907
+confidence_contrast_weight = 0.5094
+confidence_energy_weight = 0.4906
+confidence_gain = 2.0644
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 58.27
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3461
+max_harmonic_freq_hz = 4423.812
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.61e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02211
+subharmonic_penalty_alpha = 0.0103
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v154"
+label = "W2048 v154 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.365
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7966
+confidence_contrast_weight = 0.4638
+confidence_energy_weight = 0.5362
+confidence_gain = 2.2047
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45.702
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3476
+max_harmonic_freq_hz = 3666.352
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.72e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01865
+subharmonic_penalty_alpha = 0.0466
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v155"
+label = "W2048 v155 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.806
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8588
+confidence_contrast_weight = 0.6418
+confidence_energy_weight = 0.3582
+confidence_gain = 2.263
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 36.485
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2394
+max_harmonic_freq_hz = 4000.202
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 2.38e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02143
+subharmonic_penalty_alpha = 0.0476
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v156"
+label = "W2048 v156 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.425
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9232
+confidence_contrast_weight = 0.5472
+confidence_energy_weight = 0.4528
+confidence_gain = 1.8296
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.03
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3439
+max_harmonic_freq_hz = 4387.87
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 2.54e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02093
+subharmonic_penalty_alpha = 0.0113
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v157"
+label = "W2048 v157 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.855
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8751
+confidence_contrast_weight = 0.4609
+confidence_energy_weight = 0.5391
+confidence_gain = 1.8912
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.343
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3504
+max_harmonic_freq_hz = 3711.474
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.45e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02291
+subharmonic_penalty_alpha = 0.0216
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v158"
+label = "W2048 v158 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.043
+chunk_seconds = 0.0116099773
+confidence_bias = 0.794
+confidence_contrast_weight = 0.6028
+confidence_energy_weight = 0.3972
+confidence_gain = 2.2212
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.149
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2724
+max_harmonic_freq_hz = 3805.94
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.37e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.0252
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v159"
+label = "W2048 v159 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.105
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9339
+confidence_contrast_weight = 0.527
+confidence_energy_weight = 0.473
+confidence_gain = 2.0753
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.365
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.333
+max_harmonic_freq_hz = 3809.391
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.14e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02171
+subharmonic_penalty_alpha = 0.0092
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v160"
+label = "W2048 v160 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.432
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8926
+confidence_contrast_weight = 0.602
+confidence_energy_weight = 0.398
+confidence_gain = 2.3612
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.722
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3618
+max_harmonic_freq_hz = 4385.589
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 2.36e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02543
+subharmonic_penalty_alpha = 0.0185
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v161"
+label = "W2048 v161 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.136
+chunk_seconds = 0.0116099773
+confidence_bias = 0.801
+confidence_contrast_weight = 0.5394
+confidence_energy_weight = 0.4606
+confidence_gain = 2.0417
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.067
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4585
+max_harmonic_freq_hz = 3903.312
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 2.14e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02006
+subharmonic_penalty_alpha = 0.0286
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v162"
+label = "W2048 v162 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.936
+chunk_seconds = 0.0116099773
+confidence_bias = 0.869
+confidence_contrast_weight = 0.5074
+confidence_energy_weight = 0.4926
+confidence_gain = 2.0175
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 59.097
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3017
+max_harmonic_freq_hz = 3768.662
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.51e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01511
+subharmonic_penalty_alpha = 0.0522
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v163"
+label = "W2048 v163 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.621
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9302
+confidence_contrast_weight = 0.5653
+confidence_energy_weight = 0.4347
+confidence_gain = 2.5798
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 56.003
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4338
+max_harmonic_freq_hz = 4485.005
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.3e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01608
+subharmonic_penalty_alpha = 0.064
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v164"
+label = "W2048 v164 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.472
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8044
+confidence_contrast_weight = 0.549
+confidence_energy_weight = 0.451
+confidence_gain = 2.5017
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.149
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5225
+max_harmonic_freq_hz = 4423.673
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 5.94e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02098
+subharmonic_penalty_alpha = 0.0272
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v165"
+label = "W2048 v165 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 18.005
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8896
+confidence_contrast_weight = 0.5747
+confidence_energy_weight = 0.4253
+confidence_gain = 2.1034
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.045
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2876
+max_harmonic_freq_hz = 4196.684
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 5.64e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02483
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v166"
+label = "W2048 v166 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.992
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8149
+confidence_contrast_weight = 0.5901
+confidence_energy_weight = 0.4099
+confidence_gain = 2.485
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.339
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4649
+max_harmonic_freq_hz = 3981.242
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.57e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01738
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v167"
+label = "W2048 v167 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 21.16
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8388
+confidence_contrast_weight = 0.6016
+confidence_energy_weight = 0.3984
+confidence_gain = 2.5838
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 48.773
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4511
+max_harmonic_freq_hz = 3620.973
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.53e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01563
+subharmonic_penalty_alpha = 0.0573
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v168"
+label = "W2048 v168 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.311
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8801
+confidence_contrast_weight = 0.4826
+confidence_energy_weight = 0.5174
+confidence_gain = 1.9058
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 37.139
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5075
+max_harmonic_freq_hz = 4159.106
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 1.28e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02472
+subharmonic_penalty_alpha = 0.0668
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v169"
+label = "W2048 v169 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.452
+chunk_seconds = 0.0116099773
+confidence_bias = 0.7997
+confidence_contrast_weight = 0.6015
+confidence_energy_weight = 0.3985
+confidence_gain = 2.3482
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 46.13
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.457
+max_harmonic_freq_hz = 3890.742
+max_harmonics = 7
+min_freq_hz = 75
+min_rms = 1.79e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02398
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v170"
+label = "W2048 v170 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.05
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9208
+confidence_contrast_weight = 0.4732
+confidence_energy_weight = 0.5268
+confidence_gain = 2.2944
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 49.609
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3155
+max_harmonic_freq_hz = 3636.099
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.02e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01951
+subharmonic_penalty_alpha = 0.0474
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v171"
+label = "W2048 v171 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.681
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8754
+confidence_contrast_weight = 0.5597
+confidence_energy_weight = 0.4403
+confidence_gain = 2.0169
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 47.797
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4941
+max_harmonic_freq_hz = 4149.752
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 4.2e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02325
+subharmonic_penalty_alpha = 0.0329
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v172"
+label = "W2048 v172 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 23.071
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8399
+confidence_contrast_weight = 0.609
+confidence_energy_weight = 0.391
+confidence_gain = 1.8044
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 53.153
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.388
+max_harmonic_freq_hz = 3818.469
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 3.4e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01509
+subharmonic_penalty_alpha = 0.0561
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v173"
+label = "W2048 v173 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.928
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9253
+confidence_contrast_weight = 0.5245
+confidence_energy_weight = 0.4755
+confidence_gain = 2.5821
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.449
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3284
+max_harmonic_freq_hz = 3892.092
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.04e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01736
+subharmonic_penalty_alpha = 0.0501
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v174"
+label = "W2048 v174 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.705
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8873
+confidence_contrast_weight = 0.638
+confidence_energy_weight = 0.362
+confidence_gain = 2.3448
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 55.758
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.5224
+max_harmonic_freq_hz = 4473.338
+max_harmonics = 5
+min_freq_hz = 75
+min_rms = 1.68e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01953
+subharmonic_penalty_alpha = 0.0252
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v175"
+label = "W2048 v175 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 16.179
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8991
+confidence_contrast_weight = 0.4581
+confidence_energy_weight = 0.5419
+confidence_gain = 2.1526
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 57.515
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4192
+max_harmonic_freq_hz = 3691.678
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.78e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02373
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v176"
+label = "W2048 v176 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 19.823
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8565
+confidence_contrast_weight = 0.5132
+confidence_energy_weight = 0.4868
+confidence_gain = 2.2349
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.925
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.3805
+max_harmonic_freq_hz = 3604.775
+max_harmonics = 3
+min_freq_hz = 75
+min_rms = 5.62e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01965
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v177"
+label = "W2048 v177 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.244
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8574
+confidence_contrast_weight = 0.5446
+confidence_energy_weight = 0.4554
+confidence_gain = 2.0755
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 54.266
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.478
+max_harmonic_freq_hz = 4284.314
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 2.2e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02175
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v178"
+label = "W2048 v178 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 22.042
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8728
+confidence_contrast_weight = 0.5001
+confidence_energy_weight = 0.4999
+confidence_gain = 2.0649
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 50.411
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.4781
+max_harmonic_freq_hz = 3893.677
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 1.9e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.01877
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 0
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"
+
+[[candidates]]
+id = "w2048_v179"
+label = "W2048 v179 mono"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20.346
+chunk_seconds = 0.0116099773
+confidence_bias = 0.8341
+confidence_contrast_weight = 0.6217
+confidence_energy_weight = 0.3783
+confidence_gain = 1.9706
+dc_remove = 1
+emit_chord_scores = 0
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 40.252
+expected_prior_mode = 0
+fft_size = 4096
+magnitude_compression_gamma = 0.2431
+max_harmonic_freq_hz = 3929.194
+max_harmonics = 6
+min_freq_hz = 75
+min_rms = 4.13e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 1
+relative_bandwidth = 0.02214
+subharmonic_penalty_alpha = 0.015
+use_expected_polyphony_prior = 0
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180"
+license = "MIT"
+vendored = false
+notes = "Auto-generated sweep180 candidate"

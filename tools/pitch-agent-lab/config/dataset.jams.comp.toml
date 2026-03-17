@@ -1,0 +1,901 @@
+candidate_model = "candidate-model.guitar-standard.toml"
+
+[[takes]]
+id = "00_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "00_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "00_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "00_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "00_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "00_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "00_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "00_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "00_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "00_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "00_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "00_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "00_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "00_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "00_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "00_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "00_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "00_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "00_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "00_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "00_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "00_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "00_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "00_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "00_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "01_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "01_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "01_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "01_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "01_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "01_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "01_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "01_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "01_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "01_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "01_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "01_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "01_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "01_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "01_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "01_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "01_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "01_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "01_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "01_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "01_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "01_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "01_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "01_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "01_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "02_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "02_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "02_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "02_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "02_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "02_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "02_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "02_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "02_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "02_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "02_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "02_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "02_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "02_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "02_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "02_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "02_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "02_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "02_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "02_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "02_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "02_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "02_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "02_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "02_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "03_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "03_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "03_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "03_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "03_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "03_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "03_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "03_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "03_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "03_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "03_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "03_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "03_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "03_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "03_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "03_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "03_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "03_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "03_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "03_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "03_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "03_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "03_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "03_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "03_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "04_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "04_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "04_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "04_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "04_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "04_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "04_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "04_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "04_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "04_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "04_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "04_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "04_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "04_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "04_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "04_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "04_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "04_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "04_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "04_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "04_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "04_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "04_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "04_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "04_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "05_bn1_129_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN1-129-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN1-129-Eb_comp_mic.wav"
+
+[[takes]]
+id = "05_bn1_147_gb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN1-147-Gb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN1-147-Gb_comp_mic.wav"
+
+[[takes]]
+id = "05_bn2_131_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN2-131-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN2-131-B_comp_mic.wav"
+
+[[takes]]
+id = "05_bn2_166_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN2-166-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN2-166-Ab_comp_mic.wav"
+
+[[takes]]
+id = "05_bn3_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN3-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN3-119-G_comp_mic.wav"
+
+[[takes]]
+id = "05_bn3_154_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_BN3-154-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_BN3-154-E_comp_mic.wav"
+
+[[takes]]
+id = "05_funk1_114_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk1-114-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk1-114-Ab_comp_mic.wav"
+
+[[takes]]
+id = "05_funk1_97_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk1-97-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk1-97-C_comp_mic.wav"
+
+[[takes]]
+id = "05_funk2_108_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk2-108-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk2-108-Eb_comp_mic.wav"
+
+[[takes]]
+id = "05_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "05_funk3_112_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk3-112-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk3-112-C#_comp_mic.wav"
+
+[[takes]]
+id = "05_funk3_98_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Funk3-98-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Funk3-98-A_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz1_130_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz1-130-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz1-130-D_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz1_200_b_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz1-200-B_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz1-200-B_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz2_110_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz2-110-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz2-110-Bb_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz2_187_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz2-187-F#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz2-187-F#_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz3_137_eb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz3-137-Eb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz3-137-Eb_comp_mic.wav"
+
+[[takes]]
+id = "05_jazz3_150_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Jazz3-150-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Jazz3-150-C_comp_mic.wav"
+
+[[takes]]
+id = "05_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "05_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "05_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "05_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "05_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "05_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "05_ss1_100_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS1-100-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS1-100-C#_comp_mic.wav"
+
+[[takes]]
+id = "05_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "05_ss2_107_ab_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS2-107-Ab_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS2-107-Ab_comp_mic.wav"
+
+[[takes]]
+id = "05_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "05_ss3_84_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS3-84-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS3-84-Bb_comp_mic.wav"
+
+[[takes]]
+id = "05_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_SS3-98-C_comp_mic.wav"

@@ -129,6 +129,12 @@ pub struct ManifestEvent {
     pub string: Option<String>,
     #[serde(default)]
     pub fret: Option<u32>,
+    #[serde(default)]
+    pub chord_id: Option<String>,
+    #[serde(default)]
+    pub member_note_ids: Vec<String>,
+    #[serde(default)]
+    pub member_midis: Vec<f32>,
 }
 
 fn deserialize_optional_string_like<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -255,6 +261,8 @@ pub struct FrameTrace {
     #[serde(default)]
     pub note_scores: Vec<FrameNoteScore>,
     #[serde(default)]
+    pub selected_notes: Vec<FrameNoteScore>,
+    #[serde(default)]
     pub chord_scores: Vec<FrameChordScore>,
 }
 
@@ -278,6 +286,29 @@ pub struct NoteSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChordSummary {
+    pub note_order: i32,
+    pub chord_id: Option<String>,
+    pub expected_notes: u32,
+    pub detect_rate: f32,
+    pub coverage_rate: f32,
+    pub total_frames: u32,
+    pub valid_frames: u32,
+    pub pass: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolyphonySummary {
+    pub total_frames: u32,
+    pub valid_frames: u32,
+    pub detect_rate: f32,
+    pub coverage_rate: f32,
+    pub precision: f32,
+    pub recall: f32,
+    pub f1: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TakeMetrics {
     pub take_id: String,
     pub total_frames: u32,
@@ -285,7 +316,16 @@ pub struct TakeMetrics {
     pub detect_rate: f32,
     pub in_tune_rate: f32,
     pub strict_pass: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub note_summaries: Vec<NoteSummary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chord_summaries: Vec<ChordSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chord_detect_rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chord_coverage_rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub polyphony: Option<PolyphonySummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +345,7 @@ pub struct CandidateRunResult {
     pub params: BTreeMap<String, f64>,
     pub source: SourceMeta,
     pub take_metrics: Vec<TakeMetrics>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub strict_matrix: Vec<StrictMatrixEntry>,
     pub global_detect_rate: f32,
     pub global_in_tune_rate: f32,

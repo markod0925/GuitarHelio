@@ -1,6 +1,6 @@
 use crate::backends::sac::SacBackend;
 use crate::backends::spectral_harmonic::SpectralHarmonicBackend;
-use crate::types::{AlgorithmKind, CandidateModel, CandidateSpec, PitchFrame};
+use crate::types::{AlgorithmKind, CandidateModel, CandidateSpec, ManifestEvent, PitchFrame};
 use anyhow::Result;
 
 pub trait PitchDetector {
@@ -18,6 +18,7 @@ pub fn create_detector(
     spec: &CandidateSpec,
     window_size: usize,
     candidate_model: Option<&CandidateModel>,
+    expected_events: Option<&[ManifestEvent]>,
 ) -> Result<Box<dyn PitchDetector>> {
     let detector = match spec.algorithm {
         AlgorithmKind::Yin => {
@@ -42,6 +43,7 @@ pub fn create_detector(
                 spec,
                 model,
                 window_size,
+                expected_events,
             ))
         }
     };
@@ -424,9 +426,15 @@ impl SpectralHarmonicDetector {
         spec: &CandidateSpec,
         candidate_model: &CandidateModel,
         window_size: usize,
+        expected_events: Option<&[ManifestEvent]>,
     ) -> Self {
         Self {
-            backend: SpectralHarmonicBackend::from_spec(spec, candidate_model, window_size),
+            backend: SpectralHarmonicBackend::from_spec(
+                spec,
+                candidate_model,
+                window_size,
+                expected_events,
+            ),
         }
     }
 }
@@ -771,9 +779,13 @@ mod tests {
         let sample_rate = 44100u32;
         let signal = sine_wave(440.0, sample_rate, 0.25);
         let chunk_rms = compute_rms(&signal);
-        let mut detector =
-            create_detector(&candidate("yin", AlgorithmKind::Yin), signal.len(), None)
-                .expect("create yin detector");
+        let mut detector = create_detector(
+            &candidate("yin", AlgorithmKind::Yin),
+            signal.len(),
+            None,
+            None,
+        )
+        .expect("create yin detector");
         let frame = detector.process_window(&signal, chunk_rms, sample_rate, 0.25);
         assert!(frame.midi_estimate.is_some());
         assert!(frame.confidence > 0.5);
@@ -789,6 +801,7 @@ mod tests {
             &candidate("ac", AlgorithmKind::Autocorr),
             signal.len(),
             None,
+            None,
         )
         .expect("create autocorr detector");
         let frame = detector.process_window(&signal, compute_rms(&signal), sample_rate, 0.2);
@@ -801,9 +814,13 @@ mod tests {
     fn mpm_detector_tracks_e4() {
         let sample_rate = 44100u32;
         let signal = sine_wave(329.63, sample_rate, 0.20);
-        let mut detector =
-            create_detector(&candidate("mpm", AlgorithmKind::Mpm), signal.len(), None)
-                .expect("create mpm detector");
+        let mut detector = create_detector(
+            &candidate("mpm", AlgorithmKind::Mpm),
+            signal.len(),
+            None,
+            None,
+        )
+        .expect("create mpm detector");
         let frame = detector.process_window(&signal, compute_rms(&signal), sample_rate, 0.2);
         assert!(frame.midi_estimate.is_some());
         let midi = frame.midi_estimate.unwrap_or_default();

@@ -108,6 +108,7 @@ impl SacBackend {
             best_note_midi: None,
             best_note_score: None,
             note_scores: Vec::new(),
+            selected_notes: Vec::new(),
             chord_scores: Vec::new(),
         })
     }
@@ -152,6 +153,7 @@ fn build_trace(
         best_note_midi: Some(notes[best_idx].midi),
         best_note_score: Some(best_score),
         note_scores,
+        selected_notes: Vec::new(),
         chord_scores: Vec::new(),
     }
 }

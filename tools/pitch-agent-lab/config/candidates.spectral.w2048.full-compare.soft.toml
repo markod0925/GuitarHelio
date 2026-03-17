@@ -1,0 +1,82 @@
+[[candidates]]
+id = "spectral_best_w2048_baseline"
+label = "Spectral best w2048 baseline (soft)"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 20
+chunk_seconds = 0.0116099773
+confidence_bias = 0.88
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.2
+dc_remove = 1
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 45
+expected_prior_mode = 1
+expected_prior_soft_bonus = 0.25
+expected_prior_soft_offtarget_multiplier = 0.92
+expected_prior_soft_weight = 0.45
+fft_size = 4096
+magnitude_compression_gamma = 0.3
+max_harmonic_freq_hz = 4050
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 3e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+relative_bandwidth = 0.02
+subharmonic_penalty_alpha = 0.03
+use_expected_polyphony_prior = 1
+use_harmonic_penalty = 1
+use_local_whitening = 0
+use_log_magnitude = 0
+whitening_radius_bins = 8
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Best tuned candidate for 2048-sample window on benchmark takes (detect=100%)."
+[[candidates]]
+id = "spectral_best_w2048_candidate_v054"
+label = "Spectral candidate w2048b_v054 (soft)"
+algorithm = "spectral_harmonic"
+[candidates.params]
+base_bandwidth_hz = 17.345
+chunk_seconds = 0.0116099773
+confidence_bias = 0.9178
+confidence_contrast_weight = 0.5727
+confidence_energy_weight = 0.4273
+confidence_gain = 2.2801
+dc_remove = 1
+emit_chord_scores = 1
+emit_frame_traces = 0
+expected_prior_midi_tolerance_cents = 43.067
+expected_prior_mode = 1
+expected_prior_soft_bonus = 0.2267
+expected_prior_soft_offtarget_multiplier = 0.9465
+expected_prior_soft_weight = 0.6605
+fft_size = 4096
+magnitude_compression_gamma = 0.2389
+max_harmonic_freq_hz = 3500
+max_harmonics = 4
+min_freq_hz = 75
+min_rms = 5.4e-05
+normalize_by_band_energy = 0
+normalize_by_weight_sum = 1
+polyphony_max_notes = 3
+relative_bandwidth = 0.01467
+subharmonic_penalty_alpha = 0
+use_expected_polyphony_prior = 1
+use_harmonic_penalty = 0
+use_local_whitening = 1
+use_log_magnitude = 0
+whitening_radius_bins = 10
+window_seconds = 0.0464399093
+[candidates.source]
+kind = "internal"
+reference = "w2048 sweep180b local search"
+license = "MIT"
+vendored = false
+notes = "Promote candidate under full-set validation"

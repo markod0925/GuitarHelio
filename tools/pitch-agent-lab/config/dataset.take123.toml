@@ -14,13 +14,3 @@ wav = "../../pitch-offline-bench/input/wav/take2.wav"
 id = "take3"
 manifest = "../../pitch-offline-bench/input/manifest.take3.json"
 wav = "../../pitch-offline-bench/input/wav/take3.wav"
-
-[[takes]]
-id = "take4_bn1_129_eb_solo"
-manifest = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_solo.jams"
-wav = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_solo_mic.wav"
-
-[[takes]]
-id = "take5_bn1_129_eb_comp"
-manifest = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_comp.jams"
-wav = "../../pitch-offline-bench/input/wav/00_BN1-129-Eb_comp_mic.wav"

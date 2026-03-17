@@ -1,0 +1,76 @@
+candidate_model = "candidate-model.guitar-standard.toml"
+
+[[takes]]
+id = "00_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_comp_mic.wav"
+
+[[takes]]
+id = "04_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "00_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "01_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "00_rock2_85_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock2-85-F_comp_mic.wav"
+
+[[takes]]
+id = "00_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "00_rock1_130_a_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-130-A_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-130-A_comp_mic.wav"
+
+[[takes]]
+id = "01_ss1_68_e_comp"
+manifest = "../../pitch-offline-bench/input/wav/01_SS1-68-E_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS1-68-E_comp_mic.wav"
+
+[[takes]]
+id = "00_funk2_119_g_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Funk2-119-G_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Funk2-119-G_comp_mic.wav"
+
+[[takes]]
+id = "00_rock3_117_bb_comp"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_comp_mic.wav"
+
+[[takes]]
+id = "03_ss2_88_f_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS2-88-F_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS2-88-F_comp_mic.wav"
+
+[[takes]]
+id = "05_rock1_90_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/05_Rock1-90-C#_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/05_Rock1-90-C#_comp_mic.wav"
+
+[[takes]]
+id = "04_rock2_142_d_comp"
+manifest = "../../pitch-offline-bench/input/wav/04_Rock2-142-D_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/04_Rock2-142-D_comp_mic.wav"
+
+[[takes]]
+id = "03_ss3_98_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/03_SS3-98-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS3-98-C_comp_mic.wav"
+
+[[takes]]
+id = "02_rock3_148_c_comp"
+manifest = "../../pitch-offline-bench/input/wav/02_Rock3-148-C_comp.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Rock3-148-C_comp_mic.wav"

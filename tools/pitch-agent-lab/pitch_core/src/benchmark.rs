@@ -10,6 +10,7 @@ use crate::types::{
 };
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavReader};
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -105,6 +106,18 @@ pub fn run_benchmark(
                     detect_rate: note.detect_rate,
                 });
             }
+            for chord in &metrics.chord_summaries {
+                strict_matrix.push(StrictMatrixEntry {
+                    take_id: take.id.clone(),
+                    note_order: chord.note_order,
+                    note: chord
+                        .chord_id
+                        .as_ref()
+                        .map(|value| format!("chord:{value}")),
+                    pass: chord.pass,
+                    detect_rate: chord.detect_rate,
+                });
+            }
             take_metrics.push(metrics);
         }
 
@@ -185,12 +198,127 @@ pub fn run_benchmark(
 fn load_manifest_events(path: &Path) -> Result<Vec<crate::types::ManifestEvent>> {
     let raw =
         fs::read_to_string(path).with_context(|| format!("failed to read manifest {:?}", path))?;
-    let manifest: ManifestFile = serde_json::from_str(&raw)
-        .with_context(|| format!("failed to parse manifest {:?}", path))?;
-    if manifest.events.is_empty() {
-        anyhow::bail!("manifest {:?} has no events", path);
+    if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("jams"))
+        .unwrap_or(false)
+    {
+        return parse_jams_events(&raw, path);
     }
-    Ok(manifest.events)
+
+    if let Ok(manifest) = serde_json::from_str::<ManifestFile>(&raw) {
+        if manifest.events.is_empty() {
+            anyhow::bail!("manifest {:?} has no events", path);
+        }
+        return Ok(manifest.events);
+    }
+
+    // Fallback: accept JAMS content even when extension is not .jams.
+    if let Ok(events) = parse_jams_events(&raw, path) {
+        return Ok(events);
+    }
+
+    anyhow::bail!(
+        "failed to parse manifest {:?} as benchmark JSON or JAMS",
+        path
+    )
+}
+
+fn parse_jams_events(raw: &str, path: &Path) -> Result<Vec<crate::types::ManifestEvent>> {
+    let root: Value =
+        serde_json::from_str(raw).with_context(|| format!("failed to parse JAMS {:?}", path))?;
+    let annotations = root
+        .get("annotations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("JAMS {:?} missing annotations array", path))?;
+
+    let mut events = Vec::<crate::types::ManifestEvent>::new();
+    for annotation in annotations {
+        let namespace = annotation
+            .get("namespace")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if namespace != "note_midi" {
+            continue;
+        }
+        let data_source = annotation
+            .get("annotation_metadata")
+            .and_then(|meta| meta.get("data_source"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let observations = annotation
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow::anyhow!("JAMS {:?} note_midi entry has invalid data", path))?;
+        for observation in observations {
+            let start_s = observation
+                .get("time")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+                .max(0.0);
+            let duration_s = observation
+                .get("duration")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+                .max(0.0);
+            let end_s = (start_s + duration_s).max(start_s);
+            let midi_value = observation
+                .get("value")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| anyhow::anyhow!("JAMS {:?} note_midi value missing", path))?
+                as f32;
+            if !midi_value.is_finite() || duration_s <= 0.0 {
+                continue;
+            }
+
+            let note_label = midi_label(midi_value);
+            events.push(crate::types::ManifestEvent {
+                note_order: 0,
+                note: Some(note_label),
+                midi: midi_value,
+                start_s,
+                end_s,
+                string: data_source.clone(),
+                fret: None,
+                chord_id: None,
+                member_note_ids: Vec::new(),
+                member_midis: Vec::new(),
+            });
+        }
+    }
+
+    if events.is_empty() {
+        anyhow::bail!("JAMS {:?} has no note_midi events", path);
+    }
+
+    events.sort_by(|a, b| {
+        a.start_s
+            .total_cmp(&b.start_s)
+            .then_with(|| a.end_s.total_cmp(&b.end_s))
+            .then_with(|| a.midi.total_cmp(&b.midi))
+    });
+    for (index, event) in events.iter_mut().enumerate() {
+        event.note_order = index as i32 + 1;
+    }
+    Ok(events)
+}
+
+fn midi_label(midi_value: f32) -> String {
+    if !midi_value.is_finite() {
+        return "midi_nan".to_owned();
+    }
+    let rounded = midi_value.round();
+    if (midi_value - rounded).abs() <= 0.35 {
+        let midi = rounded as i32;
+        let names = [
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        ];
+        let name = names[midi.rem_euclid(12) as usize];
+        let octave = midi / 12 - 1;
+        return format!("{name}{octave}");
+    }
+    format!("midi_{midi_value:.2}")
 }
 
 fn run_candidate_on_take(
@@ -208,7 +336,12 @@ fn run_candidate_on_take(
     let window_size = ((window_seconds * take.sample_rate as f64).round() as usize).max(128);
     let hop_size = ((chunk_seconds * take.sample_rate as f64).round() as usize).max(16);
     let mut rolling = vec![0.0f32; window_size];
-    let mut detector = create_detector(candidate, window_size, candidate_model)?;
+    let mut detector = create_detector(
+        candidate,
+        window_size,
+        candidate_model,
+        Some(&take.events),
+    )?;
     detector.reset();
     let mut has_filled = false;
     let mut frames = Vec::new();
@@ -490,6 +623,40 @@ adaptive_trim = false
         assert!(!traces.is_empty());
         assert!(!traces[0].frames.is_empty());
         assert!(!traces[0].frames[0].note_scores.is_empty());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn jams_manifest_is_parsed_into_events() {
+        let temp_root = create_temp_test_dir("jams_parse");
+        let jams_path = temp_root.join("example.jams");
+        fs::write(
+            &jams_path,
+            r#"{
+  "annotations": [
+    {
+      "namespace": "note_midi",
+      "annotation_metadata": {"data_source": "0"},
+      "data": [
+        {"time": 0.10, "duration": 0.30, "value": 45.0, "confidence": null},
+        {"time": 0.50, "duration": 0.20, "value": 52.1, "confidence": null}
+      ]
+    }
+  ],
+  "file_metadata": {"duration": 1.0}
+}"#,
+        )
+        .expect("write jams");
+
+        let events = load_manifest_events(&jams_path).expect("parse jams");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].note_order, 1);
+        assert_eq!(events[0].midi, 45.0);
+        assert!((events[0].start_s - 0.10).abs() < 1e-6);
+        assert!((events[0].end_s - 0.40).abs() < 1e-6);
+        assert_eq!(events[0].string.as_deref(), Some("0"));
+        assert!(events[1].note.as_ref().is_some());
 
         let _ = fs::remove_dir_all(temp_root);
     }

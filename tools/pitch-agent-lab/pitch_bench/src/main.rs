@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use pitch_core::config::write_candidates_config;
-use pitch_core::{run_benchmark, AlgorithmKind, CandidateSpec, RunMetadata, SourceMeta};
+use pitch_core::{run_benchmark, AlgorithmKind, BenchmarkRunResult, CandidateSpec, RunMetadata, SourceMeta};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -18,6 +18,8 @@ struct Args {
     gates: PathBuf,
     #[arg(long, default_value = "output/bench-results.json")]
     out: PathBuf,
+    #[arg(long, default_value_t = false)]
+    output_details: bool,
 
     #[arg(long, default_value_t = false)]
     spectral_grid: bool,
@@ -99,7 +101,10 @@ fn main() -> Result<()> {
         args.candidates.clone()
     };
 
-    let result = run_benchmark(&args.dataset, &candidates_path, &args.gates, metadata)?;
+    let mut result = run_benchmark(&args.dataset, &candidates_path, &args.gates, metadata)?;
+    if !args.output_details {
+        strip_detailed_output(&mut result);
+    }
 
     if let Some(parent) = args.out.parent() {
         fs::create_dir_all(parent).with_context(|| format!("failed to create {:?}", parent))?;
@@ -135,6 +140,17 @@ fn main() -> Result<()> {
     }
     println!("Output: {}", args.out.display());
     Ok(())
+}
+
+fn strip_detailed_output(result: &mut BenchmarkRunResult) {
+    for candidate in &mut result.candidates {
+        candidate.strict_matrix.clear();
+        candidate.frame_traces = None;
+        for take in &mut candidate.take_metrics {
+            take.note_summaries.clear();
+            take.chord_summaries.clear();
+        }
+    }
 }
 
 fn build_spectral_grid_candidates(args: &Args) -> Result<Vec<CandidateSpec>> {

@@ -1,0 +1,125 @@
+[[candidates]]
+id = "spectral_game_runtime_unified_v3"
+label = "Spectral game runtime unified v3"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 3600.0
+max_harmonics = 4.0
+base_bandwidth_hz = 17.3
+relative_bandwidth = 0.0148
+magnitude_compression_gamma = 0.24
+use_log_magnitude = 0.0
+use_local_whitening = 1.0
+whitening_radius_bins = 10.0
+use_harmonic_penalty = 0.0
+subharmonic_penalty_alpha = 0.0
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00005
+confidence_contrast_weight = 0.575
+confidence_energy_weight = 0.425
+confidence_gain = 2.28
+confidence_bias = 0.915
+emit_frame_traces = 0.0
+polyphony_max_notes = 3.0
+emit_chord_scores = 1.0
+use_expected_polyphony_prior = 1.0
+expected_prior_midi_tolerance_cents = 43.0
+expected_prior_mode = 1.0
+expected_prior_soft_weight = 0.66
+expected_prior_soft_bonus = 0.23
+expected_prior_soft_offtarget_multiplier = 0.9465
+[candidates.source]
+kind = "internal"
+reference = "game unified profile benchmark"
+license = "MIT"
+vendored = false
+notes = "Single static runtime profile to avoid in-game parameter switching."
+
+[[candidates]]
+id = "spectral_best_w2048_mono_ref"
+label = "Spectral best w2048 mono ref"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+fft_size = 4096
+min_freq_hz = 75
+max_harmonic_freq_hz = 4010.68
+max_harmonics = 4
+base_bandwidth_hz = 15
+relative_bandwidth = 0.0135
+magnitude_compression_gamma = 0.2
+use_log_magnitude = 0
+use_local_whitening = 0
+whitening_radius_bins = 8
+use_harmonic_penalty = 0
+subharmonic_penalty_alpha = 0
+normalize_by_weight_sum = 1
+normalize_by_band_energy = 0
+dc_remove = 1
+min_rms = 0.00006
+confidence_contrast_weight = 0.6196
+confidence_energy_weight = 0.3804
+confidence_gain = 2.4857
+confidence_bias = 0.8758
+emit_frame_traces = 0.0
+polyphony_max_notes = 1
+emit_chord_scores = 0
+use_expected_polyphony_prior = 0
+expected_prior_midi_tolerance_cents = 44.525
+expected_prior_mode = 0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Promoted from w2048b_v054 after full-set validation (all takes) with improved in_tune at equal detect."
+
+[[candidates]]
+id = "spectral_best_w2048_soft_ref"
+label = "Spectral best w2048 soft ref"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+fft_size = 4096
+min_freq_hz = 75
+max_harmonic_freq_hz = 3500
+max_harmonics = 4
+base_bandwidth_hz = 17.345
+relative_bandwidth = 0.01467
+magnitude_compression_gamma = 0.2389
+use_log_magnitude = 0
+use_local_whitening = 1
+whitening_radius_bins = 10
+use_harmonic_penalty = 0
+subharmonic_penalty_alpha = 0
+normalize_by_weight_sum = 1
+normalize_by_band_energy = 0
+dc_remove = 1
+min_rms = 0.00005
+confidence_contrast_weight = 0.5727
+confidence_energy_weight = 0.4273
+confidence_gain = 2.2801
+confidence_bias = 0.9178
+emit_frame_traces = 0.0
+polyphony_max_notes = 3
+emit_chord_scores = 1
+use_expected_polyphony_prior = 1
+expected_prior_midi_tolerance_cents = 43.067
+expected_prior_mode = 1
+expected_prior_soft_weight = 0.6605
+expected_prior_soft_bonus = 0.2267
+expected_prior_soft_offtarget_multiplier = 0.9465
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Promoted from w2048b_v054 after full-set validation (all takes) with improved in_tune at equal detect."

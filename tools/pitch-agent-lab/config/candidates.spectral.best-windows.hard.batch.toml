@@ -25,7 +25,7 @@ confidence_contrast_weight = 0.5
 confidence_energy_weight = 0.5
 confidence_gain = 1.8
 confidence_bias = 0.84
-emit_frame_traces = 1.0
+emit_frame_traces = 0.0
 use_expected_polyphony_prior = 1.0
 expected_prior_midi_tolerance_cents = 45.0
 [candidates.source]
@@ -62,7 +62,7 @@ confidence_contrast_weight = 0.5984
 confidence_energy_weight = 0.4016
 confidence_gain = 2.0354
 confidence_bias = 0.8003
-emit_frame_traces = 1.0
+emit_frame_traces = 0.0
 polyphony_max_notes = 3
 emit_chord_scores = 1
 use_expected_polyphony_prior = 1
@@ -102,7 +102,7 @@ confidence_contrast_weight = 0.55
 confidence_energy_weight = 0.45
 confidence_gain = 2.4
 confidence_bias = 0.78
-emit_frame_traces = 1.0
+emit_frame_traces = 0.0
 use_expected_polyphony_prior = 1.0
 expected_prior_midi_tolerance_cents = 45.0
 [candidates.source]

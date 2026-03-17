@@ -1,0 +1,76 @@
+candidate_model = "candidate-model.guitar-standard.toml"
+
+[[takes]]
+id = "00_jazz3_137_eb_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz3-137-Eb_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz3-137-Eb_solo_mic.wav"
+
+[[takes]]
+id = "00_bn3_119_g_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_BN3-119-G_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN3-119-G_solo_mic.wav"
+
+[[takes]]
+id = "00_jazz3_150_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz3-150-C_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz3-150-C_solo_mic.wav"
+
+[[takes]]
+id = "00_rock3_117_bb_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-117-Bb_solo_mic.wav"
+
+[[takes]]
+id = "03_ss1_100_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/03_SS1-100-C#_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/03_SS1-100-C#_solo_mic.wav"
+
+[[takes]]
+id = "00_ss3_98_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_SS3-98-C_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS3-98-C_solo_mic.wav"
+
+[[takes]]
+id = "02_funk3_112_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/02_Funk3-112-C#_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Funk3-112-C#_solo_mic.wav"
+
+[[takes]]
+id = "00_rock3_148_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock3-148-C_solo_mic.wav"
+
+[[takes]]
+id = "00_rock1_90_c_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Rock1-90-C#_solo_mic.wav"
+
+[[takes]]
+id = "02_jazz1_130_d_solo"
+manifest = "../../pitch-offline-bench/input/wav/02_Jazz1-130-D_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/02_Jazz1-130-D_solo_mic.wav"
+
+[[takes]]
+id = "00_ss1_68_e_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_SS1-68-E_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_SS1-68-E_solo_mic.wav"
+
+[[takes]]
+id = "01_funk2_108_eb_solo"
+manifest = "../../pitch-offline-bench/input/wav/01_Funk2-108-Eb_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/01_Funk2-108-Eb_solo_mic.wav"
+
+[[takes]]
+id = "00_jazz2_187_f_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_Jazz2-187-F#_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_Jazz2-187-F#_solo_mic.wav"
+
+[[takes]]
+id = "01_ss2_107_ab_solo"
+manifest = "../../pitch-offline-bench/input/wav/01_SS2-107-Ab_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/01_SS2-107-Ab_solo_mic.wav"
+
+[[takes]]
+id = "00_bn3_154_e_solo"
+manifest = "../../pitch-offline-bench/input/wav/00_BN3-154-E_solo.jams"
+wav = "../../pitch-offline-bench/input/wav/00_BN3-154-E_solo_mic.wav"
