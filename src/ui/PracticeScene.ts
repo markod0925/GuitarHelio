@@ -107,22 +107,6 @@ export class PracticeScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.add
-      .text(width / 2, title.y + 28, 'Spectral gameplay detector (unified v3).', {
-        color: '#93c5fd',
-        fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(13, Math.floor(width * 0.013))}px`
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(width / 2, title.y + 48, 'Yellow = detected string • Green = valid note position', {
-        color: '#bfdbfe',
-        fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, Math.floor(width * 0.012))}px`
-      })
-      .setOrigin(0.5);
-
     this.createMetronomeControls(width, title.y);
 
     const topControlsY = title.y + 9;
@@ -444,7 +428,7 @@ export class PracticeScene extends Phaser.Scene {
           ? ` • legacy fallback (${truncateLabel(fallbackReason, 26)})`
           : ' • legacy fallback'
         : '';
-      this.micStatusMessage = `Mic active • spectral runtime • ${calibrationBadge}${fallbackBadge}`;
+      this.micStatusMessage = `Mic active • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
     } catch (error) {
       console.error('Failed to start practice microphone', error);

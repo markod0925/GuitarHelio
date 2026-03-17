@@ -980,6 +980,7 @@ Branding assets MUST be wired consistently across runtime targets:
 * Android launcher icon MUST be generated from `assets/ic_launcher_background.png` + `assets/ic_launcher_foreground.png` for adaptive and legacy mipmap assets
 * Server/web build MUST expose favicon from `public/favicon.ico` sourced from `assets/favicon.ico`
 * all platforms (web/server, Windows desktop, Android) MUST show startup splash `guitarhelio_splash_landscape_bg_1920x1080.png` for about 2 seconds at app launch while the app bootstrap continues in background
+* web runtime MUST render an immediate DOM-level startup splash using the same asset/look before Phaser is ready; this DOM splash MUST fade out in sync with the existing in-scene startup splash rules (minimum duration, load-settled gating, and fallback timeout remain defined by the in-scene controller)
 
 ---
 

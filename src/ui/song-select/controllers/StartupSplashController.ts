@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { hideStartupDomSplash } from '../../../app/startupDomSplash';
 
 const STARTUP_SCENE_SPLASH_MIN_DURATION_MS = 2000;
 const STARTUP_SCENE_SPLASH_FADE_MS = 350;
@@ -22,6 +23,7 @@ export class StartupSplashController {
       this.hidden = true;
       this.minDurationElapsed = true;
       this.loadSettled = true;
+      hideStartupDomSplash(0);
       return;
     }
 
@@ -53,6 +55,7 @@ export class StartupSplashController {
     this.fallbackTimer = undefined;
     this.splashOverlay?.destroy(true);
     this.splashOverlay = undefined;
+    hideStartupDomSplash(0);
   }
 
   private hideIfReady(): void {
@@ -62,6 +65,7 @@ export class StartupSplashController {
 
     this.hidden = true;
     StartupSplashController.startupSplashShown = true;
+    hideStartupDomSplash(STARTUP_SCENE_SPLASH_FADE_MS);
 
     this.scene.tweens.add({
       targets: this.splashOverlay,

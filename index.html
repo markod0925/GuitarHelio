@@ -5,8 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <title>Guitar Helio</title>
+    <style>
+      #startup-dom-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        pointer-events: none;
+        background-color: #030712;
+        background-image: url('/guitarhelio_splash_landscape_bg_1920x1080.png');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        opacity: 1;
+        transition: opacity 350ms ease-out;
+      }
+
+      #startup-dom-splash.startup-dom-splash--hidden {
+        opacity: 0;
+      }
+
+      #startup-dom-splash::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.28);
+      }
+    </style>
   </head>
   <body>
+    <div id="startup-dom-splash" aria-hidden="true"></div>
     <div id="app"></div>
     <script type="module" src="/src/app/main.ts"></script>
   </body>
