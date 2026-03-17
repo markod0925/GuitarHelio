@@ -79,7 +79,8 @@ export function updateRuntimeState(
       {
         state: PlayState.Playing,
         active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
-        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
+        // Preserve transport continuity; forcing jumps here can cause one-frame visual teleports.
+        current_tick: state.current_tick
       },
       'validated_hit',
       activeTarget,
@@ -118,7 +119,8 @@ export function updateRuntimeState(
       {
         state: PlayState.Playing,
         active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
-        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
+        // Playback clock resumes immediately after this transition, so keep current tick stable.
+        current_tick: state.current_tick
       },
       'validated_hit',
       activeTarget,
@@ -139,7 +141,7 @@ export function updateRuntimeState(
       {
         state: PlayState.Playing,
         active_target_index: activeGroupBounds?.end ?? state.active_target_index + 1,
-        current_tick: Math.max(state.current_tick, activeTarget.tick) + 1
+        current_tick: state.current_tick
       },
       'timeout_miss',
       activeTarget,

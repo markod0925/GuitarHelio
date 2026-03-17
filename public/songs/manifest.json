@@ -55,6 +55,12 @@
       "midi": "song.mid",
       "audio": "song.mp3",
       "cover": "cover.jpg"
+    },
+    {
+      "id": "vivaldi-concerto-la-stravaganza-4-2-c-icking-archive",
+      "name": "vivaldi concerto la stravaganza 4 2 (c)icking archive",
+      "folder": "vivaldi_concerto_la_stravaganza_4_2_(c)icking-archive",
+      "midi": "song.mid"
     }
   ]
 }

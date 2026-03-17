@@ -184,7 +184,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       switchHysteresisSemitones: 0.72,
       switchConfirmFrames: 4,
       maxMissedFrames: 6,
-      emitLockedMidiOnMissedFrames: true
+      emitLockedMidiOnMissedFrames: false
     });
     this.gameplayPitchStabilizer = gameplayPitchStabilizer;
     detector.onPitch((frame) => {
@@ -327,7 +327,8 @@ function pauseBackingPlaybackImpl(this: PlaySceneContext): void {
     const pausedAudioSeconds = resolveSongSecondsForRuntime(
       this.getSongSecondsFromClock(),
       this.pausedSongSeconds,
-      this.getBackingTrackSongSeconds()
+      this.getBackingTrackSongSeconds(),
+      this.lastKnownBackingAudioSeconds
     );
     this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds);
     this.pausedBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, pausedAudioSeconds, this.pausedSongSeconds);
@@ -560,9 +561,10 @@ function getSongSecondsNowImpl(this: PlaySceneContext): number {
     const resolved = resolveSongSecondsForRuntime(
       expectedClockSongSeconds,
       this.pausedSongSeconds,
-      this.getBackingTrackSongSeconds()
+      this.getBackingTrackSongSeconds(),
+      this.lastKnownBackingAudioSeconds
     );
-    this.lastKnownBackingAudioSeconds = Math.max(this.lastKnownBackingAudioSeconds, resolved);
+    this.lastKnownBackingAudioSeconds = resolved;
     return resolved;
   }
   return expectedClockSongSeconds;

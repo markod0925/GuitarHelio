@@ -88,6 +88,7 @@ describe('updateRuntimeState', () => {
     expect(update.transition).toBe('validated_hit');
     expect(update.state.state).toBe(PlayState.Playing);
     expect(update.state.active_target_index).toBe(1);
+    expect(update.state.current_tick).toBe(1002);
   });
 
   test('advances to next target after a valid hit', () => {
@@ -104,6 +105,7 @@ describe('updateRuntimeState', () => {
     expect(update.transition).toBe('validated_hit');
     expect(update.state.state).toBe(PlayState.Playing);
     expect(update.state.active_target_index).toBe(1);
+    expect(update.state.current_tick).toBe(target.tick);
   });
 
   test('times out waiting target when timeout is configured', () => {
@@ -120,6 +122,23 @@ describe('updateRuntimeState', () => {
     expect(update.transition).toBe('timeout_miss');
     expect(update.state.state).toBe(PlayState.Playing);
     expect(update.state.active_target_index).toBe(1);
+    expect(update.state.current_tick).toBe(target.tick);
+  });
+
+  test('does not force current tick to target on very early valid hit', () => {
+    const earlyState: RuntimeState = {
+      state: PlayState.Playing,
+      current_tick: 820,
+      active_target_index: 0
+    };
+
+    const update = updateRuntimeState(earlyState, [target], 9.7, true, {
+      targetTimeSeconds: 10,
+      lateHitWindowSeconds: 0.5
+    });
+
+    expect(update.transition).toBe('validated_hit');
+    expect(update.state.current_tick).toBe(820);
   });
 
   test('keeps waiting indefinitely when timeout is not configured', () => {

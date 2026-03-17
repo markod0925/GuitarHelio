@@ -15,6 +15,7 @@ export class BootScene extends Phaser.Scene {
     this.load.text('songManifest', toPublicAssetUrl('songs/manifest.json'));
     this.load.image('handReminder', toPublicAssetUrl('ui/hand-reminder.png'));
     this.load.image('defaultSongCover', toPublicAssetUrl('ui/song-cover-placeholder-neon.png'));
+    this.load.image('startupSplashBg', toPublicAssetUrl('guitarhelio_splash_landscape_bg_1920x1080.png'));
     this.load.image('logoGuitarHelio', logoPath);
     this.load.image('uiSettingsIcon', toPublicAssetUrl('ui/icon-settings-neon.png'));
     this.load.image('uiTunerIcon', toPublicAssetUrl('ui/icon-tuner-neon.png'));
@@ -27,6 +28,7 @@ export class BootScene extends Phaser.Scene {
     [
       'handReminder',
       'defaultSongCover',
+      'startupSplashBg',
       'logoGuitarHelio',
       'uiSettingsIcon',
       'uiTunerIcon',
@@ -36,10 +38,6 @@ export class BootScene extends Phaser.Scene {
     ].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('guitarhelio:boot-ready'));
-    }
 
     this.scene.start('SongSelectScene');
   }

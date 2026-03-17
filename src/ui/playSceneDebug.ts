@@ -180,6 +180,7 @@ export function isPitchFrameValid(
   minConfidence: number
 ): boolean {
   return (
+    frame.rejected_as_reference_bleed !== true &&
     frame.midi_estimate !== null &&
     frame.confidence >= minConfidence &&
     Math.abs(frame.midi_estimate - expectedMidi) <= tolerance

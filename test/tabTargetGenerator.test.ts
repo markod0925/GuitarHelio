@@ -168,4 +168,22 @@ describe('generateTargetNotesFromMidiTab', () => {
     expect(targets.length).toBe(1);
     expect(targets[0].tick).toBe(0);
   });
+
+  test('drops chord events that require more fretted fingers than selected in settings', () => {
+    const midi = new Midi();
+    const track = midi.addTrack();
+    track.addNote({ midi: 45, ticks: 0, durationTicks: 240, velocity: 0.82 }); // string 6 fret 5
+    track.addNote({ midi: 52, ticks: 0, durationTicks: 240, velocity: 0.82 }); // string 5 fret 7
+    track.addNote({ midi: 59, ticks: 0, durationTicks: 240, velocity: 0.82 }); // string 4 fret 9
+    const buffer = midiToArrayBuffer(midi);
+    const loaded = loadMidiFromArrayBuffer(buffer);
+
+    const targets = generateTargetNotesFromMidiTab(buffer, {
+      profile: makeProfile([4, 5, 6], [5, 7, 9], [1, 2]),
+      difficulty: 'Hard',
+      sourceNotes: loaded.sourceNotes
+    });
+
+    expect(targets.length).toBe(0);
+  });
 });

@@ -42,6 +42,16 @@ describe('playbackResumeState', () => {
     expect(resolved).toBeCloseTo(2.663, 6);
   });
 
+  test('runtime song seconds stays monotonic when drift logic would otherwise step backward', () => {
+    const resolved = resolveSongSecondsForRuntime(10.05, 9.9, 9.9, 10);
+    expect(resolved).toBeCloseTo(10, 6);
+  });
+
+  test('runtime song seconds also clamps to previous value without backing audio sample', () => {
+    const resolved = resolveSongSecondsForRuntime(10.02, 9.9, undefined, 10);
+    expect(resolved).toBeCloseTo(10.02, 6);
+  });
+
   test('audio resume prefers paused audio position when runtime resume is stale behind', () => {
     const resolved = resolveResumeSongSecondsForAudio(2.1, 14.6);
     expect(resolved).toBeCloseTo(14.6, 6);

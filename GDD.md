@@ -308,6 +308,8 @@ To reduce unsustainable note overlap after strict string/fret filtering, gamepla
 * `maxNotesPerEvent` MUST be capped by the number of selected playable strings
 * `onsetMergeWindowTicks` MUST be increased adaptively when selected string/fret sets are restrictive
 * post-conversion target groups MUST be density-limited with a minimum time gap that depends on selected difficulty and constraint restrictiveness
+* after MIDI-to-TAB conversion and density adaptation, chord-event groups that require more fretted fingers than selected in session settings MUST be removed
+  * required fretted fingers for a chord-event group MUST be estimated as the number of distinct fretted positions (`fret > 0`) in that group
 * minimum group gap MUST be computed as:
   * Easy: `1.5 + 0.5 * restriction` seconds
   * Medium: `0.5 + 0.2 * restriction` seconds

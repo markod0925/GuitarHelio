@@ -96,7 +96,8 @@ export function generateTargetNotesFromMidiTab(
       a.string - b.string ||
       a.fret - b.fret
   );
-  return applyDensityReduction(targets, midi, mappedDifficulty, options.profile.allowed_strings, allowedFrets);
+  const densityReduced = applyDensityReduction(targets, midi, mappedDifficulty, options.profile.allowed_strings, allowedFrets);
+  return applyAllowedFingerChordFilter(densityReduced, options.profile.allowed_fingers);
 }
 
 function mapDifficulty(difficulty: SceneDifficulty): 'easy' | 'medium' | 'hard' {
@@ -169,6 +170,32 @@ function groupTargetsByChord(targets: TargetNote[]): TargetNote[][] {
     groups.push(current);
   }
   return groups;
+}
+
+function applyAllowedFingerChordFilter(targets: TargetNote[], allowedFingers: number[]): TargetNote[] {
+  if (targets.length === 0) {
+    return targets;
+  }
+
+  const maxUsableFingers = normalizeAllowedCount(allowedFingers, 1, 4);
+  const groups = groupTargetsByChord(targets);
+  if (groups.length <= 1 && estimateRequiredFingersForChord(groups[0] ?? []) <= maxUsableFingers) {
+    return targets;
+  }
+
+  const keptGroups = groups.filter((group) => estimateRequiredFingersForChord(group) <= maxUsableFingers);
+  return keptGroups.flat();
+}
+
+function estimateRequiredFingersForChord(group: TargetNote[]): number {
+  if (group.length === 0) return 0;
+  const frettedDistinct = new Set<number>();
+  for (const target of group) {
+    if (target.fret > 0) {
+      frettedDistinct.add(target.fret);
+    }
+  }
+  return frettedDistinct.size;
 }
 
 function computeConstraintRestriction(allowedStrings: number[], allowedFrets: number[]): number {

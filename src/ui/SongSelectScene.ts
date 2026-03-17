@@ -11,6 +11,7 @@ import { SongGridController } from './song-select/controllers/SongGridController
 import { SongImportController } from './song-select/controllers/SongImportController';
 import { SongLifecycleController } from './song-select/controllers/SongLifecycleController';
 import { SongSessionController } from './song-select/controllers/SongSessionController';
+import { StartupSplashController } from './song-select/controllers/StartupSplashController';
 import { SongTunerController } from './song-select/controllers/SongTunerController';
 import { SongCatalogService } from './song-select/services/SongCatalogService';
 import type {
@@ -46,6 +47,8 @@ export class SongSelectScene extends Phaser.Scene {
     this.coverLoadGeneration += 1;
     this.catalogLoadGeneration += 1;
     const { width, height } = this.scale;
+    const startupSplashController = new StartupSplashController(this);
+    startupSplashController.initialize(width, height);
     const titleSize = Math.max(layout.TITLE_MIN_PX, Math.floor(width * layout.TITLE_WIDTH_SCALE));
     const labelSize = Math.max(layout.LABEL_MIN_PX, Math.floor(width * layout.LABEL_WIDTH_SCALE));
     let songs: SongEntry[] = [];
@@ -756,6 +759,7 @@ export class SongSelectScene extends Phaser.Scene {
         isCatalogLoading = false;
         loadingSongsLabel.setVisible(false);
         refreshSelections();
+        startupSplashController.markLoadSettled();
         if (WEB_STARTUP_CATALOG_POLICY.lazyCoverLoading === 'visible-first') {
           void this.preloadSongCoverTexturesLazy(songs, WEB_STARTUP_CATALOG_POLICY.coverLoadConcurrency, songGridController);
         }
@@ -765,12 +769,14 @@ export class SongSelectScene extends Phaser.Scene {
         isCatalogLoading = false;
         loadingSongsLabel.setVisible(false);
         refreshSelections();
+        startupSplashController.markLoadSettled();
       }
     };
     this.reloadSongsTask = reloadSongsInBackground;
     void reloadSongsInBackground();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      startupSplashController.destroy();
       settingsController.destroy();
       tunerController.destroy();
       importController.destroy();

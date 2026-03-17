@@ -37,6 +37,9 @@ const MAX_FRET = 12;
 const MIN_METRONOME_BPM = 40;
 const MAX_METRONOME_BPM = 220;
 const DEFAULT_METRONOME_BPM = 90;
+const PRACTICE_MIN_MIC_RMS = 0.0032;
+const PRACTICE_MIN_MIC_RMS_LOCKED = PRACTICE_MIN_MIC_RMS * 0.72;
+const PRACTICE_MIN_ONSET_FOR_ACQUIRE = 0.015;
 
 export class PracticeScene extends Phaser.Scene {
   private audioCtx?: AudioContext;
@@ -57,7 +60,7 @@ export class PracticeScene extends Phaser.Scene {
     switchHysteresisSemitones: 0.72,
     switchConfirmFrames: 4,
     maxMissedFrames: 6,
-    emitLockedMidiOnMissedFrames: true
+    emitLockedMidiOnMissedFrames: false
   });
 
   private toggleButton?: RoundedBox;
@@ -476,11 +479,12 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private handlePitchFrame(frame: PitchFrame): void {
-    this.detectorState.rawMidi = frame.midi_estimate;
-    this.detectorState.confidence = frame.confidence;
-    this.detectorState.rawString = normalizeDetectedString(frame.detected_string);
+    const gatedFrame = this.applyPracticeFrameGate(frame);
+    this.detectorState.rawMidi = gatedFrame.midi_estimate;
+    this.detectorState.confidence = gatedFrame.confidence;
+    this.detectorState.rawString = normalizeDetectedString(gatedFrame.detected_string);
 
-    const stabilized = this.pitchFilter.update(frame);
+    const stabilized = this.pitchFilter.update(gatedFrame);
     this.detectorState.lockedMidi =
       stabilized.midi_estimate !== null && Number.isFinite(stabilized.midi_estimate)
         ? Math.round(stabilized.midi_estimate)
@@ -492,6 +496,43 @@ export class PracticeScene extends Phaser.Scene {
     }
 
     this.updateCellHighlights();
+  }
+
+  private applyPracticeFrameGate(frame: PitchFrame): PitchFrame {
+    if (this.isPracticeFrameActive(frame)) {
+      return frame;
+    }
+    return {
+      ...frame,
+      midi_estimate: null,
+      confidence: 0,
+      detected_string: null,
+      detected_fret: null,
+      best_note_id: null
+    };
+  }
+
+  private isPracticeFrameActive(frame: PitchFrame): boolean {
+    const micRms = frame.mic_rms;
+    if (micRms !== undefined && Number.isFinite(micRms)) {
+      const minRms = this.detectorState.lockedMidi === null
+        ? PRACTICE_MIN_MIC_RMS
+        : PRACTICE_MIN_MIC_RMS_LOCKED;
+      if (micRms < minRms) {
+        return false;
+      }
+    }
+
+    if (this.detectorState.lockedMidi !== null) {
+      return true;
+    }
+
+    const onsetStrength = frame.onset_strength;
+    if (onsetStrength !== undefined && Number.isFinite(onsetStrength) && onsetStrength < PRACTICE_MIN_ONSET_FOR_ACQUIRE) {
+      return false;
+    }
+
+    return true;
   }
 
   private updateCellHighlights(): void {

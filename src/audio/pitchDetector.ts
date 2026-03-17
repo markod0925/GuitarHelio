@@ -234,6 +234,7 @@ export class PitchDetectorService {
             t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
             midi_estimate: correctedMidi,
             confidence: correctedMidi === null ? 0 : clamp01(payload.confidence),
+            mic_rms: sanitizeOptionalNumber(payload.mic_rms),
             reference_midi: sanitizeMidi(payload.reference_midi),
             reference_correlation: sanitizeSigned(payload.reference_correlation),
             energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
@@ -431,7 +432,8 @@ export class PitchDetectorService {
       const frame: PitchFrame = {
         t_seconds: this.ctx.currentTime,
         midi_estimate: correctedMidi === null ? null : this.roundMidi ? Math.round(correctedMidi) : correctedMidi,
-        confidence: correctedMidi === null ? 0 : estimation.confidence
+        confidence: correctedMidi === null ? 0 : estimation.confidence,
+        mic_rms: computeSignalRms(this.analyserBuffer)
       };
       for (const listener of this.listeners) listener(frame);
       this.scheduleAnalyserFrame();
@@ -655,6 +657,11 @@ function sanitizeMidi(value: number | null | undefined): number | null {
   return value;
 }
 
+function sanitizeOptionalNumber(value: number | null | undefined): number | undefined {
+  if (value === null || value === undefined || !Number.isFinite(value)) return undefined;
+  return value;
+}
+
 function sanitizeNumber(value: number | null | undefined): number {
   if (value === null || value === undefined || !Number.isFinite(value)) return 0;
   return value;
@@ -720,6 +727,16 @@ function sanitizeChordScores(value: unknown): PitchFrame['chord_scores'] {
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+function computeSignalRms(samples: ArrayLike<number>): number {
+  if (samples.length <= 0) return 0;
+  let energy = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = samples[i];
+    energy += value * value;
+  }
+  return Math.sqrt(energy / samples.length);
 }
 
 function toErrorMessage(error: unknown): string {

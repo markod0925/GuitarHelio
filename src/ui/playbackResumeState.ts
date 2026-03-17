@@ -47,16 +47,24 @@ export function computePauseState(
 export function resolveSongSecondsForRuntime(
   expectedClockSongSeconds: number,
   pausedSongSeconds: number,
-  backingAudioSongSeconds: number | undefined
+  backingAudioSongSeconds: number | undefined,
+  previousRuntimeSongSeconds?: number
 ): number {
   const expected = sanitizeSongSeconds(expectedClockSongSeconds, pausedSongSeconds);
-  if (backingAudioSongSeconds === undefined) return expected;
-
-  const fromAudio = sanitizeSongSeconds(backingAudioSongSeconds, expected);
-  if (fromAudio + AUDIO_DRIFT_TOLERANCE_SECONDS < expected) {
-    return expected;
+  let resolved = expected;
+  if (backingAudioSongSeconds !== undefined) {
+    const fromAudio = sanitizeSongSeconds(backingAudioSongSeconds, expected);
+    if (fromAudio + AUDIO_DRIFT_TOLERANCE_SECONDS < expected) {
+      resolved = expected;
+    } else {
+      resolved = fromAudio;
+    }
   }
-  return fromAudio;
+
+  if (previousRuntimeSongSeconds === undefined) {
+    return resolved;
+  }
+  return Math.max(sanitizeSongSeconds(previousRuntimeSongSeconds, resolved), resolved);
 }
 
 export function resolveResumeSongSecondsForAudio(

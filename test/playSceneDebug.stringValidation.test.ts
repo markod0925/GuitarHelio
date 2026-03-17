@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { analyzeHeldHitForTarget, isPitchFrameTargetValid } from '../src/ui/playSceneDebug';
+import { analyzeHeldHitForTarget, isPitchFrameTargetValid, isPitchFrameValid } from '../src/ui/playSceneDebug';
 import type { PitchFrame } from '../src/types/models';
 
 function makeFrame(tSeconds: number, midiEstimate: number, detectedString: number | null): PitchFrame {
@@ -32,5 +32,15 @@ describe('string-aware gameplay hit validation', () => {
     const analysis = analyzeHeldHitForTarget(frames, 52, 4, 0.5, 120, 0.7, true);
     expect(analysis.valid).toBe(true);
     expect(analysis.streakMs).toBeGreaterThanOrEqual(120);
+  });
+
+  test('rejects frames explicitly marked as reference bleed', () => {
+    const frame: PitchFrame = {
+      t_seconds: 1,
+      midi_estimate: 52,
+      confidence: 0.95,
+      rejected_as_reference_bleed: true
+    };
+    expect(isPitchFrameValid(frame, 52, 0.5, 0.7)).toBe(false);
   });
 });
