@@ -551,7 +551,8 @@ export class SongTunerController {
 
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
-        smoothingAlpha: 0
+        smoothingAlpha: 0,
+        detectorPreset: 'ac14'
       });
       await detector.init();
       calibrationDetector = detector;
@@ -748,7 +749,8 @@ export class SongTunerController {
         roundMidi: false,
         calibrationProfile: this.pitchCalibrationProfile ?? undefined,
         audioInputMode,
-        enableDspCore: true
+        enableDspCore: true,
+        detectorPreset: 'ac14'
       });
       await detector.init();
       this.detector = detector;

@@ -80,15 +80,18 @@ Like Yousician:
 - Vite
 - WebAudio API
 - JZZ + jzz-synth-tiny (MIDI synth playback engine)
-- Tuneo-style YIN pitch detection pipeline (TypeScript)
+- Rust/WASM pitch detection core (`gh_dsp_core`) with preset-based runtime profiles
 
 ## 2.3 Pitch detection library (MANDATORY)
 
 **Option A (selected):**
 
-- Tuneo YIN detector pipeline (ported from `DonBraulio/tuneo`)
+- `gh_dsp_core` preset pipeline:
+  - gameplay default profile (baseline/spectral runtime)
+  - tuner profile `ac14` (autocorrelation)
 
-The system MUST use the Tuneo-style YIN pipeline and MUST NOT rely on naive autocorrelation as the primary detector path.
+The system MUST use preset-based runtime detection through `PitchDetectorService`.
+The start-screen tuner MUST use `ac14` for both live tuning and calibration capture.
 
 ---
 
@@ -443,7 +446,7 @@ When there is no active target left (`active_target_index` past the last target)
 
 ---
 
-# 9. Pitch Detection (Tuneo YIN pipeline)
+# 9. Pitch Detection (Preset runtime pipeline)
 
 ## 9.1 Input
 
@@ -873,7 +876,8 @@ Inside this tuner menu, show a tuner panel that:
 * lets the user select which string to tune (1–6)
 * starts/stops microphone listening
 * shows a tuning slider/needle that moves based on cents distance from the target string pitch, with a visible range of `±200c` (2 semitones)
-* shows a centered green target band representing the in-tune zone `-5c .. +5c`
+* shows a centered green target band representing the in-tune zone `-10c .. +10c`
+* MUST use `PitchDetectorService` with detector preset `ac14` during tuner listening and tuner calibration
 
 The tuner must update in real time while active.
 The tuner display (detected note + cents + needle) MUST apply temporal stabilization to avoid noisy oscillation:
@@ -892,7 +896,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene), not only tuner display
 * when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
 * this summary popup MUST close on any click/tap anywhere on screen
-* while tuner is active, if current target string stays inside in-tune green band (`±5c`) for at least `0.5` continuous seconds:
+* while tuner is active, if current target string stays inside in-tune green band (`±10c`) for at least `0.5` continuous seconds:
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 

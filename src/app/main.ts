@@ -30,8 +30,9 @@ function installDynamicViewportSizing(): void {
     const viewport = window.visualViewport;
     const width = viewport?.width ?? window.innerWidth;
     const height = viewport?.height ?? window.innerHeight;
-    document.documentElement.style.setProperty('--app-viewport-width', `${Math.round(width)}px`);
-    document.documentElement.style.setProperty('--app-viewport-height', `${Math.round(height)}px`);
+    // Keep sub-pixel precision to avoid occasional 1px overflow/clipping on the right edge.
+    document.documentElement.style.setProperty('--app-viewport-width', `${width}px`);
+    document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
   };
 
   syncViewportSize();

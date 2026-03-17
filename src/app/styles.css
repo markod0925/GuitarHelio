@@ -2,6 +2,10 @@
   color-scheme: dark;
   --app-viewport-width: 100vw;
   --app-viewport-height: 100vh;
+  --app-inset-top: max(8px, env(safe-area-inset-top));
+  --app-inset-right: max(8px, env(safe-area-inset-right));
+  --app-inset-bottom: max(8px, env(safe-area-inset-bottom));
+  --app-inset-left: max(8px, env(safe-area-inset-left));
 }
 
 * {
@@ -21,10 +25,9 @@ body {
 }
 
 #app {
-  width: var(--app-viewport-width);
-  height: var(--app-viewport-height);
-  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
+  width: calc(var(--app-viewport-width) - var(--app-inset-left) - var(--app-inset-right));
+  height: calc(var(--app-viewport-height) - var(--app-inset-top) - var(--app-inset-bottom));
+  margin: var(--app-inset-top) var(--app-inset-right) var(--app-inset-bottom) var(--app-inset-left);
 }
 
 @supports (height: 100dvh) {
@@ -35,8 +38,9 @@ body {
 }
 
 #app canvas {
+  display: block;
   border-radius: 18px;
-  box-shadow: 0 20px 70px rgba(2, 6, 23, 0.7), 0 0 0 1px rgba(147, 197, 253, 0.2);
+  box-shadow: 0 20px 70px rgba(2, 6, 23, 0.7), inset 0 0 0 1px rgba(147, 197, 253, 0.2);
 }
 
 #startup-splash {
@@ -58,7 +62,9 @@ body {
 }
 
 html.platform-native #app {
-  padding: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
 }
 
 html.platform-native #app canvas {
