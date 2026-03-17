@@ -1,4 +1,7 @@
-use crate::types::{AlgorithmKind, CandidateSpec, PitchFrame};
+use crate::backends::sac::SacBackend;
+use crate::backends::spectral_harmonic::SpectralHarmonicBackend;
+use crate::types::{AlgorithmKind, CandidateModel, CandidateSpec, PitchFrame};
+use anyhow::Result;
 
 pub trait PitchDetector {
     fn reset(&mut self);
@@ -11,13 +14,38 @@ pub trait PitchDetector {
     ) -> PitchFrame;
 }
 
-pub fn create_detector(spec: &CandidateSpec, window_size: usize) -> Box<dyn PitchDetector> {
-    match spec.algorithm {
-        AlgorithmKind::Yin => Box::new(YinDetector::from_spec(spec, window_size)),
+pub fn create_detector(
+    spec: &CandidateSpec,
+    window_size: usize,
+    candidate_model: Option<&CandidateModel>,
+) -> Result<Box<dyn PitchDetector>> {
+    let detector = match spec.algorithm {
+        AlgorithmKind::Yin => {
+            Box::new(YinDetector::from_spec(spec, window_size)) as Box<dyn PitchDetector>
+        }
         AlgorithmKind::Autocorr => Box::new(AutocorrDetector::from_spec(spec)),
         AlgorithmKind::Mpm => Box::new(MpmDetector::from_spec(spec, window_size)),
         AlgorithmKind::Hybrid => Box::new(HybridDetector::from_spec(spec, window_size)),
-    }
+        AlgorithmKind::Sac => {
+            let model = candidate_model.ok_or_else(|| {
+                anyhow::anyhow!("SAC candidate requires dataset candidate_model config")
+            })?;
+            Box::new(SacDetector::from_spec(spec, model))
+        }
+        AlgorithmKind::SpectralHarmonic => {
+            let model = candidate_model.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "spectral_harmonic candidate requires dataset candidate_model config"
+                )
+            })?;
+            Box::new(SpectralHarmonicDetector::from_spec(
+                spec,
+                model,
+                window_size,
+            ))
+        }
+    };
+    Ok(detector)
 }
 
 struct YinDetector {
@@ -98,6 +126,7 @@ impl PitchDetector for YinDetector {
                 t_seconds,
                 midi_estimate: None,
                 confidence: 0.0,
+                frame_trace: None,
             };
         }
 
@@ -127,6 +156,7 @@ impl PitchDetector for YinDetector {
                 t_seconds,
                 midi_estimate: Some(midi),
                 confidence,
+                frame_trace: None,
             };
         }
 
@@ -136,6 +166,7 @@ impl PitchDetector for YinDetector {
             t_seconds,
             midi_estimate: None,
             confidence: 0.0,
+            frame_trace: None,
         }
     }
 }
@@ -209,6 +240,7 @@ impl PitchDetector for AutocorrDetector {
                 t_seconds,
                 midi_estimate: Some(midi_from_hz(frequency_hz)),
                 confidence: clamp01((correlation - 0.45) / 0.5),
+                frame_trace: None,
             };
         }
 
@@ -219,6 +251,7 @@ impl PitchDetector for AutocorrDetector {
             t_seconds,
             midi_estimate: None,
             confidence: clamp01(result.correlation),
+            frame_trace: None,
         }
     }
 }
@@ -262,6 +295,7 @@ impl PitchDetector for MpmDetector {
                 t_seconds,
                 midi_estimate: None,
                 confidence: 0.0,
+                frame_trace: None,
             };
         }
 
@@ -281,12 +315,14 @@ impl PitchDetector for MpmDetector {
                 confidence: clamp01(
                     (nsdf_peak - self.nsdf_threshold) / (1.0 - self.nsdf_threshold).max(1e-4),
                 ),
+                frame_trace: None,
             };
         }
         PitchFrame {
             t_seconds,
             midi_estimate: None,
             confidence: 0.0,
+            frame_trace: None,
         }
     }
 }
@@ -338,6 +374,7 @@ impl PitchDetector for HybridDetector {
                     t_seconds,
                     midi_estimate: Some(midi),
                     confidence,
+                    frame_trace: None,
                 }
             }
             (Some(_), None) => yin_frame,
@@ -346,8 +383,65 @@ impl PitchDetector for HybridDetector {
                 t_seconds,
                 midi_estimate: None,
                 confidence: yin_frame.confidence.max(mpm_frame.confidence),
+                frame_trace: None,
             },
         }
+    }
+}
+
+struct SacDetector {
+    backend: SacBackend,
+}
+
+impl SacDetector {
+    fn from_spec(spec: &CandidateSpec, candidate_model: &CandidateModel) -> Self {
+        Self {
+            backend: SacBackend::from_spec(spec, candidate_model),
+        }
+    }
+}
+
+impl PitchDetector for SacDetector {
+    fn reset(&mut self) {}
+
+    fn process_window(
+        &mut self,
+        window: &[f32],
+        _chunk_rms: f32,
+        sample_rate: u32,
+        t_seconds: f64,
+    ) -> PitchFrame {
+        self.backend.process_window(window, sample_rate, t_seconds)
+    }
+}
+
+struct SpectralHarmonicDetector {
+    backend: SpectralHarmonicBackend,
+}
+
+impl SpectralHarmonicDetector {
+    fn from_spec(
+        spec: &CandidateSpec,
+        candidate_model: &CandidateModel,
+        window_size: usize,
+    ) -> Self {
+        Self {
+            backend: SpectralHarmonicBackend::from_spec(spec, candidate_model, window_size),
+        }
+    }
+}
+
+impl PitchDetector for SpectralHarmonicDetector {
+    fn reset(&mut self) {}
+
+    fn process_window(
+        &mut self,
+        window: &[f32],
+        _chunk_rms: f32,
+        sample_rate: u32,
+        t_seconds: f64,
+    ) -> PitchFrame {
+        self.backend.process_window(window, sample_rate, t_seconds)
     }
 }
 
@@ -677,7 +771,9 @@ mod tests {
         let sample_rate = 44100u32;
         let signal = sine_wave(440.0, sample_rate, 0.25);
         let chunk_rms = compute_rms(&signal);
-        let mut detector = create_detector(&candidate("yin", AlgorithmKind::Yin), signal.len());
+        let mut detector =
+            create_detector(&candidate("yin", AlgorithmKind::Yin), signal.len(), None)
+                .expect("create yin detector");
         let frame = detector.process_window(&signal, chunk_rms, sample_rate, 0.25);
         assert!(frame.midi_estimate.is_some());
         assert!(frame.confidence > 0.5);
@@ -689,7 +785,12 @@ mod tests {
     fn autocorr_detector_tracks_a3() {
         let sample_rate = 44100u32;
         let signal = sine_wave(220.0, sample_rate, 0.20);
-        let mut detector = create_detector(&candidate("ac", AlgorithmKind::Autocorr), signal.len());
+        let mut detector = create_detector(
+            &candidate("ac", AlgorithmKind::Autocorr),
+            signal.len(),
+            None,
+        )
+        .expect("create autocorr detector");
         let frame = detector.process_window(&signal, compute_rms(&signal), sample_rate, 0.2);
         assert!(frame.midi_estimate.is_some());
         let midi = frame.midi_estimate.unwrap_or_default();
@@ -700,7 +801,9 @@ mod tests {
     fn mpm_detector_tracks_e4() {
         let sample_rate = 44100u32;
         let signal = sine_wave(329.63, sample_rate, 0.20);
-        let mut detector = create_detector(&candidate("mpm", AlgorithmKind::Mpm), signal.len());
+        let mut detector =
+            create_detector(&candidate("mpm", AlgorithmKind::Mpm), signal.len(), None)
+                .expect("create mpm detector");
         let frame = detector.process_window(&signal, compute_rms(&signal), sample_rate, 0.2);
         assert!(frame.midi_estimate.is_some());
         let midi = frame.midi_estimate.unwrap_or_default();

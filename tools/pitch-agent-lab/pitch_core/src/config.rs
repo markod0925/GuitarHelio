@@ -1,6 +1,6 @@
 use crate::types::{
-    CandidateListConfig, CandidateSpec, DatasetConfig, GatesConfig, SearchSpaceConfig,
-    WebResearchRecord,
+    CandidateListConfig, CandidateModel, CandidateSpec, DatasetConfig, GatesConfig,
+    SearchSpaceConfig, WebResearchRecord,
 };
 use anyhow::{Context, Result};
 use std::fs;
@@ -19,6 +19,17 @@ pub fn load_candidates_config(path: &Path) -> Result<CandidateListConfig> {
         .with_context(|| format!("failed to read candidates config {:?}", path))?;
     let cfg: CandidateListConfig = toml::from_str(&raw)
         .with_context(|| format!("failed to parse candidates config {:?}", path))?;
+    Ok(cfg)
+}
+
+pub fn load_candidate_model_config(path: &Path) -> Result<CandidateModel> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read candidate model config {:?}", path))?;
+    let cfg: CandidateModel = toml::from_str(&raw)
+        .with_context(|| format!("failed to parse candidate model config {:?}", path))?;
+    if cfg.notes.is_empty() {
+        anyhow::bail!("candidate model {:?} must contain at least one note", path);
+    }
     Ok(cfg)
 }
 

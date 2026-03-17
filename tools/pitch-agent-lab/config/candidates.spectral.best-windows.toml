@@ -1,0 +1,104 @@
+[[candidates]]
+id = "spectral_best_w1024"
+label = "Spectral best window 1024"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0232199546
+chunk_seconds = 0.00580498866
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 3400.0
+max_harmonics = 3.0
+base_bandwidth_hz = 20.0
+relative_bandwidth = 0.018
+magnitude_compression_gamma = 0.55
+use_log_magnitude = 0.0
+use_local_whitening = 0.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 1.0
+subharmonic_penalty_alpha = 0.05
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00001
+confidence_contrast_weight = 0.5
+confidence_energy_weight = 0.5
+confidence_gain = 1.8
+confidence_bias = 0.84
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Best tuned candidate for 1024-sample window on benchmark takes (detect=100%)."
+
+[[candidates]]
+id = "spectral_best_w2048"
+label = "Spectral best window 2048"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 4050.0
+max_harmonics = 4.0
+base_bandwidth_hz = 20.0
+relative_bandwidth = 0.02
+magnitude_compression_gamma = 0.3
+use_log_magnitude = 0.0
+use_local_whitening = 0.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 1.0
+subharmonic_penalty_alpha = 0.03
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00003
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.2
+confidence_bias = 0.88
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Best tuned candidate for 2048-sample window on benchmark takes (detect=100%)."
+
+[[candidates]]
+id = "spectral_best_w4096"
+label = "Spectral best window 4096"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0928798186
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 4300.0
+max_harmonics = 6.0
+base_bandwidth_hz = 19.0
+relative_bandwidth = 0.019
+magnitude_compression_gamma = 0.5
+use_log_magnitude = 0.0
+use_local_whitening = 0.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 0.0
+subharmonic_penalty_alpha = 0.0
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00002
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.4
+confidence_bias = 0.78
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Best tuned candidate for 4096-sample window on benchmark takes (detect=100%)."

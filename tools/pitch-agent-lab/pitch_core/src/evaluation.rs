@@ -186,11 +186,13 @@ mod tests {
                 t_seconds: 0.1,
                 midi_estimate: Some(45.0),
                 confidence: 0.8,
+                frame_trace: None,
             },
             PitchFrame {
                 t_seconds: 0.2,
                 midi_estimate: None,
                 confidence: 0.0,
+                frame_trace: None,
             },
         ];
         let metrics = evaluate_take("takeX", &frames, &[event], &gates);

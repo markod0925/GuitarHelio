@@ -8,6 +8,8 @@ pub enum AlgorithmKind {
     Autocorr,
     Mpm,
     Hybrid,
+    Sac,
+    SpectralHarmonic,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -81,7 +83,32 @@ pub struct DatasetTakeConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetConfig {
+    #[serde(default)]
+    pub candidate_model: Option<String>,
     pub takes: Vec<DatasetTakeConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteCandidate {
+    pub id: String,
+    #[serde(rename = "string")]
+    pub guitar_string: u32,
+    pub fret: u32,
+    pub midi: f32,
+    pub frequency_hz: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChordCandidate {
+    pub id: String,
+    pub member_note_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateModel {
+    pub notes: Vec<NoteCandidate>,
+    #[serde(default)]
+    pub chords: Vec<ChordCandidate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +222,46 @@ pub struct PitchFrame {
     pub t_seconds: f64,
     pub midi_estimate: Option<f32>,
     pub confidence: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_trace: Option<FrameTrace>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameNoteScore {
+    pub note_id: String,
+    pub midi: f32,
+    pub score: f32,
+    #[serde(default)]
+    pub raw_score: f32,
+    #[serde(default)]
+    pub relative_score: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameChordScore {
+    pub chord_id: String,
+    pub score: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameTrace {
+    pub t_seconds: f64,
+    #[serde(default)]
+    pub best_note_id: Option<String>,
+    #[serde(default)]
+    pub best_note_midi: Option<f32>,
+    #[serde(default)]
+    pub best_note_score: Option<f32>,
+    #[serde(default)]
+    pub note_scores: Vec<FrameNoteScore>,
+    #[serde(default)]
+    pub chord_scores: Vec<FrameChordScore>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TakeFrameTrace {
+    pub take_id: String,
+    pub frames: Vec<FrameTrace>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,6 +314,8 @@ pub struct CandidateRunResult {
     pub realtime_factor: f64,
     pub pass_realtime: bool,
     pub full_pass: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_traces: Option<Vec<TakeFrameTrace>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

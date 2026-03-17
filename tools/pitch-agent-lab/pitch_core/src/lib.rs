@@ -1,3 +1,4 @@
+mod backends;
 pub mod benchmark;
 pub mod config;
 pub mod detectors;

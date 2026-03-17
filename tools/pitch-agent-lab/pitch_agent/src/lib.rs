@@ -297,6 +297,97 @@ fn baseline_candidates() -> Vec<CandidateSpec> {
                 notes: Some("Combines Yin and MPM confidence".to_owned()),
             },
         },
+        CandidateSpec {
+            id: "baseline_sac".to_owned(),
+            label: Some("Baseline SAC (candidate-guided)".to_owned()),
+            algorithm: AlgorithmKind::Sac,
+            params: btreemap(&[
+                ("window_seconds", 0.093),
+                ("chunk_seconds", 0.0232199546),
+                ("harmonic_count", 6.0),
+                ("normalized_acf", 0.0),
+                ("min_rms", 0.0008),
+                ("emit_frame_traces", 1.0),
+            ]),
+            source: SourceMeta {
+                kind: "internal".to_owned(),
+                reference: Some("SAC lag-domain benchmark backend".to_owned()),
+                source_url: None,
+                license: Some("MIT".to_owned()),
+                vendored: false,
+                notes: Some("Candidate-guided summed autocorrelation scorer".to_owned()),
+            },
+        },
+        CandidateSpec {
+            id: "baseline_spectral_harmonic".to_owned(),
+            label: Some("Baseline spectral harmonic score".to_owned()),
+            algorithm: AlgorithmKind::SpectralHarmonic,
+            params: btreemap(&[
+                ("window_seconds", 0.0928798186),
+                ("chunk_seconds", 0.0116099773),
+                ("fft_size", 4096.0),
+                ("min_freq_hz", 75.0),
+                ("max_harmonic_freq_hz", 4000.0),
+                ("max_harmonics", 6.0),
+                ("base_bandwidth_hz", 18.0),
+                ("relative_bandwidth", 0.015),
+                ("magnitude_compression_gamma", 0.5),
+                ("use_log_magnitude", 0.0),
+                ("use_local_whitening", 1.0),
+                ("whitening_radius_bins", 8.0),
+                ("use_harmonic_penalty", 1.0),
+                ("subharmonic_penalty_alpha", 0.35),
+                ("normalize_by_weight_sum", 1.0),
+                ("normalize_by_band_energy", 0.0),
+                ("dc_remove", 1.0),
+                ("min_rms", 0.0008),
+                ("emit_frame_traces", 1.0),
+            ]),
+            source: SourceMeta {
+                kind: "internal".to_owned(),
+                reference: Some("Spectral harmonic benchmark backend".to_owned()),
+                source_url: None,
+                license: Some("MIT".to_owned()),
+                vendored: false,
+                notes: Some("Candidate-guided harmonic energy accumulation scorer".to_owned()),
+            },
+        },
+        CandidateSpec {
+            id: "baseline_spectral_harmonic_h8_5k".to_owned(),
+            label: Some("Baseline spectral harmonic score (5kHz/8 harmonics)".to_owned()),
+            algorithm: AlgorithmKind::SpectralHarmonic,
+            params: btreemap(&[
+                ("window_seconds", 0.0928798186),
+                ("chunk_seconds", 0.0116099773),
+                ("fft_size", 4096.0),
+                ("min_freq_hz", 75.0),
+                ("max_harmonic_freq_hz", 5000.0),
+                ("max_harmonics", 8.0),
+                ("base_bandwidth_hz", 18.0),
+                ("relative_bandwidth", 0.015),
+                ("magnitude_compression_gamma", 0.5),
+                ("use_log_magnitude", 0.0),
+                ("use_local_whitening", 1.0),
+                ("whitening_radius_bins", 8.0),
+                ("use_harmonic_penalty", 1.0),
+                ("subharmonic_penalty_alpha", 0.35),
+                ("normalize_by_weight_sum", 1.0),
+                ("normalize_by_band_energy", 0.0),
+                ("dc_remove", 1.0),
+                ("min_rms", 0.0008),
+                ("emit_frame_traces", 1.0),
+            ]),
+            source: SourceMeta {
+                kind: "internal".to_owned(),
+                reference: Some("Spectral harmonic benchmark backend".to_owned()),
+                source_url: None,
+                license: Some("MIT".to_owned()),
+                vendored: false,
+                notes: Some(
+                    "Candidate-guided harmonic energy accumulation scorer variant".to_owned(),
+                ),
+            },
+        },
     ]
 }
 
@@ -448,6 +539,35 @@ fn baseline_params_for(algorithm: AlgorithmKind) -> BTreeMap<String, f64> {
             ("min_rms", 0.001),
             ("nsdf_threshold", 0.58),
         ]),
+        AlgorithmKind::Sac => btreemap(&[
+            ("window_seconds", 0.093),
+            ("chunk_seconds", 0.0232199546),
+            ("harmonic_count", 6.0),
+            ("normalized_acf", 0.0),
+            ("min_rms", 0.0008),
+            ("emit_frame_traces", 1.0),
+        ]),
+        AlgorithmKind::SpectralHarmonic => btreemap(&[
+            ("window_seconds", 0.0928798186),
+            ("chunk_seconds", 0.0116099773),
+            ("fft_size", 4096.0),
+            ("min_freq_hz", 75.0),
+            ("max_harmonic_freq_hz", 4000.0),
+            ("max_harmonics", 6.0),
+            ("base_bandwidth_hz", 18.0),
+            ("relative_bandwidth", 0.015),
+            ("magnitude_compression_gamma", 0.5),
+            ("use_log_magnitude", 0.0),
+            ("use_local_whitening", 1.0),
+            ("whitening_radius_bins", 8.0),
+            ("use_harmonic_penalty", 1.0),
+            ("subharmonic_penalty_alpha", 0.35),
+            ("normalize_by_weight_sum", 1.0),
+            ("normalize_by_band_energy", 0.0),
+            ("dc_remove", 1.0),
+            ("min_rms", 0.0008),
+            ("emit_frame_traces", 1.0),
+        ]),
     }
 }
 
@@ -466,6 +586,14 @@ fn adjust_noise_robustness(params: &mut BTreeMap<String, f64>, algorithm: Algori
             add_param(params, "nsdf_threshold", 0.05, 0.40, 0.90);
             add_param(params, "min_rms", 0.0005, 0.0005, 0.008);
         }
+        AlgorithmKind::Sac => {
+            add_param(params, "min_rms", 0.0005, 0.0004, 0.01);
+        }
+        AlgorithmKind::SpectralHarmonic => {
+            add_param(params, "min_rms", 0.0005, 0.0004, 0.01);
+            add_param(params, "base_bandwidth_hz", 2.0, 8.0, 32.0);
+            add_param(params, "subharmonic_penalty_alpha", 0.05, 0.0, 0.9);
+        }
     }
 }
 
@@ -482,6 +610,13 @@ fn adjust_sustain_tracking(params: &mut BTreeMap<String, f64>, algorithm: Algori
         }
         AlgorithmKind::Mpm => {
             add_param(params, "nsdf_threshold", -0.04, 0.30, 0.90);
+        }
+        AlgorithmKind::Sac => {
+            add_param(params, "harmonic_count", 1.0, 3.0, 10.0);
+        }
+        AlgorithmKind::SpectralHarmonic => {
+            add_param(params, "max_harmonics", 1.0, 3.0, 12.0);
+            add_param(params, "max_harmonic_freq_hz", 300.0, 2000.0, 7000.0);
         }
     }
 }
@@ -500,6 +635,8 @@ fn add_jitter(params: &mut BTreeMap<String, f64>, algorithm: AlgorithmKind, rng:
         AlgorithmKind::Autocorr => 0.10,
         AlgorithmKind::Mpm => 0.12,
         AlgorithmKind::Hybrid => 0.10,
+        AlgorithmKind::Sac => 0.08,
+        AlgorithmKind::SpectralHarmonic => 0.08,
     };
     for key in [
         "window_seconds",
@@ -511,6 +648,12 @@ fn add_jitter(params: &mut BTreeMap<String, f64>, algorithm: AlgorithmKind, rng:
         "max_pitch_dev",
         "nsdf_threshold",
         "min_rms",
+        "harmonic_count",
+        "max_harmonics",
+        "max_harmonic_freq_hz",
+        "base_bandwidth_hz",
+        "relative_bandwidth",
+        "subharmonic_penalty_alpha",
     ] {
         if let Some(value) = params.get_mut(key) {
             let factor = rng.random_range(1.0 - jitter_scale..=1.0 + jitter_scale);
@@ -634,6 +777,15 @@ fn classify_algorithm_hint(text: &str) -> Option<AlgorithmKind> {
     let low = text.to_lowercase();
     if low.contains("mcleod") || low.contains("nsdf") || low.contains("mpm") {
         return Some(AlgorithmKind::Mpm);
+    }
+    if low.contains("summed autocorrelation") || low.contains("sac") {
+        return Some(AlgorithmKind::Sac);
+    }
+    if low.contains("spectral harmonic")
+        || low.contains("harmonic summation")
+        || low.contains("harmonic score")
+    {
+        return Some(AlgorithmKind::SpectralHarmonic);
     }
     if low.contains("yin") || low.contains("p-yin") || low.contains("pyin") {
         return Some(AlgorithmKind::Yin);

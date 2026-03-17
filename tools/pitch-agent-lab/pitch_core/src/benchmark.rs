@@ -1,11 +1,12 @@
 use crate::config::{
-    load_candidates_config, load_dataset_config, load_gates_config, resolve_from_config_dir,
+    load_candidate_model_config, load_candidates_config, load_dataset_config, load_gates_config,
+    resolve_from_config_dir,
 };
 use crate::detectors::create_detector;
 use crate::evaluation::evaluate_take;
 use crate::types::{
-    BenchmarkRunResult, CandidateRunResult, ManifestFile, PitchFrame, RankingEntry, RunMetadata,
-    StrictMatrixEntry,
+    AlgorithmKind, BenchmarkRunResult, CandidateModel, CandidateRunResult, ManifestFile,
+    PitchFrame, RankingEntry, RunMetadata, StrictMatrixEntry, TakeFrameTrace,
 };
 use anyhow::{Context, Result};
 use hound::{SampleFormat, WavReader};
@@ -30,11 +31,23 @@ pub fn run_benchmark(
     let dataset_cfg = load_dataset_config(dataset_path)?;
     let candidates_cfg = load_candidates_config(candidates_path)?;
     let gates_cfg = load_gates_config(gates_path)?;
+    let candidate_model =
+        load_candidate_model(dataset_path, dataset_cfg.candidate_model.as_deref())?;
     if dataset_cfg.takes.is_empty() {
         anyhow::bail!("dataset must include at least one take");
     }
     if candidates_cfg.candidates.is_empty() {
         anyhow::bail!("candidates must include at least one candidate");
+    }
+    if candidates_cfg
+        .candidates
+        .iter()
+        .any(|item| requires_candidate_model(item.algorithm))
+        && candidate_model.is_none()
+    {
+        anyhow::bail!(
+            "candidate_model is required in dataset config when using sac/spectral_harmonic algorithms"
+        );
     }
 
     let mut loaded_takes = Vec::with_capacity(dataset_cfg.takes.len());
@@ -57,6 +70,7 @@ pub fn run_benchmark(
     for candidate in &candidates_cfg.candidates {
         let mut take_metrics = Vec::with_capacity(loaded_takes.len());
         let mut strict_matrix = Vec::new();
+        let mut frame_traces = Vec::<TakeFrameTrace>::new();
         let mut runtime_ms_total = 0.0f64;
         let mut analyzed_duration_s_total = 0.0f64;
         let mut global_total_frames = 0u32;
@@ -64,9 +78,20 @@ pub fn run_benchmark(
         let mut global_in_tune_sum = 0.0f32;
 
         for take in &loaded_takes {
-            let (frames, runtime_ms) = run_candidate_on_take(candidate, take);
+            let (frames, runtime_ms) =
+                run_candidate_on_take(candidate, take, candidate_model.as_ref())?;
             runtime_ms_total += runtime_ms;
             analyzed_duration_s_total += take.duration_s;
+            let traced_frames = frames
+                .iter()
+                .filter_map(|frame| frame.frame_trace.clone())
+                .collect::<Vec<_>>();
+            if !traced_frames.is_empty() {
+                frame_traces.push(TakeFrameTrace {
+                    take_id: take.id.clone(),
+                    frames: traced_frames,
+                });
+            }
             let metrics = evaluate_take(&take.id, &frames, &take.events, &gates_cfg);
             global_total_frames += metrics.total_frames;
             global_valid_frames += metrics.valid_frames;
@@ -114,6 +139,11 @@ pub fn run_benchmark(
             realtime_factor,
             pass_realtime,
             full_pass,
+            frame_traces: if frame_traces.is_empty() {
+                None
+            } else {
+                Some(frame_traces)
+            },
         });
     }
 
@@ -166,7 +196,8 @@ fn load_manifest_events(path: &Path) -> Result<Vec<crate::types::ManifestEvent>>
 fn run_candidate_on_take(
     candidate: &crate::types::CandidateSpec,
     take: &LoadedTake,
-) -> (Vec<PitchFrame>, f64) {
+    candidate_model: Option<&CandidateModel>,
+) -> Result<(Vec<PitchFrame>, f64)> {
     let window_seconds = candidate.param_f64(
         "window_seconds",
         default_window_seconds(candidate.algorithm),
@@ -177,7 +208,7 @@ fn run_candidate_on_take(
     let window_size = ((window_seconds * take.sample_rate as f64).round() as usize).max(128);
     let hop_size = ((chunk_seconds * take.sample_rate as f64).round() as usize).max(16);
     let mut rolling = vec![0.0f32; window_size];
-    let mut detector = create_detector(candidate, window_size);
+    let mut detector = create_detector(candidate, window_size, candidate_model)?;
     detector.reset();
     let mut has_filled = false;
     let mut frames = Vec::new();
@@ -207,7 +238,7 @@ fn run_candidate_on_take(
     }
 
     let runtime_ms = started.elapsed().as_secs_f64() * 1000.0;
-    (frames, runtime_ms)
+    Ok((frames, runtime_ms))
 }
 
 fn compute_rms(samples: &[f32]) -> f32 {
@@ -227,6 +258,8 @@ fn default_window_seconds(algorithm: crate::types::AlgorithmKind) -> f64 {
         crate::types::AlgorithmKind::Autocorr => 0.0464399093,
         crate::types::AlgorithmKind::Mpm => 0.065,
         crate::types::AlgorithmKind::Hybrid => 0.093,
+        crate::types::AlgorithmKind::Sac => 0.093,
+        crate::types::AlgorithmKind::SpectralHarmonic => 0.093,
     }
 }
 
@@ -236,7 +269,28 @@ fn default_chunk_seconds(algorithm: crate::types::AlgorithmKind) -> f64 {
         crate::types::AlgorithmKind::Autocorr => 0.0232199546,
         crate::types::AlgorithmKind::Mpm => 0.0232199546,
         crate::types::AlgorithmKind::Hybrid => 0.0232199546,
+        crate::types::AlgorithmKind::Sac => 0.0232199546,
+        crate::types::AlgorithmKind::SpectralHarmonic => 0.0232199546,
     }
+}
+
+fn load_candidate_model(
+    dataset_path: &Path,
+    raw_path: Option<&str>,
+) -> Result<Option<CandidateModel>> {
+    let Some(path) = raw_path else {
+        return Ok(None);
+    };
+    let resolved = resolve_from_config_dir(dataset_path, path);
+    let model = load_candidate_model_config(&resolved)?;
+    Ok(Some(model))
+}
+
+fn requires_candidate_model(algorithm: AlgorithmKind) -> bool {
+    matches!(
+        algorithm,
+        AlgorithmKind::Sac | AlgorithmKind::SpectralHarmonic
+    )
 }
 
 fn decode_wav_mono(path: &Path) -> Result<(Vec<f32>, u32)> {
@@ -287,6 +341,10 @@ mod tests {
     use super::*;
     use crate::types::{AlgorithmKind, CandidateListConfig, CandidateSpec, SourceMeta};
     use std::collections::BTreeMap;
+    use std::f32::consts::TAU;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn ranking_prioritizes_full_pass() {
@@ -306,6 +364,7 @@ mod tests {
             realtime_factor: 20.0,
             pass_realtime: true,
             full_pass: false,
+            frame_traces: None,
         };
         let mut b = a.clone();
         b.id = "b".to_owned();
@@ -337,5 +396,129 @@ mod tests {
         let parsed: CandidateListConfig = toml::from_str(&toml_raw).expect("parse");
         assert_eq!(parsed.candidates.len(), 1);
         assert_eq!(parsed.candidates[0].id, "test");
+    }
+
+    #[test]
+    fn sac_run_emits_frame_traces_and_runtime_fields() {
+        let temp_root = create_temp_test_dir("sac_bench");
+        let wav_path = temp_root.join("take.wav");
+        let manifest_path = temp_root.join("manifest.json");
+        let dataset_path = temp_root.join("dataset.toml");
+        let candidates_path = temp_root.join("candidates.toml");
+        let gates_path = temp_root.join("gates.toml");
+        let candidate_model_path = temp_root.join("candidate-model.toml");
+
+        write_sine_wav(&wav_path, 220.0, 44_100, 0.8);
+        fs::write(
+            &manifest_path,
+            r#"{"events":[{"note_order":1,"note":"A3","midi":57.0,"start_s":0.0,"end_s":0.75,"string":3,"fret":2}]}"#,
+        )
+        .expect("write manifest");
+        fs::write(
+            &dataset_path,
+            r#"candidate_model = "candidate-model.toml"
+
+[[takes]]
+id = "t1"
+manifest = "manifest.json"
+wav = "take.wav"
+"#,
+        )
+        .expect("write dataset");
+        fs::write(
+            &candidate_model_path,
+            r#"[[notes]]
+id = "a3"
+string = 3
+fret = 2
+midi = 57.0
+frequency_hz = 220.0
+
+[[notes]]
+id = "e4"
+string = 1
+fret = 0
+midi = 64.0
+frequency_hz = 329.627556
+"#,
+        )
+        .expect("write candidate model");
+        fs::write(
+            &candidates_path,
+            r#"[[candidates]]
+id = "sac_test"
+label = "SAC test"
+algorithm = "sac"
+[candidates.params]
+window_seconds = 0.093
+chunk_seconds = 0.0232199546
+harmonic_count = 6.0
+emit_frame_traces = 1.0
+min_rms = 0.0001
+"#,
+        )
+        .expect("write candidates");
+        fs::write(
+            &gates_path,
+            r#"min_confidence = 0.0
+required_detect_rate = 0.0
+min_realtime_factor = 0.0
+adaptive_trim = false
+"#,
+        )
+        .expect("write gates");
+
+        let result = run_benchmark(
+            &dataset_path,
+            &candidates_path,
+            &gates_path,
+            RunMetadata {
+                generated_at_utc: "test".to_owned(),
+                command_line: vec!["test".to_owned()],
+                git_commit: None,
+                rustc_version: None,
+                cargo_version: None,
+            },
+        )
+        .expect("run benchmark");
+
+        assert_eq!(result.candidates.len(), 1);
+        let row = &result.candidates[0];
+        assert!(row.runtime_ms_total >= 0.0);
+        assert!(row.cpu_ms_per_audio_s >= 0.0);
+        let traces = row.frame_traces.as_ref().expect("frame traces");
+        assert!(!traces.is_empty());
+        assert!(!traces[0].frames.is_empty());
+        assert!(!traces[0].frames[0].note_scores.is_empty());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    fn create_temp_test_dir(prefix: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{}_{}", prefix, stamp));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn write_sine_wav(path: &Path, freq_hz: f32, sample_rate: u32, seconds: f32) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(path, spec).expect("create wav");
+        let length = (sample_rate as f32 * seconds) as usize;
+        for i in 0..length {
+            let t = i as f32 / sample_rate as f32;
+            let sample = (TAU * freq_hz * t).sin() * 0.5;
+            let q = (sample * i16::MAX as f32).round() as i16;
+            writer.write_sample(q).expect("write sample");
+        }
+        writer.finalize().expect("finalize wav");
     }
 }

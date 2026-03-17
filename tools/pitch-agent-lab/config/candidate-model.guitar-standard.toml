@@ -1,0 +1,560 @@
+# Shared candidate model for candidate-guided benchmark backends (SAC + spectral_harmonic).
+# Extended to all standard strings (1-6) and frets (0-12).
+
+[[notes]]
+id = "n001_e2_s6_f0"
+string = 6
+fret = 0
+midi = 40.0
+frequency_hz = 82.406889
+
+[[notes]]
+id = "n002_f2_s6_f1"
+string = 6
+fret = 1
+midi = 41.0
+frequency_hz = 87.307058
+
+[[notes]]
+id = "n003_fs2_s6_f2"
+string = 6
+fret = 2
+midi = 42.0
+frequency_hz = 92.498606
+
+[[notes]]
+id = "n004_g2_s6_f3"
+string = 6
+fret = 3
+midi = 43.0
+frequency_hz = 97.998859
+
+[[notes]]
+id = "n005_gs2_s6_f4"
+string = 6
+fret = 4
+midi = 44.0
+frequency_hz = 103.826174
+
+[[notes]]
+id = "n006_a2_s6_f5"
+string = 6
+fret = 5
+midi = 45.0
+frequency_hz = 110.000000
+
+[[notes]]
+id = "n007_as2_s6_f6"
+string = 6
+fret = 6
+midi = 46.0
+frequency_hz = 116.540940
+
+[[notes]]
+id = "n008_b2_s6_f7"
+string = 6
+fret = 7
+midi = 47.0
+frequency_hz = 123.470825
+
+[[notes]]
+id = "n009_c3_s6_f8"
+string = 6
+fret = 8
+midi = 48.0
+frequency_hz = 130.812783
+
+[[notes]]
+id = "n010_cs3_s6_f9"
+string = 6
+fret = 9
+midi = 49.0
+frequency_hz = 138.591315
+
+[[notes]]
+id = "n011_d3_s6_f10"
+string = 6
+fret = 10
+midi = 50.0
+frequency_hz = 146.832384
+
+[[notes]]
+id = "n012_ds3_s6_f11"
+string = 6
+fret = 11
+midi = 51.0
+frequency_hz = 155.563492
+
+[[notes]]
+id = "n013_e3_s6_f12"
+string = 6
+fret = 12
+midi = 52.0
+frequency_hz = 164.813778
+
+[[notes]]
+id = "n014_a2_s5_f0"
+string = 5
+fret = 0
+midi = 45.0
+frequency_hz = 110.000000
+
+[[notes]]
+id = "n015_as2_s5_f1"
+string = 5
+fret = 1
+midi = 46.0
+frequency_hz = 116.540940
+
+[[notes]]
+id = "n016_b2_s5_f2"
+string = 5
+fret = 2
+midi = 47.0
+frequency_hz = 123.470825
+
+[[notes]]
+id = "n017_c3_s5_f3"
+string = 5
+fret = 3
+midi = 48.0
+frequency_hz = 130.812783
+
+[[notes]]
+id = "n018_cs3_s5_f4"
+string = 5
+fret = 4
+midi = 49.0
+frequency_hz = 138.591315
+
+[[notes]]
+id = "n019_d3_s5_f5"
+string = 5
+fret = 5
+midi = 50.0
+frequency_hz = 146.832384
+
+[[notes]]
+id = "n020_ds3_s5_f6"
+string = 5
+fret = 6
+midi = 51.0
+frequency_hz = 155.563492
+
+[[notes]]
+id = "n021_e3_s5_f7"
+string = 5
+fret = 7
+midi = 52.0
+frequency_hz = 164.813778
+
+[[notes]]
+id = "n022_f3_s5_f8"
+string = 5
+fret = 8
+midi = 53.0
+frequency_hz = 174.614116
+
+[[notes]]
+id = "n023_fs3_s5_f9"
+string = 5
+fret = 9
+midi = 54.0
+frequency_hz = 184.997211
+
+[[notes]]
+id = "n024_g3_s5_f10"
+string = 5
+fret = 10
+midi = 55.0
+frequency_hz = 195.997718
+
+[[notes]]
+id = "n025_gs3_s5_f11"
+string = 5
+fret = 11
+midi = 56.0
+frequency_hz = 207.652349
+
+[[notes]]
+id = "n026_a3_s5_f12"
+string = 5
+fret = 12
+midi = 57.0
+frequency_hz = 220.000000
+
+[[notes]]
+id = "n027_d3_s4_f0"
+string = 4
+fret = 0
+midi = 50.0
+frequency_hz = 146.832384
+
+[[notes]]
+id = "n028_ds3_s4_f1"
+string = 4
+fret = 1
+midi = 51.0
+frequency_hz = 155.563492
+
+[[notes]]
+id = "n029_e3_s4_f2"
+string = 4
+fret = 2
+midi = 52.0
+frequency_hz = 164.813778
+
+[[notes]]
+id = "n030_f3_s4_f3"
+string = 4
+fret = 3
+midi = 53.0
+frequency_hz = 174.614116
+
+[[notes]]
+id = "n031_fs3_s4_f4"
+string = 4
+fret = 4
+midi = 54.0
+frequency_hz = 184.997211
+
+[[notes]]
+id = "n032_g3_s4_f5"
+string = 4
+fret = 5
+midi = 55.0
+frequency_hz = 195.997718
+
+[[notes]]
+id = "n033_gs3_s4_f6"
+string = 4
+fret = 6
+midi = 56.0
+frequency_hz = 207.652349
+
+[[notes]]
+id = "n034_a3_s4_f7"
+string = 4
+fret = 7
+midi = 57.0
+frequency_hz = 220.000000
+
+[[notes]]
+id = "n035_as3_s4_f8"
+string = 4
+fret = 8
+midi = 58.0
+frequency_hz = 233.081881
+
+[[notes]]
+id = "n036_b3_s4_f9"
+string = 4
+fret = 9
+midi = 59.0
+frequency_hz = 246.941651
+
+[[notes]]
+id = "n037_c4_s4_f10"
+string = 4
+fret = 10
+midi = 60.0
+frequency_hz = 261.625565
+
+[[notes]]
+id = "n038_cs4_s4_f11"
+string = 4
+fret = 11
+midi = 61.0
+frequency_hz = 277.182631
+
+[[notes]]
+id = "n039_d4_s4_f12"
+string = 4
+fret = 12
+midi = 62.0
+frequency_hz = 293.664768
+
+[[notes]]
+id = "n040_g3_s3_f0"
+string = 3
+fret = 0
+midi = 55.0
+frequency_hz = 195.997718
+
+[[notes]]
+id = "n041_gs3_s3_f1"
+string = 3
+fret = 1
+midi = 56.0
+frequency_hz = 207.652349
+
+[[notes]]
+id = "n042_a3_s3_f2"
+string = 3
+fret = 2
+midi = 57.0
+frequency_hz = 220.000000
+
+[[notes]]
+id = "n043_as3_s3_f3"
+string = 3
+fret = 3
+midi = 58.0
+frequency_hz = 233.081881
+
+[[notes]]
+id = "n044_b3_s3_f4"
+string = 3
+fret = 4
+midi = 59.0
+frequency_hz = 246.941651
+
+[[notes]]
+id = "n045_c4_s3_f5"
+string = 3
+fret = 5
+midi = 60.0
+frequency_hz = 261.625565
+
+[[notes]]
+id = "n046_cs4_s3_f6"
+string = 3
+fret = 6
+midi = 61.0
+frequency_hz = 277.182631
+
+[[notes]]
+id = "n047_d4_s3_f7"
+string = 3
+fret = 7
+midi = 62.0
+frequency_hz = 293.664768
+
+[[notes]]
+id = "n048_ds4_s3_f8"
+string = 3
+fret = 8
+midi = 63.0
+frequency_hz = 311.126984
+
+[[notes]]
+id = "n049_e4_s3_f9"
+string = 3
+fret = 9
+midi = 64.0
+frequency_hz = 329.627557
+
+[[notes]]
+id = "n050_f4_s3_f10"
+string = 3
+fret = 10
+midi = 65.0
+frequency_hz = 349.228231
+
+[[notes]]
+id = "n051_fs4_s3_f11"
+string = 3
+fret = 11
+midi = 66.0
+frequency_hz = 369.994423
+
+[[notes]]
+id = "n052_g4_s3_f12"
+string = 3
+fret = 12
+midi = 67.0
+frequency_hz = 391.995436
+
+[[notes]]
+id = "n053_b3_s2_f0"
+string = 2
+fret = 0
+midi = 59.0
+frequency_hz = 246.941651
+
+[[notes]]
+id = "n054_c4_s2_f1"
+string = 2
+fret = 1
+midi = 60.0
+frequency_hz = 261.625565
+
+[[notes]]
+id = "n055_cs4_s2_f2"
+string = 2
+fret = 2
+midi = 61.0
+frequency_hz = 277.182631
+
+[[notes]]
+id = "n056_d4_s2_f3"
+string = 2
+fret = 3
+midi = 62.0
+frequency_hz = 293.664768
+
+[[notes]]
+id = "n057_ds4_s2_f4"
+string = 2
+fret = 4
+midi = 63.0
+frequency_hz = 311.126984
+
+[[notes]]
+id = "n058_e4_s2_f5"
+string = 2
+fret = 5
+midi = 64.0
+frequency_hz = 329.627557
+
+[[notes]]
+id = "n059_f4_s2_f6"
+string = 2
+fret = 6
+midi = 65.0
+frequency_hz = 349.228231
+
+[[notes]]
+id = "n060_fs4_s2_f7"
+string = 2
+fret = 7
+midi = 66.0
+frequency_hz = 369.994423
+
+[[notes]]
+id = "n061_g4_s2_f8"
+string = 2
+fret = 8
+midi = 67.0
+frequency_hz = 391.995436
+
+[[notes]]
+id = "n062_gs4_s2_f9"
+string = 2
+fret = 9
+midi = 68.0
+frequency_hz = 415.304698
+
+[[notes]]
+id = "n063_a4_s2_f10"
+string = 2
+fret = 10
+midi = 69.0
+frequency_hz = 440.000000
+
+[[notes]]
+id = "n064_as4_s2_f11"
+string = 2
+fret = 11
+midi = 70.0
+frequency_hz = 466.163762
+
+[[notes]]
+id = "n065_b4_s2_f12"
+string = 2
+fret = 12
+midi = 71.0
+frequency_hz = 493.883301
+
+[[notes]]
+id = "n066_e4_s1_f0"
+string = 1
+fret = 0
+midi = 64.0
+frequency_hz = 329.627557
+
+[[notes]]
+id = "n067_f4_s1_f1"
+string = 1
+fret = 1
+midi = 65.0
+frequency_hz = 349.228231
+
+[[notes]]
+id = "n068_fs4_s1_f2"
+string = 1
+fret = 2
+midi = 66.0
+frequency_hz = 369.994423
+
+[[notes]]
+id = "n069_g4_s1_f3"
+string = 1
+fret = 3
+midi = 67.0
+frequency_hz = 391.995436
+
+[[notes]]
+id = "n070_gs4_s1_f4"
+string = 1
+fret = 4
+midi = 68.0
+frequency_hz = 415.304698
+
+[[notes]]
+id = "n071_a4_s1_f5"
+string = 1
+fret = 5
+midi = 69.0
+frequency_hz = 440.000000
+
+[[notes]]
+id = "n072_as4_s1_f6"
+string = 1
+fret = 6
+midi = 70.0
+frequency_hz = 466.163762
+
+[[notes]]
+id = "n073_b4_s1_f7"
+string = 1
+fret = 7
+midi = 71.0
+frequency_hz = 493.883301
+
+[[notes]]
+id = "n074_c5_s1_f8"
+string = 1
+fret = 8
+midi = 72.0
+frequency_hz = 523.251131
+
+[[notes]]
+id = "n075_cs5_s1_f9"
+string = 1
+fret = 9
+midi = 73.0
+frequency_hz = 554.365262
+
+[[notes]]
+id = "n076_d5_s1_f10"
+string = 1
+fret = 10
+midi = 74.0
+frequency_hz = 587.329536
+
+[[notes]]
+id = "n077_ds5_s1_f11"
+string = 1
+fret = 11
+midi = 75.0
+frequency_hz = 622.253967
+
+[[notes]]
+id = "n078_e5_s1_f12"
+string = 1
+fret = 12
+midi = 76.0
+frequency_hz = 659.255114
+
+[[chords]]
+id = "e5_power"
+member_note_ids = ["n001_e2_s6_f0", "n016_b2_s5_f2"]
+
+[[chords]]
+id = "a5_power"
+member_note_ids = ["n014_a2_s5_f0", "n029_e3_s4_f2"]
+
+[[chords]]
+id = "e_minor_open_voicing"
+member_note_ids = ["n001_e2_s6_f0", "n040_g3_s3_f0", "n053_b3_s2_f0"]

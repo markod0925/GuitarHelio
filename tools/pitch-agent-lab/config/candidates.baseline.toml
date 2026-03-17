@@ -82,3 +82,153 @@ reference = "Hybrid arbitration"
 license = "MIT"
 vendored = false
 notes = "Combines YIN and MPM confidence."
+
+[[candidates]]
+id = "baseline_sac"
+label = "Baseline SAC (candidate-guided)"
+algorithm = "sac"
+[candidates.params]
+window_seconds = 0.093
+chunk_seconds = 0.0232199546
+harmonic_count = 6.0
+normalized_acf = 0.0
+min_rms = 0.0008
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "SAC lag-domain benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Candidate-guided summed autocorrelation scorer."
+
+[[candidates]]
+id = "baseline_spectral_harmonic"
+label = "Baseline spectral harmonic score"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0928798186
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 4000.0
+max_harmonics = 6.0
+base_bandwidth_hz = 18.0
+relative_bandwidth = 0.015
+magnitude_compression_gamma = 0.5
+use_log_magnitude = 0.0
+use_local_whitening = 1.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 1.0
+subharmonic_penalty_alpha = 0.35
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.0008
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Candidate-guided harmonic energy accumulation scorer (75Hz, 4kHz, 6 harmonics)."
+
+[[candidates]]
+id = "baseline_spectral_harmonic_h8_5k"
+label = "Baseline spectral harmonic score (5kHz/8 harmonics)"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0928798186
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 5000.0
+max_harmonics = 8.0
+base_bandwidth_hz = 18.0
+relative_bandwidth = 0.015
+magnitude_compression_gamma = 0.5
+use_log_magnitude = 0.0
+use_local_whitening = 1.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 1.0
+subharmonic_penalty_alpha = 0.35
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.0008
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Candidate-guided harmonic energy accumulation scorer variant (75Hz, 5kHz, 8 harmonics)."
+
+[[candidates]]
+id = "baseline_spectral_harmonic_tuned_detect100"
+label = "Spectral harmonic tuned (detect 100%)"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0928798186
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 4300.0
+max_harmonics = 6.0
+base_bandwidth_hz = 19.0
+relative_bandwidth = 0.019
+magnitude_compression_gamma = 0.5
+use_log_magnitude = 0.0
+use_local_whitening = 0.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 0.0
+subharmonic_penalty_alpha = 0.0
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00002
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.4
+confidence_bias = 0.78
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Tuned on benchmark takes to maximize in_tune_rate while preserving global detect_rate = 1.0."
+
+[[candidates]]
+id = "baseline_spectral_harmonic_tuned_detect100_w2048"
+label = "Spectral harmonic tuned (detect 100%, window 2048)"
+algorithm = "spectral_harmonic"
+[candidates.params]
+window_seconds = 0.0464399093
+chunk_seconds = 0.0116099773
+fft_size = 4096.0
+min_freq_hz = 75.0
+max_harmonic_freq_hz = 4050.0
+max_harmonics = 4.0
+base_bandwidth_hz = 20.0
+relative_bandwidth = 0.02
+magnitude_compression_gamma = 0.3
+use_log_magnitude = 0.0
+use_local_whitening = 0.0
+whitening_radius_bins = 8.0
+use_harmonic_penalty = 1.0
+subharmonic_penalty_alpha = 0.03
+normalize_by_weight_sum = 1.0
+normalize_by_band_energy = 0.0
+dc_remove = 1.0
+min_rms = 0.00003
+confidence_contrast_weight = 0.55
+confidence_energy_weight = 0.45
+confidence_gain = 2.2
+confidence_bias = 0.88
+emit_frame_traces = 1.0
+[candidates.source]
+kind = "internal"
+reference = "Spectral harmonic benchmark backend"
+license = "MIT"
+vendored = false
+notes = "Tuned with 2048-sample window on benchmark takes to reduce startup delay while preserving detect_rate = 1.0."
