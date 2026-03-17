@@ -22,6 +22,17 @@ const DETECTOR_PRESETS = {
     decayGraceFrames: 4,
     decayEnergyFactor: 0.4157769062463687,
     decayCorrelationThreshold: 0.6288579679610562
+  },
+  spectral_game_runtime_unified_v3: {
+    windowSeconds: 0.0464399093,
+    chunkSeconds: 0.0116099773,
+    minFrequencyHz: 75,
+    maxFrequencyHz: 3600,
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
   }
 };
 
@@ -39,6 +50,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.configureAnalysisWindow(this.detectorConfig);
     this.resetAnalysisState();
     this.audioInputMode = 'speaker';
+    this.spectralModel = sanitizeSpectralModel(options?.processorOptions?.spectralModel);
     this.dspWasmBytes = options?.processorOptions?.dspWasmBytes ?? null;
     this.dspCore = null;
     this.legacyFallback = false;
@@ -54,6 +66,7 @@ class PitchProcessor extends AudioWorkletProcessor {
       const core = new GhDspCore();
       core.prepare(sampleRate, this.bufferSize, this.resolveDspMode(this.audioInputMode));
       core.set_pitch_detector_preset(this.resolvePitchPreset(this.detectorPreset));
+      this.applySpectralModel(core, this.spectralModel);
       this.dspCore = core;
       this.legacyFallback = false;
       this.publishBackendStatus(false);
@@ -68,6 +81,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     if (!payload || payload.type !== 'config') return;
     if (payload.audioInputMode !== 'speaker' && payload.audioInputMode !== 'headphones') return;
     this.audioInputMode = payload.audioInputMode;
+    this.spectralModel = sanitizeSpectralModel(payload.spectralModel);
     const nextPreset = normalizeDetectorPreset(payload.detectorPreset);
     if (nextPreset !== this.detectorPreset) {
       this.detectorPreset = nextPreset;
@@ -78,6 +92,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     if (!this.dspCore) return;
     this.dspCore.prepare(sampleRate, this.bufferSize, this.resolveDspMode(this.audioInputMode));
     this.dspCore.set_pitch_detector_preset(this.resolvePitchPreset(this.detectorPreset));
+    this.applySpectralModel(this.dspCore, this.spectralModel);
     this.dspCore.reset();
   }
 
@@ -86,7 +101,23 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 
   resolvePitchPreset(detectorPreset) {
-    return detectorPreset === 'ac14' ? PitchDetectorPreset.Ac14 : PitchDetectorPreset.Baseline;
+    if (detectorPreset === 'ac14') {
+      return PitchDetectorPreset.Ac14;
+    }
+    if (detectorPreset === 'spectral_game_runtime_unified_v3') {
+      return PitchDetectorPreset.SpectralGameRuntimeUnifiedV3;
+    }
+    return PitchDetectorPreset.Baseline;
+  }
+
+  applySpectralModel(core, model) {
+    if (!core || !model || this.detectorPreset !== 'spectral_game_runtime_unified_v3') return;
+    try {
+      core.set_spectral_model(JSON.stringify(model));
+    } catch (error) {
+      this.publishBackendStatus(true, toErrorMessage(error));
+      throw error;
+    }
   }
 
   configureAnalysisWindow(detectorConfig) {
@@ -201,6 +232,32 @@ class PitchProcessor extends AudioWorkletProcessor {
       return true;
     }
 
+    if (this.detectorPreset === 'spectral_game_runtime_unified_v3') {
+      this.decayGraceFramesRemaining = 0;
+      const midiEstimate = sanitizeMidiEstimate(suppression.midiEstimate);
+      const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
+      this.port.postMessage({
+        type: 'frame',
+        t_seconds: currentTime,
+        midi_estimate: midiEstimate,
+        confidence: midiEstimate === null ? 0 : clamp01(suppression.confidence),
+        reference_midi: referenceMidi,
+        reference_correlation: suppression.referenceCorrelation,
+        energy_ratio_db: suppression.energyRatioDb,
+        onset_strength: suppression.onsetStrength,
+        contamination_score: suppression.contaminationScore,
+        rejected_as_reference_bleed: Boolean(suppression.rejectedAsReferenceBleed),
+        reference_policy_applied: Boolean(suppression.referencePolicyApplied),
+        selected_notes: suppression.selectedNotes,
+        chord_scores: suppression.chordScores,
+        detected_string: suppression.detectedString,
+        detected_fret: suppression.detectedFret,
+        best_note_id: suppression.bestNoteId,
+        delay_samples: suppression.delaySamples
+      });
+      return true;
+    }
+
     const hasRustPitch = Number.isFinite(suppression.pitchHz) && suppression.pitchHz > 0;
     let residualPitchHz = hasRustPitch ? suppression.pitchHz : 0;
     let residualPitchConfidence = hasRustPitch ? suppression.pitchConfidence : 0;
@@ -281,6 +338,11 @@ function processEchoSuppressionWithCore(
   const pitchConfidence = clamp01(output.pitch_confidence);
   const rejectedAsReferenceBleed = Boolean(output.rejected_as_reference_bleed);
   const referencePolicyApplied = Boolean(output.reference_policy_applied);
+  const selectedNotes = sanitizeSelectedNotes(output.selected_notes);
+  const chordScores = sanitizeChordScores(output.chord_scores);
+  const detectedString = sanitizeOptionalInteger(output.detected_string);
+  const detectedFret = sanitizeOptionalInteger(output.detected_fret);
+  const bestNoteId = sanitizeOptionalString(output.best_note_id);
   const residualBlock = output.residual_block;
 
   if (detectorPreset === 'ac14' && referencePolicyApplied) {
@@ -297,7 +359,12 @@ function processEchoSuppressionWithCore(
       pitchHz,
       pitchConfidence,
       rejectedAsReferenceBleed,
-      referencePolicyApplied
+      referencePolicyApplied,
+      selectedNotes,
+      chordScores,
+      detectedString,
+      detectedFret,
+      bestNoteId
     };
   }
 
@@ -328,7 +395,12 @@ function processEchoSuppressionWithCore(
     pitchHz,
     pitchConfidence,
     rejectedAsReferenceBleed,
-    referencePolicyApplied
+    referencePolicyApplied,
+    selectedNotes,
+    chordScores,
+    detectedString,
+    detectedFret,
+    bestNoteId
   };
 }
 
@@ -539,12 +611,106 @@ function sanitizeMidiEstimate(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function sanitizeOptionalInteger(value) {
+  return Number.isFinite(value) ? Math.round(value) : null;
+}
+
+function sanitizeOptionalString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeSelectedNotes(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const midi = Number(item.midi);
+    if (!Number.isFinite(midi)) continue;
+    out.push({
+      note_id: sanitizeOptionalString(item.note_id),
+      midi,
+      string: sanitizeOptionalInteger(item.string),
+      fret: sanitizeOptionalInteger(item.fret),
+      score: Number.isFinite(item.score) ? Number(item.score) : 0
+    });
+  }
+  return out;
+}
+
+function sanitizeChordScores(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const chordId = sanitizeOptionalString(item.chord_id);
+    if (!chordId) continue;
+    out.push({
+      chord_id: chordId,
+      score: Number.isFinite(item.score) ? Number(item.score) : 0
+    });
+  }
+  return out;
+}
+
+function sanitizeSpectralModel(value) {
+  if (!value || typeof value !== 'object') return null;
+  const notesRaw = Array.isArray(value.notes) ? value.notes : [];
+  const chordsRaw = Array.isArray(value.chords) ? value.chords : [];
+  const notes = [];
+  const noteIds = new Set();
+  for (const note of notesRaw) {
+    if (!note || typeof note !== 'object') continue;
+    const id = sanitizeOptionalString(note.id);
+    const string = sanitizeOptionalInteger(note.string);
+    const fret = sanitizeOptionalInteger(note.fret);
+    const midi = Number(note.midi);
+    const frequencyHz = Number(note.frequency_hz);
+    if (!id || noteIds.has(id)) continue;
+    if (!Number.isFinite(midi) || string === null || fret === null) continue;
+    notes.push({
+      id,
+      string,
+      fret,
+      midi,
+      frequency_hz: Number.isFinite(frequencyHz)
+        ? frequencyHz
+        : 440 * Math.pow(2, (midi - 69) / 12)
+    });
+    noteIds.add(id);
+  }
+  const chords = [];
+  for (const chord of chordsRaw) {
+    if (!chord || typeof chord !== 'object') continue;
+    const id = sanitizeOptionalString(chord.id);
+    if (!id) continue;
+    const membersRaw = Array.isArray(chord.member_note_ids) ? chord.member_note_ids : [];
+    const member_note_ids = membersRaw
+      .map((entry) => sanitizeOptionalString(entry))
+      .filter((entry) => entry && noteIds.has(entry));
+    if (member_note_ids.length === 0) continue;
+    chords.push({
+      id,
+      member_note_ids: Array.from(new Set(member_note_ids))
+    });
+  }
+  if (notes.length === 0) return null;
+  return { notes, chords };
+}
+
 function normalizeDetectorPreset(value) {
-  return value === 'ac14' ? 'ac14' : DEFAULT_DETECTOR_PRESET;
+  if (value === 'ac14') return 'ac14';
+  if (value === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
+  return DEFAULT_DETECTOR_PRESET;
 }
 
 function getDetectorPresetConfig(detectorPreset) {
-  return detectorPreset === 'ac14' ? DETECTOR_PRESETS.ac14 : DETECTOR_PRESETS.baseline;
+  if (detectorPreset === 'ac14') return DETECTOR_PRESETS.ac14;
+  if (detectorPreset === 'spectral_game_runtime_unified_v3') {
+    return DETECTOR_PRESETS.spectral_game_runtime_unified_v3;
+  }
+  return DETECTOR_PRESETS.baseline;
 }
 
 function clampInteger(value, min, max) {

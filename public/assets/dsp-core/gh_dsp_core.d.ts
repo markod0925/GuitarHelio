@@ -15,11 +15,13 @@ export class GhDspCore {
     reset(): void;
     set_pitch_detector_preset(preset: PitchDetectorPreset): void;
     set_reference_block(reference_block: Float32Array): void;
+    set_spectral_model(model_json: string): void;
 }
 
 export enum PitchDetectorPreset {
     Baseline = 0,
     Ac14 = 1,
+    SpectralGameRuntimeUnifiedV3 = 2,
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -33,10 +35,13 @@ export interface InitOutput {
     readonly ghdspcore_reset: (a: number) => void;
     readonly ghdspcore_set_pitch_detector_preset: (a: number, b: number) => void;
     readonly ghdspcore_set_reference_block: (a: number, b: number, c: number) => void;
+    readonly ghdspcore_set_spectral_model: (a: number, b: number, c: number) => [number, number];
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
+    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

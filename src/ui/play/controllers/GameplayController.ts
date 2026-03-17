@@ -7,7 +7,7 @@ import { resolveTargetGroup, resolveTargetChordId } from '../../../guitar/target
 import { rateHit } from '../../../game/scoring';
 import { updateRuntimeState, type RuntimeTransition, type RuntimeUpdate } from '../../../game/stateMachine';
 import { PlayState, type ScoreEvent, type TargetNote } from '../../../types/models';
-import { analyzeHeldHit } from '../../playSceneDebug';
+import { analyzeHeldHitForTarget } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
@@ -105,22 +105,25 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   const canValidateHit =
     active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
   const thresholds = resolveDetectionThresholds(this);
+  const requireStringValidation = shouldRequireStringValidation(this.sceneData?.difficulty);
 
   const leadHitAnalysis =
     active !== undefined && canValidateHit
-      ? analyzeHeldHit(
+      ? analyzeHeldHitForTarget(
         this.latestFrames,
         active.expected_midi,
+        active.string,
         this.profile.pitch_tolerance_semitones,
         thresholds.holdMs,
         thresholds.minConfidence,
+        requireStringValidation,
         this.heldHitAnalysisScratch
       )
       : this.writeInvalidHeldHitAnalysis();
 
   const chordProgress =
     active !== undefined && canValidateHit
-      ? updateChordHitProgress(this, activeGroup)
+      ? updateChordHitProgress(this, activeGroup, requireStringValidation)
       : {
         requiredCount: activeGroup.length,
         hitCount: countChordHits(this, activeGroup),
@@ -381,31 +384,25 @@ function syncActiveChordTracking(scene: PlaySceneContext, activeTarget: TargetNo
   scene.chordHitTargetIds.clear();
 }
 
-function updateChordHitProgress(scene: PlaySceneContext, chordTargets: TargetNote[]): ChordHitProgress {
+function updateChordHitProgress(
+  scene: PlaySceneContext,
+  chordTargets: TargetNote[],
+  requireStringValidation: boolean
+): ChordHitProgress {
   const thresholds = resolveDetectionThresholds(scene);
-  const byMidi = new Map<number, TargetNote[]>();
   for (const target of chordTargets) {
-    const bucket = byMidi.get(target.expected_midi);
-    if (bucket) {
-      bucket.push(target);
-    } else {
-      byMidi.set(target.expected_midi, [target]);
-    }
-  }
-
-  for (const [expectedMidi, matchingTargets] of byMidi.entries()) {
-    const hit = analyzeHeldHit(
+    if (scene.chordHitTargetIds.has(target.id)) continue;
+    const hit = analyzeHeldHitForTarget(
       scene.latestFrames,
-      expectedMidi,
+      target.expected_midi,
+      target.string,
       scene.profile.pitch_tolerance_semitones,
       thresholds.holdMs,
-      thresholds.minConfidence
+      thresholds.minConfidence,
+      requireStringValidation
     );
     if (!hit.valid) continue;
-
-    for (const target of matchingTargets) {
-      scene.chordHitTargetIds.add(target.id);
-    }
+    scene.chordHitTargetIds.add(target.id);
   }
 
   const hitCount = countChordHits(scene, chordTargets);
@@ -442,4 +439,8 @@ function resolveDetectionThresholds(scene: PlaySceneContext): { holdMs: number; 
     holdMs: DEFAULT_HOLD_MS,
     minConfidence: DEFAULT_MIN_CONFIDENCE
   };
+}
+
+function shouldRequireStringValidation(difficulty: 'Easy' | 'Medium' | 'Hard' | undefined): boolean {
+  return difficulty === 'Medium' || difficulty === 'Hard';
 }

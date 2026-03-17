@@ -6,7 +6,25 @@ import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?url';
 
 export type PitchListener = (frame: PitchFrame) => void;
-export type PitchDetectorPreset = 'baseline' | 'ac14';
+export type PitchDetectorPreset = 'baseline' | 'ac14' | 'spectral_game_runtime_unified_v3';
+
+export type SpectralRuntimeNote = {
+  id: string;
+  string: number;
+  fret: number;
+  midi: number;
+  frequency_hz: number;
+};
+
+export type SpectralRuntimeChord = {
+  id: string;
+  member_note_ids: string[];
+};
+
+export type SpectralRuntimeModel = {
+  notes: SpectralRuntimeNote[];
+  chords: SpectralRuntimeChord[];
+};
 
 type PitchDetectorOptions = {
   roundMidi?: boolean;
@@ -15,12 +33,18 @@ type PitchDetectorOptions = {
   audioInputMode?: AudioInputMode;
   enableDspCore?: boolean;
   detectorPreset?: PitchDetectorPreset;
+  spectralModel?: SpectralRuntimeModel | null;
 };
 
 type WorkletPitchPayload = PitchFrame & {
   type?: 'frame';
   delay_samples?: number;
   reference_policy_applied?: boolean;
+  selected_notes?: PitchFrame['selected_notes'];
+  chord_scores?: PitchFrame['chord_scores'];
+  detected_string?: number | null;
+  detected_fret?: number | null;
+  best_note_id?: string | null;
 };
 
 type WorkletStatusPayload = {
@@ -54,6 +78,13 @@ const FALLBACK_PRESET_CONFIG: Record<
     decayGraceFrames: 4,
     decayEnergyFactor: 0.4157769062463687,
     decayCorrelationThreshold: 0.6288579679610562
+  },
+  spectral_game_runtime_unified_v3: {
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
   }
 };
 
@@ -72,6 +103,7 @@ export class PitchDetectorService {
   private readonly audioInputMode: AudioInputMode;
   private readonly enableDspCore: boolean;
   private readonly detectorPreset: PitchDetectorPreset;
+  private readonly spectralModel: SpectralRuntimeModel | null;
   private smoothedMidiEstimate: number | null = null;
   private legacyFallback = false;
   private legacyFallbackReason: string | null = null;
@@ -90,6 +122,7 @@ export class PitchDetectorService {
     this.audioInputMode = options.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.enableDspCore = options.enableDspCore ?? true;
     this.detectorPreset = options.detectorPreset ?? 'baseline';
+    this.spectralModel = options.spectralModel ?? null;
   }
 
   async init(): Promise<void> {
@@ -170,7 +203,8 @@ export class PitchDetectorService {
         workletNode.port.postMessage({
           type: 'config',
           audioInputMode: this.audioInputMode,
-          detectorPreset: this.detectorPreset
+          detectorPreset: this.detectorPreset,
+          spectralModel: this.spectralModel ?? undefined
         });
         workletNode.port.onmessage = (event: MessageEvent<WorkletMessagePayload>) => {
           const payload = event.data;
@@ -205,7 +239,12 @@ export class PitchDetectorService {
             energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
             onset_strength: clamp01(payload.onset_strength ?? 0),
             contamination_score: clamp01(payload.contamination_score ?? 0),
-            rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed)
+            rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed),
+            detected_string: sanitizeOptionalInteger(payload.detected_string),
+            detected_fret: sanitizeOptionalInteger(payload.detected_fret),
+            best_note_id: sanitizeOptionalString(payload.best_note_id),
+            selected_notes: sanitizeSelectedNotes(payload.selected_notes),
+            chord_scores: sanitizeChordScores(payload.chord_scores)
           };
           const gated = rustManagedFrame
             ? baseFrame
@@ -324,10 +363,14 @@ export class PitchDetectorService {
   private createWorkletNode(dspWasmBytes: ArrayBuffer | null): AudioWorkletNode {
     const processorOptions: {
       detectorPreset: PitchDetectorPreset;
+      spectralModel?: SpectralRuntimeModel;
       dspWasmBytes?: ArrayBuffer;
     } = {
       detectorPreset: this.detectorPreset
     };
+    if (this.spectralModel && this.detectorPreset === 'spectral_game_runtime_unified_v3') {
+      processorOptions.spectralModel = this.spectralModel;
+    }
     if (dspWasmBytes) {
       processorOptions.dspWasmBytes = dspWasmBytes;
     }
@@ -625,6 +668,53 @@ function sanitizeReason(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeOptionalInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  return rounded;
+}
+
+function sanitizeSelectedNotes(value: unknown): PitchFrame['selected_notes'] {
+  if (!Array.isArray(value)) return undefined;
+  const out: NonNullable<PitchFrame['selected_notes']> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const data = item as Record<string, unknown>;
+    const rawMidi = data.midi;
+    if (typeof rawMidi !== 'number' || !Number.isFinite(rawMidi)) continue;
+    out.push({
+      note_id: sanitizeOptionalString(data.note_id),
+      midi: rawMidi,
+      string: sanitizeOptionalInteger(data.string),
+      fret: sanitizeOptionalInteger(data.fret),
+      score: sanitizeNumber(data.score as number | null | undefined)
+    });
+  }
+  return out;
+}
+
+function sanitizeChordScores(value: unknown): PitchFrame['chord_scores'] {
+  if (!Array.isArray(value)) return undefined;
+  const out: NonNullable<PitchFrame['chord_scores']> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const data = item as Record<string, unknown>;
+    const chordId = sanitizeOptionalString(data.chord_id);
+    if (!chordId) continue;
+    out.push({
+      chord_id: chordId,
+      score: sanitizeNumber(data.score as number | null | undefined)
+    });
+  }
+  return out;
 }
 
 function clamp01(value: number): number {

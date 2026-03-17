@@ -60,15 +60,27 @@ export class GhDspCore {
         const len0 = WASM_VECTOR_LEN;
         wasm.ghdspcore_set_reference_block(this.__wbg_ptr, ptr0, len0);
     }
+    /**
+     * @param {string} model_json
+     */
+    set_spectral_model(model_json) {
+        const ptr0 = passStringToWasm0(model_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.ghdspcore_set_spectral_model(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
 }
 if (Symbol.dispose) GhDspCore.prototype[Symbol.dispose] = GhDspCore.prototype.free;
 
 /**
- * @enum {0 | 1}
+ * @enum {0 | 1 | 2}
  */
 export const PitchDetectorPreset = Object.freeze({
     Baseline: 0, "0": "Baseline",
     Ac14: 1, "1": "Ac14",
+    SpectralGameRuntimeUnifiedV3: 2, "2": "SpectralGameRuntimeUnifiedV3",
 });
 
 function __wbg_get_imports() {
@@ -77,12 +89,20 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_new_a70fbab9066b301f: function() {
+            const ret = new Array();
+            return ret;
+        },
         __wbg_new_ab79df5bd7c26067: function() {
             const ret = new Object();
             return ret;
         },
         __wbg_new_from_slice_ff2c15e8e05ffdfc: function(arg0, arg1) {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_push_e87b0e732085a946: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
             return ret;
         },
         __wbg_set_7eaa4f96924fd6b3: function() { return handleError(function (arg0, arg1, arg2) {
@@ -167,6 +187,49 @@ function passArrayF32ToWasm0(arg, malloc) {
     return ptr;
 }
 
+function passStringToWasm0(arg, malloc, realloc) {
+    if (realloc === undefined) {
+        const buf = cachedTextEncoder.encode(arg);
+        const ptr = malloc(buf.length, 1) >>> 0;
+        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
+        WASM_VECTOR_LEN = buf.length;
+        return ptr;
+    }
+
+    let len = arg.length;
+    let ptr = malloc(len, 1) >>> 0;
+
+    const mem = getUint8ArrayMemory0();
+
+    let offset = 0;
+
+    for (; offset < len; offset++) {
+        const code = arg.charCodeAt(offset);
+        if (code > 0x7F) break;
+        mem[ptr + offset] = code;
+    }
+    if (offset !== len) {
+        if (offset !== 0) {
+            arg = arg.slice(offset);
+        }
+        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+        const ret = cachedTextEncoder.encodeInto(arg, view);
+
+        offset += ret.written;
+        ptr = realloc(ptr, len, offset, 1) >>> 0;
+    }
+
+    WASM_VECTOR_LEN = offset;
+    return ptr;
+}
+
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
 function __decodeUtf8Fallback(bytes) {
     let output = '';
     for (let i = 0; i < bytes.length; i += 1) {
@@ -225,6 +288,64 @@ function decodeText(ptr, len) {
         numBytesDecoded = len;
     }
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
+function __encodeUtf8Fallback(input) {
+    const source = String(input ?? '');
+    const bytes = [];
+    for (let i = 0; i < source.length; i += 1) {
+        let codePoint = source.codePointAt(i);
+        if (codePoint === undefined) {
+            continue;
+        }
+        if (codePoint > 0xffff) {
+            i += 1;
+        }
+        if (codePoint <= 0x7f) {
+            bytes.push(codePoint);
+            continue;
+        }
+        if (codePoint <= 0x7ff) {
+            bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+            continue;
+        }
+        if (codePoint <= 0xffff) {
+            bytes.push(
+                0xe0 | (codePoint >> 12),
+                0x80 | ((codePoint >> 6) & 0x3f),
+                0x80 | (codePoint & 0x3f)
+            );
+            continue;
+        }
+        bytes.push(
+            0xf0 | (codePoint >> 18),
+            0x80 | ((codePoint >> 12) & 0x3f),
+            0x80 | ((codePoint >> 6) & 0x3f),
+            0x80 | (codePoint & 0x3f)
+        );
+    }
+    return new Uint8Array(bytes);
+}
+
+const __TextEncoderImpl = typeof TextEncoder !== 'undefined'
+    ? TextEncoder
+    : class TextEncoderPolyfill {
+        encode(input = '') {
+            return __encodeUtf8Fallback(input);
+        }
+    };
+
+const cachedTextEncoder = new __TextEncoderImpl();
+
+if (!('encodeInto' in cachedTextEncoder)) {
+    cachedTextEncoder.encodeInto = function (arg, view) {
+        const buf = cachedTextEncoder.encode(arg);
+        view.set(buf);
+        return {
+            read: arg.length,
+            written: buf.length
+        };
+    };
 }
 
 let WASM_VECTOR_LEN = 0;

@@ -76,6 +76,59 @@ export function analyzeHeldHit(
   return writeHeldHitAnalysis(out, false, streakMs, validFrameCount, frameCount, latestFrame);
 }
 
+export function analyzeHeldHitForTarget(
+  frames: PitchFrameWindow | readonly PitchFrame[],
+  expectedMidi: number,
+  expectedString: number,
+  tolerance: number,
+  holdMs: number,
+  minConfidence: number,
+  requireStringValidation: boolean,
+  out?: HeldHitAnalysis
+): HeldHitAnalysis {
+  const frameCount = frames.length;
+  if (frameCount === 0) {
+    return writeHeldHitAnalysis(out, false, 0, 0, 0, undefined);
+  }
+
+  let streakStartSeconds: number | null = null;
+  let streakMs = 0;
+  let validFrameCount = 0;
+  const latestFrame = resolveLatestPitchFrame(frames);
+
+  for (let index = 0; index < frameCount; index += 1) {
+    const frame = resolvePitchFrameAt(frames, index);
+    if (!frame) continue;
+    const validFrame = isPitchFrameTargetValid(
+      frame,
+      expectedMidi,
+      expectedString,
+      tolerance,
+      minConfidence,
+      requireStringValidation
+    );
+    if (!validFrame) {
+      streakStartSeconds = null;
+      streakMs = 0;
+      continue;
+    }
+
+    validFrameCount += 1;
+    if (streakStartSeconds === null) {
+      streakStartSeconds = frame.t_seconds;
+      streakMs = 0;
+      continue;
+    }
+
+    streakMs = Math.max(0, (frame.t_seconds - streakStartSeconds) * 1000);
+    if (streakMs >= holdMs) {
+      return writeHeldHitAnalysis(out, true, streakMs, validFrameCount, frameCount, latestFrame);
+    }
+  }
+
+  return writeHeldHitAnalysis(out, false, streakMs, validFrameCount, frameCount, latestFrame);
+}
+
 function writeHeldHitAnalysis(
   out: HeldHitAnalysis | undefined,
   valid: boolean,
@@ -133,6 +186,27 @@ export function isPitchFrameValid(
   );
 }
 
+export function isPitchFrameTargetValid(
+  frame: PitchFrame,
+  expectedMidi: number,
+  expectedString: number,
+  tolerance: number,
+  minConfidence: number,
+  requireStringValidation: boolean
+): boolean {
+  if (!isPitchFrameValid(frame, expectedMidi, tolerance, minConfidence)) {
+    return false;
+  }
+  if (!requireStringValidation) {
+    return true;
+  }
+  const detectedString = normalizeDetectedString(frame.detected_string);
+  if (detectedString === null) {
+    return true;
+  }
+  return detectedString === expectedString;
+}
+
 export function formatDebugBool(value: boolean): string {
   return value ? 'Y' : 'N';
 }
@@ -164,6 +238,13 @@ export function formatDebugPath(value: string | undefined): string {
     }
   });
   return `.../${tail.join('/')}`;
+}
+
+function normalizeDetectedString(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  if (rounded < 1 || rounded > 6) return null;
+  return rounded;
 }
 
 export function normalizeTopFeedback(rawFeedbackText: string): string {

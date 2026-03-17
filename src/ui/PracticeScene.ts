@@ -5,9 +5,11 @@ import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import { createMicNode } from '../audio/micInput';
 import { loadPitchCalibrationProfile } from '../audio/pitchCalibration';
 import { PitchDetectorService } from '../audio/pitchDetector';
+import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel';
 import { midiForStringFret } from '../guitar/tuning';
 import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
 import { releaseMicStream } from './AudioController';
+import { resolvePracticeCellVisual, resolvePracticeStringBandAlpha } from './practiceHighlighting';
 import { RoundedBox } from './RoundedBox';
 import {
   describeMicFailure,
@@ -18,6 +20,7 @@ import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../types/audioInp
 
 type FretCell = {
   midi: number;
+  string: number;
   node: Phaser.GameObjects.Arc;
 };
 
@@ -25,6 +28,8 @@ type DetectorState = {
   lockedMidi: number | null;
   rawMidi: number | null;
   confidence: number;
+  lockedString: number | null;
+  rawString: number | null;
 };
 
 const MIN_CONFIDENCE = 0.62;
@@ -36,19 +41,16 @@ const DEFAULT_METRONOME_BPM = 90;
 export class PracticeScene extends Phaser.Scene {
   private audioCtx?: AudioContext;
   private micStream?: MediaStream;
-  private customDetector?: PitchDetectorService;
-  private tuneoDetector?: PitchDetectorService;
-  private offCustomPitch?: () => void;
-  private offTuneoPitch?: () => void;
-  private tuneoAvailable = false;
+  private detector?: PitchDetectorService;
+  private offPitch?: () => void;
   private active = false;
 
   private readonly cellsByMidi = new Map<number, FretCell[]>();
-  private customHighlightedMidi: number | null = null;
-  private tuneoHighlightedMidi: number | null = null;
-  private readonly customState: DetectorState = createDetectorState();
-  private readonly tuneoState: DetectorState = createDetectorState();
-  private readonly customPitchFilter = new PitchStabilityFilter({
+  private readonly stringBands = new Map<number, Phaser.GameObjects.Rectangle>();
+  private highlightedMidi: number | null = null;
+  private highlightedString: number | null = null;
+  private readonly detectorState: DetectorState = createDetectorState();
+  private readonly pitchFilter = new PitchStabilityFilter({
     minConfidence: MIN_CONFIDENCE,
     smoothingAlpha: 0.24,
     maxOutlierDeltaSemitones: 2.6,
@@ -57,23 +59,9 @@ export class PracticeScene extends Phaser.Scene {
     maxMissedFrames: 6,
     emitLockedMidiOnMissedFrames: true
   });
-  private readonly tuneoPitchFilter = new PitchStabilityFilter({
-    minConfidence: 0.5,
-    smoothingAlpha: 0.24,
-    maxOutlierDeltaSemitones: 2.4,
-    switchHysteresisSemitones: 0.76,
-    switchConfirmFrames: 4,
-    maxMissedFrames: 5,
-    emitLockedMidiOnMissedFrames: true
-  });
 
   private toggleButton?: RoundedBox;
   private toggleLabel?: Phaser.GameObjects.Text;
-  private customDetectedLabel?: Phaser.GameObjects.Text;
-  private tuneoDetectedLabel?: Phaser.GameObjects.Text;
-  private customDetailsLabel?: Phaser.GameObjects.Text;
-  private tuneoDetailsLabel?: Phaser.GameObjects.Text;
-  private compareLabel?: Phaser.GameObjects.Text;
   private statusLabel?: Phaser.GameObjects.Text;
   private micStatusMessage = 'Mic inactive.';
   private audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
@@ -101,8 +89,9 @@ export class PracticeScene extends Phaser.Scene {
     void enableAndroidKeepScreenOn();
     const { width, height } = this.scale;
     this.cellsByMidi.clear();
-    this.customHighlightedMidi = null;
-    this.tuneoHighlightedMidi = null;
+    this.stringBands.clear();
+    this.highlightedMidi = null;
+    this.highlightedString = null;
     this.drawBackdrop(width, height);
     this.drawFretboard(width, height);
 
@@ -116,14 +105,15 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, title.y + 28, 'A/B live compare: A=custom, B=ac_14 (Rust).', {
+      .text(width / 2, title.y + 28, 'Spectral gameplay detector (unified v3).', {
         color: '#93c5fd',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(13, Math.floor(width * 0.013))}px`
       })
       .setOrigin(0.5);
+
     this.add
-      .text(width / 2, title.y + 48, 'Green=A  •  Amber=B  •  Lime=A+B', {
+      .text(width / 2, title.y + 48, 'Yellow = detected string • Green = valid note position', {
         color: '#bfdbfe',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(12, Math.floor(width * 0.012))}px`
@@ -160,46 +150,6 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    const debugOverlayX = width - Math.max(20, Math.floor(width * 0.02));
-    const debugOverlayYOffset = -20;
-    this.customDetectedLabel = this.add
-      .text(debugOverlayX, height * 0.24 + debugOverlayYOffset, 'A Custom: --', {
-        color: '#86efac',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
-      })
-      .setOrigin(1, 0.5);
-    this.customDetailsLabel = this.add
-      .text(debugOverlayX, height * 0.27 + debugOverlayYOffset, 'A raw: --  •  A conf: --', {
-        color: '#94a3b8',
-        fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
-      })
-      .setOrigin(1, 0.5);
-    this.tuneoDetectedLabel = this.add
-      .text(debugOverlayX, height * 0.3 + debugOverlayYOffset, 'B AC-14 (Rust): --', {
-        color: '#fbbf24',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(15, Math.floor(width * 0.017))}px`
-      })
-      .setOrigin(1, 0.5);
-    this.tuneoDetailsLabel = this.add
-      .text(debugOverlayX, height * 0.33 + debugOverlayYOffset, 'B raw: --  •  B conf: --', {
-        color: '#94a3b8',
-        fontFamily: 'Montserrat, sans-serif',
-        fontSize: `${Math.max(12, Math.floor(width * 0.013))}px`
-      })
-      .setOrigin(1, 0.5);
-    this.compareLabel = this.add
-      .text(debugOverlayX, height * 0.36 + debugOverlayYOffset, 'A/B delta: --', {
-        color: '#cbd5e1',
-        fontFamily: 'Montserrat, sans-serif',
-        fontStyle: 'bold',
-        fontSize: `${Math.max(13, Math.floor(width * 0.014))}px`
-      })
-      .setOrigin(1, 0.5);
     this.statusLabel = this.add
       .text(width / 2, height - 26, 'Mic inactive.', {
         color: '#a5b4fc',
@@ -244,7 +194,6 @@ export class PracticeScene extends Phaser.Scene {
       void this.stopListening();
     });
 
-    this.updateDetectorLabels();
     this.updateCellHighlights();
     this.updateToggleVisual();
     this.refreshMetronomeVisuals();
@@ -391,6 +340,11 @@ export class PracticeScene extends Phaser.Scene {
       stringGraphics.lineTo(right, y);
       stringGraphics.strokePath();
 
+      const stringBand = this.add
+        .rectangle((left + right) / 2, y, right - left, Math.max(12, stringSpacing * 0.65), 0xfacc15, 0)
+        .setDepth(10);
+      this.stringBands.set(stringNumber, stringBand);
+
       const openMidi = midiForStringFret(stringNumber, 0);
       this.add
         .text(left - 10, y, `S${stringNumber} ${midiToNoteName(openMidi)}`, {
@@ -403,8 +357,8 @@ export class PracticeScene extends Phaser.Scene {
       for (let fret = 0; fret <= MAX_FRET; fret += 1) {
         const x = left + fret * fretSpacing;
         const midi = midiForStringFret(stringNumber, fret);
-        const node = this.add.circle(x, y, cellRadius, 0x64748b, 0.36).setStrokeStyle(1, 0x475569, 0.86);
-        const cell: FretCell = { midi, node };
+        const node = this.add.circle(x, y, cellRadius, 0x64748b, 0.36).setStrokeStyle(1, 0x475569, 0.86).setDepth(20);
+        const cell: FretCell = { midi, string: stringNumber, node };
         const list = this.cellsByMidi.get(midi);
         if (list) {
           list.push(cell);
@@ -446,7 +400,7 @@ export class PracticeScene extends Phaser.Scene {
   private async startListening(): Promise<void> {
     if (this.active) return;
     try {
-      this.micStatusMessage = 'Requesting microphone and loading detectors...';
+      this.micStatusMessage = 'Requesting microphone and loading detector...';
       this.updateStatusLabel();
       const ctx = new AudioContext();
       this.audioCtx = ctx;
@@ -463,59 +417,31 @@ export class PracticeScene extends Phaser.Scene {
       this.micStream = micSource.mediaStream;
 
       const calibrationProfile = loadPitchCalibrationProfile();
-      const customDetector = new PitchDetectorService(ctx, {
+      const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
         smoothingAlpha: 0,
         calibrationProfile: calibrationProfile ?? undefined,
         audioInputMode: this.audioInputMode,
-        enableDspCore: true
+        enableDspCore: true,
+        detectorPreset: 'spectral_game_runtime_unified_v3',
+        spectralModel: buildPracticeSpectralRuntimeModel(MAX_FRET)
       });
-      await customDetector.init();
-      this.customDetector = customDetector;
-      this.offCustomPitch = customDetector.onPitch((frame) => this.handlePitchFrame(this.customState, frame, true));
-      await customDetector.start(micSource);
-
-      this.tuneoAvailable = false;
-      try {
-        const tuneoDetector = new PitchDetectorService(ctx, {
-          roundMidi: false,
-          smoothingAlpha: 0,
-          calibrationProfile: calibrationProfile ?? undefined,
-          audioInputMode: this.audioInputMode,
-          enableDspCore: true,
-          detectorPreset: 'ac14'
-        });
-        await tuneoDetector.init();
-        this.tuneoDetector = tuneoDetector;
-        this.offTuneoPitch = tuneoDetector.onPitch((frame) => this.handlePitchFrame(this.tuneoState, frame, false));
-        await tuneoDetector.start(micSource);
-        if (tuneoDetector.isLegacyFallback()) {
-          throw new Error('AC-14 requires Rust DSP backend');
-        }
-        this.tuneoAvailable = true;
-      } catch (error) {
-        console.warn('AC-14 detector unavailable in practice scene', error);
-        this.tuneoDetector?.stop();
-        this.tuneoDetector = undefined;
-        this.offTuneoPitch?.();
-        this.offTuneoPitch = undefined;
-        this.tuneoAvailable = false;
-      }
+      await detector.init();
+      this.detector = detector;
+      this.offPitch = detector.onPitch((frame) => this.handlePitchFrame(frame));
+      await detector.start(micSource);
 
       this.resetPitchState();
       this.active = true;
       this.updateToggleVisual();
       const calibrationBadge = calibrationProfile ? 'Calibration ON' : 'Calibration OFF';
-      const fallbackReason = customDetector.getLegacyFallbackReason();
-      const fallbackBadge = customDetector.isLegacyFallback()
+      const fallbackReason = detector.getLegacyFallbackReason();
+      const fallbackBadge = detector.isLegacyFallback()
         ? fallbackReason
           ? ` • legacy fallback (${truncateLabel(fallbackReason, 26)})`
           : ' • legacy fallback'
         : '';
-      this.micStatusMessage =
-        this.tuneoAvailable
-          ? `Mic active • A/B compare running • ${calibrationBadge}${fallbackBadge}`
-          : `Mic active • A only (AC-14 unavailable) • ${calibrationBadge}${fallbackBadge}`;
+      this.micStatusMessage = `Mic active • spectral runtime • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
     } catch (error) {
       console.error('Failed to start practice microphone', error);
@@ -527,16 +453,10 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private async stopListening(): Promise<void> {
-    this.customDetector?.stop();
-    this.customDetector = undefined;
-    this.offCustomPitch?.();
-    this.offCustomPitch = undefined;
-
-    this.tuneoDetector?.stop();
-    this.tuneoDetector = undefined;
-    this.offTuneoPitch?.();
-    this.offTuneoPitch = undefined;
-    this.tuneoAvailable = false;
+    this.detector?.stop();
+    this.detector = undefined;
+    this.offPitch?.();
+    this.offPitch = undefined;
 
     releaseMicStream(this.micStream);
     this.micStream = undefined;
@@ -551,149 +471,75 @@ export class PracticeScene extends Phaser.Scene {
     this.active = false;
     this.resetPitchState();
     this.updateToggleVisual();
-    this.updateDetectorLabels();
     this.micStatusMessage = 'Mic inactive.';
     this.updateStatusLabel();
   }
 
-  private handlePitchFrame(state: DetectorState, frame: PitchFrame, isCustomDetector: boolean): void {
-    state.rawMidi = frame.midi_estimate;
-    state.confidence = frame.confidence;
-    const stabilized = isCustomDetector
-      ? this.customPitchFilter.update(frame)
-      : this.tuneoPitchFilter.update(frame);
-    state.lockedMidi =
+  private handlePitchFrame(frame: PitchFrame): void {
+    this.detectorState.rawMidi = frame.midi_estimate;
+    this.detectorState.confidence = frame.confidence;
+    this.detectorState.rawString = normalizeDetectedString(frame.detected_string);
+
+    const stabilized = this.pitchFilter.update(frame);
+    this.detectorState.lockedMidi =
       stabilized.midi_estimate !== null && Number.isFinite(stabilized.midi_estimate)
         ? Math.round(stabilized.midi_estimate)
         : null;
+    this.detectorState.lockedString = normalizeDetectedString(stabilized.detected_string);
+
+    if (this.detectorState.lockedMidi === null) {
+      this.detectorState.lockedString = null;
+    }
+
     this.updateCellHighlights();
-    this.updateDetectorLabels();
   }
 
   private updateCellHighlights(): void {
-    const nextCustom = this.customState.lockedMidi;
-    const nextTuneo = this.tuneoState.lockedMidi;
-    if (this.customHighlightedMidi === nextCustom && this.tuneoHighlightedMidi === nextTuneo) {
+    const nextMidi = this.detectorState.lockedMidi;
+    const nextString = this.detectorState.lockedString;
+    if (this.highlightedMidi === nextMidi && this.highlightedString === nextString) {
       return;
     }
 
     const touched = new Set<number>();
-    if (this.customHighlightedMidi !== null) touched.add(this.customHighlightedMidi);
-    if (this.tuneoHighlightedMidi !== null) touched.add(this.tuneoHighlightedMidi);
-    if (nextCustom !== null) touched.add(nextCustom);
-    if (nextTuneo !== null) touched.add(nextTuneo);
+    if (this.highlightedMidi !== null) touched.add(this.highlightedMidi);
+    if (nextMidi !== null) touched.add(nextMidi);
 
-    this.customHighlightedMidi = nextCustom;
-    this.tuneoHighlightedMidi = nextTuneo;
+    this.highlightedMidi = nextMidi;
+    this.highlightedString = nextString;
 
     touched.forEach((midi) => this.applyMidiHighlightStyle(midi));
+    this.updateStringBandHighlights();
   }
 
   private applyMidiHighlightStyle(midi: number): void {
     const cells = this.cellsByMidi.get(midi) ?? [];
     if (cells.length === 0) return;
 
-    const customMatch = this.customHighlightedMidi === midi;
-    const tuneoMatch = this.tuneoHighlightedMidi === midi;
-
-    let fillColor = 0x64748b;
-    let fillAlpha = 0.36;
-    let strokeColor = 0x475569;
-    let strokeAlpha = 0.86;
-
-    if (customMatch && tuneoMatch) {
-      fillColor = 0x84cc16;
-      fillAlpha = 0.98;
-      strokeColor = 0xd9f99d;
-      strokeAlpha = 0.98;
-    } else if (customMatch) {
-      fillColor = 0x22c55e;
-      fillAlpha = 0.94;
-      strokeColor = 0xbbf7d0;
-      strokeAlpha = 0.95;
-    } else if (tuneoMatch) {
-      fillColor = 0xf59e0b;
-      fillAlpha = 0.94;
-      strokeColor = 0xfef3c7;
-      strokeAlpha = 0.95;
-    }
-
     cells.forEach((cell) => {
       if (!isGameObjectAlive(cell.node)) return;
-      if (customMatch || tuneoMatch) {
-        cell.node.setFillStyle(fillColor, fillAlpha);
-        cell.node.setStrokeStyle(1, strokeColor, strokeAlpha);
-        return;
-      }
-      cell.node.setFillStyle(0x64748b, 0.36);
-      cell.node.setStrokeStyle(1, 0x475569, 0.86);
+      const visual = resolvePracticeCellVisual(
+        cell.midi,
+        cell.string,
+        this.highlightedMidi,
+        this.highlightedString
+      );
+      cell.node.setFillStyle(visual.fillColor, visual.fillAlpha);
+      cell.node.setStrokeStyle(1, visual.strokeColor, visual.strokeAlpha);
     });
   }
 
-  private resetPitchState(): void {
-    this.customPitchFilter.reset();
-    this.tuneoPitchFilter.reset();
-    resetDetectorState(this.customState);
-    resetDetectorState(this.tuneoState);
-    this.updateCellHighlights();
-    this.updateDetectorLabels();
+  private updateStringBandHighlights(): void {
+    for (const [stringNumber, band] of this.stringBands.entries()) {
+      if (!isGameObjectAlive(band)) continue;
+      band.setFillStyle(0xfacc15, resolvePracticeStringBandAlpha(stringNumber, this.highlightedString));
+    }
   }
 
-  private updateDetectorLabels(): void {
-    if (this.isShuttingDown) return;
-    const customDetectedLabel = this.customDetectedLabel;
-    const tuneoDetectedLabel = this.tuneoDetectedLabel;
-    const customDetailsLabel = this.customDetailsLabel;
-    const tuneoDetailsLabel = this.tuneoDetailsLabel;
-    const compareLabel = this.compareLabel;
-    if (
-      !isGameObjectAlive(customDetectedLabel) ||
-      !isGameObjectAlive(tuneoDetectedLabel) ||
-      !isGameObjectAlive(customDetailsLabel) ||
-      !isGameObjectAlive(tuneoDetailsLabel) ||
-      !isGameObjectAlive(compareLabel)
-    ) {
-      return;
-    }
-
-    const customStable = formatStableMidi(this.customState.lockedMidi);
-    const tuneoStable = this.tuneoAvailable
-      ? formatStableMidi(this.tuneoState.lockedMidi)
-      : 'unavailable';
-
-    customDetectedLabel.setText(`A Custom: ${customStable}`);
-    tuneoDetectedLabel.setText(`B AC-14 (Rust): ${tuneoStable}`);
-    customDetailsLabel.setText(
-      `A raw: ${formatRawMidi(this.customState.rawMidi)}  •  A conf: ${formatConfidence(this.customState.confidence)}`
-    );
-    tuneoDetailsLabel.setText(
-      `B raw: ${formatRawMidi(this.tuneoState.rawMidi)}  •  B conf: ${formatConfidence(this.tuneoState.confidence)}`
-    );
-
-    if (!this.tuneoAvailable) {
-      compareLabel.setText('A/B delta: AC-14 unavailable');
-      compareLabel.setColor('#fca5a5');
-      return;
-    }
-
-    const customMidi = this.customState.lockedMidi;
-    const tuneoMidi = this.tuneoState.lockedMidi;
-    if (customMidi === null || tuneoMidi === null) {
-      compareLabel.setText('A/B delta: waiting...');
-      compareLabel.setColor('#cbd5e1');
-      return;
-    }
-
-    const delta = customMidi - tuneoMidi;
-    if (delta === 0) {
-      compareLabel.setText('A/B delta: 0 semitones (match)');
-      compareLabel.setColor('#86efac');
-      return;
-    }
-
-    const sign = delta > 0 ? '+' : '';
-    compareLabel.setText(`A/B delta: ${sign}${delta} semitones`);
-    compareLabel.setColor('#fda4af');
+  private resetPitchState(): void {
+    this.pitchFilter.reset();
+    resetDetectorState(this.detectorState);
+    this.updateCellHighlights();
   }
 
   private handleMetronomePointerRelease(pointer: Phaser.Input.Pointer): void {
@@ -816,7 +662,9 @@ export class PracticeScene extends Phaser.Scene {
     if (this.isShuttingDown) return;
     if (!isGameObjectAlive(this.statusLabel)) return;
     const metronomeStatus = this.metronomeRunning ? ` • Metronome ON (${this.metronomeBpm} BPM)` : '';
-    this.statusLabel.setText(`${this.micStatusMessage}${metronomeStatus}`);
+    const midiBadge = this.detectorState.lockedMidi !== null ? ` • ${midiToNoteName(this.detectorState.lockedMidi)}` : '';
+    const stringBadge = this.detectorState.lockedString !== null ? ` S${this.detectorState.lockedString}` : '';
+    this.statusLabel.setText(`${this.micStatusMessage}${metronomeStatus}${midiBadge}${stringBadge}`);
   }
 
   private updateToggleVisual(): void {
@@ -833,7 +681,9 @@ function createDetectorState(): DetectorState {
   return {
     lockedMidi: null,
     rawMidi: null,
-    confidence: 0
+    confidence: 0,
+    lockedString: null,
+    rawString: null
   };
 }
 
@@ -841,23 +691,17 @@ function resetDetectorState(state: DetectorState): void {
   state.lockedMidi = null;
   state.rawMidi = null;
   state.confidence = 0;
+  state.lockedString = null;
+  state.rawString = null;
 }
 
 function isGameObjectAlive<T extends Phaser.GameObjects.GameObject>(value: T | undefined): value is T {
   return Boolean(value && value.scene && value.active);
 }
 
-function formatStableMidi(midi: number | null): string {
-  if (midi === null || !Number.isFinite(midi)) return '--';
-  return `${midiToNoteName(midi)} (${midi})`;
-}
-
-function formatRawMidi(midi: number | null): string {
-  if (midi === null || !Number.isFinite(midi)) return '--';
-  return midi.toFixed(2);
-}
-
-function formatConfidence(confidence: number): string {
-  if (!Number.isFinite(confidence)) return '--';
-  return confidence.toFixed(2);
+function normalizeDetectedString(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  if (rounded < 1 || rounded > 6) return null;
+  return rounded;
 }

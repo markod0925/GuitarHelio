@@ -21,6 +21,19 @@ export type TargetNote = {
   chord_index?: number;
 };
 
+export type DetectedPitchNote = {
+  note_id?: string | null;
+  midi: number;
+  string?: number | null;
+  fret?: number | null;
+  score?: number;
+};
+
+export type DetectedChordScore = {
+  chord_id: string;
+  score: number;
+};
+
 export type DifficultyProfile = {
   allowed_strings: number[];
   allowed_frets: { min: number; max: number };
@@ -44,6 +57,11 @@ export type PitchFrame = {
   onset_strength?: number;
   contamination_score?: number;
   rejected_as_reference_bleed?: boolean;
+  detected_string?: number | null;
+  detected_fret?: number | null;
+  best_note_id?: string | null;
+  selected_notes?: DetectedPitchNote[];
+  chord_scores?: DetectedChordScore[];
 };
 
 export enum PlayState {

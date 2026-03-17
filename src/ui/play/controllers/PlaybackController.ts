@@ -6,6 +6,7 @@ import { PitchDetectorService } from '../../../audio/pitchDetector';
 import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { loadPitchCalibrationProfile } from '../../../audio/pitchCalibration';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
+import { buildSpectralRuntimeModelFromTargets } from '../../../audio/spectralRuntimeModel';
 import { SimpleSynth } from '../../../audio/synth';
 import {
   resolveResumeSongSeconds,
@@ -166,11 +167,14 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       channelCount: 1
     });
     this.micStream = micSource.mediaStream;
+    const spectralModel = buildSpectralRuntimeModelFromTargets(this.targets);
     const detector = new PitchDetectorService(audioCtx, {
       smoothingAlpha: 0,
       calibrationProfile: loadPitchCalibrationProfile(),
       audioInputMode: this.audioInputMode,
-      enableDspCore: true
+      enableDspCore: true,
+      detectorPreset: 'spectral_game_runtime_unified_v3',
+      spectralModel
     });
     await detector.init();
     const gameplayPitchStabilizer = new PitchStabilityFilter({

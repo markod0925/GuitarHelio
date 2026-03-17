@@ -24,6 +24,9 @@ export class PitchStabilityFilter {
   private readonly options: PitchStabilityFilterOptions;
   private smoothedMidi: number | null = null;
   private lockedMidi: number | null = null;
+  private lockedString: number | null = null;
+  private lockedFret: number | null = null;
+  private lockedBestNoteId: string | null = null;
   private pendingMidi: number | null = null;
   private pendingMidiFrames = 0;
   private missedFrames = 0;
@@ -35,6 +38,9 @@ export class PitchStabilityFilter {
   reset(): void {
     this.smoothedMidi = null;
     this.lockedMidi = null;
+    this.lockedString = null;
+    this.lockedFret = null;
+    this.lockedBestNoteId = null;
     this.pendingMidi = null;
     this.pendingMidiFrames = 0;
     this.missedFrames = 0;
@@ -86,10 +92,18 @@ export class PitchStabilityFilter {
       }
     }
 
+    this.lockedString = sanitizeOptionalInteger(frame.detected_string);
+    this.lockedFret = sanitizeOptionalInteger(frame.detected_fret);
+    this.lockedBestNoteId = sanitizeOptionalString(frame.best_note_id);
+
     return {
+      ...frame,
       t_seconds: frame.t_seconds,
       midi_estimate: this.lockedMidi ?? roundedMidi,
-      confidence
+      confidence,
+      detected_string: this.lockedString,
+      detected_fret: this.lockedFret,
+      best_note_id: this.lockedBestNoteId
     };
   }
 
@@ -102,9 +116,13 @@ export class PitchStabilityFilter {
     if (this.missedFrames > this.options.maxMissedFrames) {
       this.reset();
       return {
+        ...frame,
         t_seconds: frame.t_seconds,
         midi_estimate: null,
-        confidence
+        confidence,
+        detected_string: null,
+        detected_fret: null,
+        best_note_id: null
       };
     }
 
@@ -115,9 +133,13 @@ export class PitchStabilityFilter {
         : null;
 
     return {
+      ...frame,
       t_seconds: frame.t_seconds,
       midi_estimate: holdMidi,
-      confidence
+      confidence,
+      detected_string: holdMidi === null ? null : this.lockedString,
+      detected_fret: holdMidi === null ? null : this.lockedFret,
+      best_note_id: holdMidi === null ? null : this.lockedBestNoteId
     };
   }
 }
@@ -125,4 +147,15 @@ export class PitchStabilityFilter {
 function sanitizeConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
+}
+
+function sanitizeOptionalInteger(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+function sanitizeOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }

@@ -19,6 +19,7 @@ const filesToCopy = [
 
 const textDecoderAnchor = "let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });";
 const textDecoderResetAnchor = "cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });";
+const textEncoderAnchor = 'const cachedTextEncoder = new TextEncoder();';
 const textDecoderPatch = `
 function __decodeUtf8Fallback(bytes) {
     let output = '';
@@ -69,13 +70,66 @@ const __TextDecoderImpl = typeof TextDecoder !== 'undefined'
 let cachedTextDecoder = new __TextDecoderImpl('utf-8', { ignoreBOM: true, fatal: true });
 `;
 
+const textEncoderPatch = `
+function __encodeUtf8Fallback(input) {
+    const source = String(input ?? '');
+    const bytes = [];
+    for (let i = 0; i < source.length; i += 1) {
+        let codePoint = source.codePointAt(i);
+        if (codePoint === undefined) {
+            continue;
+        }
+        if (codePoint > 0xffff) {
+            i += 1;
+        }
+        if (codePoint <= 0x7f) {
+            bytes.push(codePoint);
+            continue;
+        }
+        if (codePoint <= 0x7ff) {
+            bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+            continue;
+        }
+        if (codePoint <= 0xffff) {
+            bytes.push(
+                0xe0 | (codePoint >> 12),
+                0x80 | ((codePoint >> 6) & 0x3f),
+                0x80 | (codePoint & 0x3f)
+            );
+            continue;
+        }
+        bytes.push(
+            0xf0 | (codePoint >> 18),
+            0x80 | ((codePoint >> 12) & 0x3f),
+            0x80 | ((codePoint >> 6) & 0x3f),
+            0x80 | (codePoint & 0x3f)
+        );
+    }
+    return new Uint8Array(bytes);
+}
+
+const __TextEncoderImpl = typeof TextEncoder !== 'undefined'
+    ? TextEncoder
+    : class TextEncoderPolyfill {
+        encode(input = '') {
+            return __encodeUtf8Fallback(input);
+        }
+    };
+
+const cachedTextEncoder = new __TextEncoderImpl();
+`;
+
 async function patchWasmGlue(destinationDir) {
   const jsPath = path.join(destinationDir, 'gh_dsp_core.js');
   let source = await readFile(jsPath, 'utf8');
   if (!source.includes(textDecoderAnchor)) {
     throw new Error(`Unable to patch TextDecoder fallback in ${jsPath}`);
   }
+  if (!source.includes(textEncoderAnchor)) {
+    throw new Error(`Unable to patch TextEncoder fallback in ${jsPath}`);
+  }
   source = source.replace(textDecoderAnchor, textDecoderPatch.trim());
+  source = source.replace(textEncoderAnchor, textEncoderPatch.trim());
   source = source.replaceAll(textDecoderResetAnchor, "cachedTextDecoder = new __TextDecoderImpl('utf-8', { ignoreBOM: true, fatal: true });");
   await writeFile(jsPath, source, 'utf8');
 }

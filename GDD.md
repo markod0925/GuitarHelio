@@ -87,7 +87,7 @@ Like Yousician:
 **Option A (selected):**
 
 - `gh_dsp_core` preset pipeline:
-  - gameplay default profile (baseline/spectral runtime)
+  - gameplay/practice profile `spectral_game_runtime_unified_v3`
   - tuner profile `ac14` (autocorrelation)
 
 The system MUST use preset-based runtime detection through `PitchDetectorService`.
@@ -246,6 +246,12 @@ MIDI ArrayBuffer
 ```
 
 The project MUST use the MIDI-to-TAB converter flow for gameplay targets when entering `PlayScene`.
+For detector candidate modeling in `PlayScene`, the runtime MUST additionally derive a pattern set from the final post-filter `TargetNotes`:
+- group by chord event
+- convert each group to a MIDI set
+- deduplicate globally by sorted MIDI set key (order-independent)
+- pass only unique patterns to `spectral_game_runtime_unified_v3`
+- do not pass expected-event timeline spans/schedule to the detector
 
 ---
 
@@ -480,8 +486,15 @@ type PitchFrame = {
   onset_strength?: number
   contamination_score?: number
   rejected_as_reference_bleed?: boolean
+  detected_string?: number | null
+  detected_fret?: number | null
+  best_note_id?: string | null
+  selected_notes?: { note_id?: string | null; midi: number; string?: number | null; fret?: number | null; score?: number }[]
+  chord_scores?: { chord_id: string; score: number }[]
 }
 ```
+
+For `spectral_game_runtime_unified_v3`, `confidence`, `selected_notes`, `chord_scores`, `detected_string`, and `detected_fret` MUST come from the spectral backend output (not from autocorrelation fallback math).
 
 Runtime confidence estimation MUST be derived from normalized autocorrelation:
 
@@ -558,6 +571,11 @@ valid_frame_i =
   (confidence_i >= min_confidence) &&
   (abs(midi_estimate_i - expected_midi) <= pitch_tolerance_semitones)
 ```
+
+Difficulty-specific validation policy MUST be:
+- `Easy`: pitch-only validation.
+- `Medium`/`Hard`: validate pitch + string when `detected_string` is available.
+- `Medium`/`Hard`: if `detected_string` is missing/invalid, accept pitch-only fallback.
 
 A target hit MUST be valid iff there exists a continuous streak of valid frames such that:
 
@@ -913,14 +931,12 @@ Practice scene requirements:
 * show 6 guitar strings and a full fret grid from fret `0` to fret `12`
 * draw all note positions for each string/fret intersection
 * all note positions MUST be gray by default
-* while microphone detection is active, the scene MUST run a direct A/B compare between:
-  - detector `A`: current project pitch detector (`PitchDetectorService`)
-  - detector `B`: Tuneo YIN detector (`TuneoPitchDetectorService`)
-* for each detected pitch, the scene MUST highlight all equivalent fretboard positions (same MIDI across strings/frets)
-* highlighted positions MUST be color-coded in real time:
-  - `A only` -> green
-  - `B only` -> amber/orange
-  - `A + B` (same detected pitch) -> lime/combined highlight
+* while microphone detection is active, the scene MUST use only `PitchDetectorService` with preset `spectral_game_runtime_unified_v3` and default runtime parameters
+* the scene MUST NOT run AC-14/Tuneo A/B comparison overlays
+* the scene MUST render a yellow full-width string band for the detected string when available
+* if detected MIDI and detected string are both available, only the matching note position on that string MUST be green
+* if detected MIDI is available but string is missing, all equivalent fretboard positions for that MIDI MUST be green (fallback)
+* practice runtime model MUST not include chord patterns (mononote candidates only)
 * include explicit controls for `Start Mic` / `Stop Mic`
 * include a metronome with:
   - a BPM scrollbar/slider control
@@ -928,8 +944,7 @@ Practice scene requirements:
 * include `Back to Start` to return to `SongSelectScene`
 * on Capacitor Android runtime, system back navigation (hardware/gesture back) while `Practice` scene is active MUST trigger `Back to Start` and return to `SongSelectScene` (must not background/exit the app directly)
 * on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
-* the scene SHOULD show per-detector stable note output and A/B semitone delta
-* both detectors SHOULD reuse the same microphone input stream in that scene, and SHOULD apply persisted calibration profile when available
+* the scene SHOULD apply persisted calibration profile when available
 
 ---
 
