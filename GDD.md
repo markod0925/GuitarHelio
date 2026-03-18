@@ -1092,6 +1092,7 @@ Implementation constraints for import paths:
 
 * web dev/preview import default MUST run through the C++/ONNX converter wrapper
 * Electron Windows desktop import default MUST run through the same server-side C++/ONNX converter wrapper used by web preview
+* Electron Windows package payload MUST include only runtime-required converter assets (converter scripts, `tools/audio-midi-converter/src`, NeuralNote/Tempo-CNN Windows CLI binaries, required ONNX model files, and ONNX runtime Windows DLLs), and MUST exclude non-runtime research/build datasets under `tools/` and non-required `third_party` sources/libs to keep release artifacts small
 * Capacitor Android import default MUST run through the native C++/ONNX plugin bridge
 * Capacitor Android native converter builds (including debug variants) MUST compile NeuralNote/Tempo-CNN C++ code with optimized native flags (release-grade optimization, debug symbols allowed)
 * server/native import MUST estimate constant tempo via Tempo-CNN ONNX and inject MIDI tempo metadata using only `tempoBpm` (no local `tempoMap`) for MP3/OGG sources
