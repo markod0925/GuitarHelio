@@ -71,7 +71,22 @@ jobs:
         run: npm ci
 
       - name: Build Windows release artifacts
-        run: npm run build:windows
+        run: npm run build:windows:clean
+
+      - name: Verify Windows artifact size budget
+        shell: powershell
+        run: |
+          $latestExe = Get-ChildItem "release\GuitarHelio-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $latestExe) {
+            throw "Windows EXE artifact not found in release/."
+          }
+          $sizeMb = [math]::Round($latestExe.Length / 1MB, 2)
+          Write-Host "Latest EXE: $($latestExe.Name) - $sizeMb MB"
+
+          $maxSizeMb = 300
+          if ($sizeMb -gt $maxSizeMb) {
+            throw "Windows EXE exceeds size budget ($sizeMb MB > $maxSizeMb MB)."
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
