@@ -15,7 +15,8 @@ Technical reference: for implementation details, architecture notes, setup, and 
 - Choose songs from a catalog
 - Import your own tracks (MIDI/MP3/OGG)
 - Practice with guided note targets and score tracking
-- Use tuner/settings to adapt the experience to your level
+- Use the bultin tuner to tune your guitar
+- Use Settings to adapt the experience to your level
 
 ## Project Docs
 
