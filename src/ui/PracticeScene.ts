@@ -3,7 +3,6 @@ import { Capacitor } from '@capacitor/core';
 import type { PitchFrame } from '../types/models';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import { createMicNode } from '../audio/micInput';
-import { loadPitchCalibrationProfile } from '../audio/pitchCalibration';
 import { PitchDetectorService } from '../audio/pitchDetector';
 import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel';
 import { midiForStringFret } from '../guitar/tuning';
@@ -403,11 +402,9 @@ export class PracticeScene extends Phaser.Scene {
       });
       this.micStream = micSource.mediaStream;
 
-      const calibrationProfile = loadPitchCalibrationProfile();
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
         smoothingAlpha: 0,
-        calibrationProfile: calibrationProfile ?? undefined,
         audioInputMode: this.audioInputMode,
         enableDspCore: true,
         detectorPreset: 'spectral_game_runtime_unified_v3',
@@ -421,7 +418,7 @@ export class PracticeScene extends Phaser.Scene {
       this.resetPitchState();
       this.active = true;
       this.updateToggleVisual();
-      const calibrationBadge = calibrationProfile ? 'Calibration ON' : 'Calibration OFF';
+      const calibrationBadge = 'Calibration bypassed (spectral raw)';
       const fallbackReason = detector.getLegacyFallbackReason();
       const fallbackBadge = detector.isLegacyFallback()
         ? fallbackReason

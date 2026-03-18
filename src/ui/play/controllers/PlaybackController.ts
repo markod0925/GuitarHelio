@@ -4,7 +4,6 @@ import { JzzTinySynth } from '../../../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../../../audio/midiScrubPlayer';
 import { PitchDetectorService } from '../../../audio/pitchDetector';
 import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
-import { loadPitchCalibrationProfile } from '../../../audio/pitchCalibration';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import { buildSpectralRuntimeModelFromTargets } from '../../../audio/spectralRuntimeModel';
 import { SimpleSynth } from '../../../audio/synth';
@@ -169,8 +168,8 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
     this.micStream = micSource.mediaStream;
     const spectralModel = buildSpectralRuntimeModelFromTargets(this.targets);
     const detector = new PitchDetectorService(audioCtx, {
+      roundMidi: false,
       smoothingAlpha: 0,
-      calibrationProfile: loadPitchCalibrationProfile(),
       audioInputMode: this.audioInputMode,
       enableDspCore: true,
       detectorPreset: 'spectral_game_runtime_unified_v3',

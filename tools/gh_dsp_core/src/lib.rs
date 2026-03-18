@@ -54,6 +54,7 @@ const SPECTRAL_CHORD_ALPHA: f32 = 0.7;
 const SPECTRAL_EMIT_CHORD_SCORES: bool = true;
 const SPECTRAL_DC_REMOVE: bool = true;
 const SPECTRAL_TIE_EPSILON: f32 = 1e-6;
+const SPECTRAL_BYPASS_REFERENCE_CANCELLATION: bool = true;
 
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
@@ -258,12 +259,23 @@ impl GhDspCore {
             &mut self.aligned_reference,
             delay_samples,
         );
-        run_nlms(
-            &safe_mic_block,
-            &self.aligned_reference,
-            &mut self.residual_block,
-            &mut self.nlms_weights,
-        );
+        let bypass_reference_cancellation = matches!(
+            self.pitch_preset,
+            PitchDetectorPreset::SpectralGameRuntimeUnifiedV3
+        ) && SPECTRAL_BYPASS_REFERENCE_CANCELLATION;
+        if bypass_reference_cancellation {
+            // Keep the reference-alignment path available for diagnostics, but expose
+            // the spectral detector to the clean mic signal (pitch-agent-lab parity).
+            self.residual_block.copy_from_slice(&safe_mic_block);
+            self.nlms_weights.fill(0.0);
+        } else {
+            run_nlms(
+                &safe_mic_block,
+                &self.aligned_reference,
+                &mut self.residual_block,
+                &mut self.nlms_weights,
+            );
+        }
 
         let mic_rms = compute_rms(&safe_mic_block);
         let ref_rms = compute_rms(&self.aligned_reference);

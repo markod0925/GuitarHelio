@@ -460,9 +460,10 @@ When there is no active target left (`active_target_index` past the last target)
 
 Microphone via WebAudio.
 
-Pitch analysis MUST run on a residual signal produced by a DSP stage:
+Pitch analysis MUST run through a DSP stage with preset-dependent analysis signal:
 
-`mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
+- `baseline` / `ac14`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
+- `spectral_game_runtime_unified_v3`: `mic + reference -> delay estimate -> aligned reference diagnostics + clean mic analysis -> spectral pitch detector`
 
 The DSP stage MUST use the shared Rust/WASM core (`gh_dsp_core`) as primary backend on runtime targets.
 Generated WASM artifacts MUST be synchronized to both:
@@ -496,7 +497,8 @@ type PitchFrame = {
 }
 ```
 
-For `spectral_game_runtime_unified_v3`, `confidence`, `selected_notes`, `chord_scores`, `detected_string`, and `detected_fret` MUST come from the spectral backend output (not from autocorrelation fallback math).
+For `spectral_game_runtime_unified_v3`, `midi_estimate`, `confidence`, `selected_notes`, `chord_scores`, `detected_string`, and `detected_fret` MUST come from the spectral backend output (not from autocorrelation fallback math).
+For this preset, runtime post-processing MUST keep the backend output raw: no reference-contamination gating, no gameplay calibration offset, and no integer-midi rounding.
 
 Runtime confidence estimation MUST be derived from normalized autocorrelation:
 
@@ -539,6 +541,9 @@ clamp01(x) = min(1, max(0, x))
 ---
 
 ## 9.3 Anti-contamination policy
+
+This policy applies to autocorrelation detector paths (`baseline`, `ac14`).
+`spectral_game_runtime_unified_v3` MUST bypass this policy and keep raw spectral output.
 
 The system MUST NOT reject a frame only because detected pitch equals current backing pitch.
 
@@ -913,7 +918,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * each point MUST estimate cents offset using robust statistics (outlier-resistant)
 * the final correction MUST be represented as a piecewise-linear cents curve over MIDI pitch
 * calibration profile MUST persist locally and be reusable in future sessions
-* the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene), not only tuner display
+* the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene) when using autocorrelation detector paths; `spectral_game_runtime_unified_v3` keeps raw backend output
 * when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
 * this summary popup MUST close on any click/tap anywhere on screen
 * while tuner is active, if current target string stays inside in-tune green band (`±10c`) for at least `0.5` continuous seconds:

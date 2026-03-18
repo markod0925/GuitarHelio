@@ -23,6 +23,7 @@ Usare comandi Windows (`cmd.exe`) anche quando la sessione parte da shell Linux/
 Server Linux + Android:
 
 ```bash
+source "$HOME/.nvm/nvm.sh" && nvm use 22
 npm run install:linux-android
 ```
 
@@ -88,10 +89,37 @@ Lo script chiude processi `GuitarHelio.exe/electron.exe/app-builder.exe`, rimuov
 Eseguire sempre:
 
 ```bash
+source "$HOME/.nvm/nvm.sh" && nvm use 22
 npm install
 ```
 
 Usare `npm run install:windows` solo in ambiente Windows per installare anche la dipendenza Win-only `@rollup/rollup-win32-x64-msvc` senza persisterla in `package.json`.
+
+### Errore `EBADENGINE` (Node mismatch in WSL/Linux)
+
+Il progetto richiede `node >=22` (`package.json -> engines.node`).
+Se in WSL/Linux vedi `node v20.x` o warning `EBADENGINE`, prima di qualunque comando npm esegui:
+
+```bash
+source "$HOME/.nvm/nvm.sh" && nvm use 22
+node -v
+npm -v
+```
+
+### Errore `EACCES` su `node_modules\\.bin\\cap` / `capacitor` durante `install:windows`
+
+Questo succede tipicamente dopo aver alternato installazioni npm tra WSL (symlink Linux in `.bin`) e Windows.
+Recovery consigliato:
+
+```bash
+find /mnt/c/Dati/Marco/GameDev/GuitarHelio/node_modules/.bin -maxdepth 1 -type l -delete
+```
+
+Poi rilanciare:
+
+```bat
+cmd.exe /c "cd /d C:\Dati\Marco\GameDev\GuitarHelio && npm run install:windows"
+```
 
 ### Errore `wine is required` durante build Windows
 
