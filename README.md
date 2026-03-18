@@ -3,6 +3,8 @@
 GuitarHelio is a friendly guitar practice game for kids and beginners.
 You can play songs, follow simplified note targets, and train timing and pitch in a fun way.
 
+Technical reference: for implementation details, architecture notes, setup, and build instructions, see [docs/README_DETAILS.md](docs/README_DETAILS.md).
+
 ## Try It
 
 - Play now in your browser: [https://markod0925.github.io/GuitarHelio/](https://markod0925.github.io/GuitarHelio/)

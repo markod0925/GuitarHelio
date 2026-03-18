@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "description": "Standalone WAV/MP3/OGG to MIDI workflow using NeuralNote C++/ONNX + Tempo-CNN tempo metadata",
   "bin": {
     "convert-audio-to-midi": "./bin/convert-audio-to-midi.mjs"

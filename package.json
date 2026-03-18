@@ -6,13 +6,16 @@
   "author": "GuitarHelio Team",
   "main": "electron/main.mjs",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "install:linux-android": "npm install",
     "install:windows": "cmd /c \"npm install && npm install --no-save @rollup/rollup-win32-x64-msvc\"",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs",
     "lint": "tsc --noEmit",
     "midi:sample": "node scripts/generate-sample-midi.mjs",
     "midi:cli": "node scripts/cli-midi-player.mjs",
@@ -73,7 +76,7 @@
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",
-    "@capacitor/core": "^8.1.0",
+    "@capacitor/core": "^8.2.0",
     "@capacitor/filesystem": "^8.1.2",
     "@fontsource/montserrat": "^5.2.8",
     "@tonejs/midi": "^2.0.28",
@@ -84,14 +87,11 @@
     "vite": "^7.3.1"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.1.0",
-    "@capacitor/cli": "^8.1.0",
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
     "typescript": "^5.6.2",
-    "vitest": "^4.0.18"
-  },
-  "overrides": {
-    "tar": "^7.5.10"
+    "vitest": "^4.1.0"
   }
 }

@@ -38,6 +38,41 @@ npm run pitch:offline:bench # run offline pitch benchmark (pass --manifest/--wav
 
 - Workflow and scripts are documented in `tools/pitch-offline-bench/README.md`.
 
+## Custom Spectral Harmonics Implementation
+
+GuitarHelio uses a custom candidate-guided spectral harmonic detector for gameplay:
+`spectral_game_runtime_unified_v3`.
+
+Benchmark and tuning reference:
+- [README.md](../tools/pitch-agent-lab/README.md) (`tools/pitch-agent-lab`)
+- `tools/pitch-agent-lab/config/candidates.spectral.game-runtime.baseline.toml`
+
+Runtime integration points:
+- Preset wiring in `src/audio/pitchWorklet.js` and `src/audio/pitchDetector.ts`.
+- Gameplay usage in `src/ui/play/controllers/PlaybackController.ts`.
+- Practice usage in `src/ui/PracticeScene.ts`.
+- Candidate model generation in `src/audio/spectralRuntimeModel.ts`.
+- DSP implementation in `tools/gh_dsp_core/src/lib.rs` (`PitchDetectorPreset::SpectralGameRuntimeUnifiedV3`).
+
+Processing pipeline (runtime):
+1. Mic/reference alignment + NLMS echo suppression produce a residual analysis buffer.
+2. Residual audio is windowed (Hann), transformed with FFT, and converted to a magnitude spectrum.
+3. Optional spectral shaping is applied (magnitude compression + local whitening).
+4. For each candidate note, harmonic-band energy is accumulated across partials (weighted by harmonic order).
+5. Best note (`midi_estimate`) is selected and confidence is computed from contrast + energy terms.
+6. Optional polyphonic candidates are selected with harmonic suppression/deduplication.
+7. Chord-level scores are computed from candidate note scores.
+
+Runtime outputs used by gameplay logic:
+- `midi_estimate`, `confidence`
+- `best_note_id`, `detected_string`, `detected_fret`
+- `selected_notes[]`, `chord_scores[]`
+
+Model behavior:
+- The detector is candidate-guided: it only scores notes/chords present in the runtime spectral model.
+- In songs, the model is built from chart targets (`buildSpectralRuntimeModelFromTargets`).
+- In free practice, the model is generated from the full guitar fretboard range (`buildPracticeSpectralRuntimeModel`).
+
 ## Packages and References
 
 Direct npm packages used by this repository.
@@ -84,7 +119,7 @@ Direct npm packages used by this repository.
 
 ## Quick Start (PC + Smartphone on LAN)
 
-1. Install Node.js 20+ on your computer.
+1. Install Node.js 22+ on your computer.
 2. Install dependencies:
    ```bash
    npm install
@@ -224,7 +259,7 @@ Notes:
 ### Quick Audio -> MIDI Smoke Test (Server + Android)
 
 Minimum prerequisites:
-- `Node.js 20+`
+- `Node.js 22+`
 - Local C++ toolchain (`cmake`, `g++`, `make`) for NeuralNote/Tempo-CNN CLIs
 - Android SDK/NDK installed (for APK build)
 - JDK 21 active for Gradle/Capacitor Android
