@@ -1,4 +1,3 @@
-import { defineConfig } from 'vite';
 import { createSongImportApiPlugin } from './src/server/songImportApi';
 
 function normalizeBasePath(rawBasePath: string): string {
@@ -23,8 +22,8 @@ function resolveBasePath(): string {
   return '/';
 }
 
-export default defineConfig({
+export default {
   base: resolveBasePath(),
   plugins: [createSongImportApiPlugin()],
   server: { host: '0.0.0.0', port: 5173 }
-});
+};

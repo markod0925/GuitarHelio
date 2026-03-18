@@ -44,10 +44,17 @@
   "build": {
     "appId": "com.guitarhelio.desktop",
     "productName": "GuitarHelio",
+    "copyright": "Copyright (c) 2026 GuitarHelio Team",
     "directories": {
       "output": "release"
     },
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "third_party/**",
+      "vite.config.ts",
+      "src/server/**",
+      "src/platform/converterMode.ts"
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",

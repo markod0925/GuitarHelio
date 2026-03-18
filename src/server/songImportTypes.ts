@@ -104,6 +104,7 @@ export type CoverExtractorModule = {
 
 export type SongImportRuntime = {
   projectRoot: string;
+  assetRoot: string;
   runtimeSongsDir: string;
   runtimeSongManifestPath: string;
   importJobs: Map<string, SongImportJob>;

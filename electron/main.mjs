@@ -67,13 +67,17 @@ async function findFreePort() {
 }
 
 async function startPreviewServer(appRoot, runtimeSongsDir) {
+  const assetRoot = resolveAssetRoot(appRoot);
   process.env.GH_RUNTIME_SONGS_DIR = runtimeSongsDir;
   process.env.GH_PROJECT_ROOT = appRoot;
+  process.env.GH_ASSET_ROOT = assetRoot;
+  configureBundledEsbuildBinary(appRoot, assetRoot);
+  const viteConfigPath = resolveViteConfigPath(appRoot, assetRoot);
   const { preview } = await import('vite');
   const port = await findFreePort();
   previewServer = await preview({
     root: appRoot,
-    configFile: path.join(appRoot, 'vite.config.ts'),
+    configFile: viteConfigPath,
     logLevel: 'warn',
     preview: {
       host: '127.0.0.1',
@@ -88,6 +92,42 @@ async function startPreviewServer(appRoot, runtimeSongsDir) {
     throw new Error('Preview server started without a valid HTTP address.');
   }
   baseUrl = `http://127.0.0.1:${address.port}`;
+}
+
+function resolveAssetRoot(appRoot) {
+  if (!app.isPackaged) return appRoot;
+  return path.join(process.resourcesPath, 'app.asar.unpacked');
+}
+
+function resolveViteConfigPath(appRoot, assetRoot) {
+  const unpackedConfigPath = path.join(assetRoot, 'vite.config.ts');
+  if (fsSync.existsSync(unpackedConfigPath)) return unpackedConfigPath;
+  return path.join(appRoot, 'vite.config.ts');
+}
+
+function resolveEsbuildPackageName() {
+  if (process.platform === 'win32' && process.arch === 'x64') return '@esbuild/win32-x64';
+  if (process.platform === 'linux' && process.arch === 'x64') return '@esbuild/linux-x64';
+  if (process.platform === 'darwin' && process.arch === 'x64') return '@esbuild/darwin-x64';
+  if (process.platform === 'darwin' && process.arch === 'arm64') return '@esbuild/darwin-arm64';
+  return null;
+}
+
+function configureBundledEsbuildBinary(appRoot, assetRoot) {
+  if (process.env.ESBUILD_BINARY_PATH) return;
+  const packageName = resolveEsbuildPackageName();
+  if (!packageName) return;
+  const executableName = process.platform === 'win32' ? 'esbuild.exe' : 'bin/esbuild';
+  const candidates = [
+    path.join(assetRoot, 'node_modules', packageName, executableName),
+    path.join(appRoot, 'node_modules', packageName, executableName)
+  ];
+  for (const candidate of candidates) {
+    if (fsSync.existsSync(candidate)) {
+      process.env.ESBUILD_BINARY_PATH = candidate;
+      return;
+    }
+  }
 }
 
 async function stopPreviewServer() {

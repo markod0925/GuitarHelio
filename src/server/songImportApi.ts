@@ -19,6 +19,8 @@ const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(SERVER_DIR, '../..');
 const PUBLIC_SONGS_DIR = path.resolve(PROJECT_ROOT, 'public/songs');
 const RUNTIME_SONGS_DIR_ENV = 'GH_RUNTIME_SONGS_DIR';
+const PROJECT_ROOT_ENV = 'GH_PROJECT_ROOT';
+const ASSET_ROOT_ENV = 'GH_ASSET_ROOT';
 const SONGS_PATH_PREFIX = '/songs/';
 
 function resolveRuntimeSongsDirFromEnv(): string | null {
@@ -27,9 +29,22 @@ function resolveRuntimeSongsDirFromEnv(): string | null {
   return path.resolve(rawValue);
 }
 
+function resolveProjectRootFromEnv(): string {
+  const rawValue = String(process.env[PROJECT_ROOT_ENV] ?? '').trim();
+  if (!rawValue) return PROJECT_ROOT;
+  return path.resolve(rawValue);
+}
+
+function resolveAssetRootFromEnv(): string {
+  const rawValue = String(process.env[ASSET_ROOT_ENV] ?? '').trim();
+  if (!rawValue) return PROJECT_ROOT;
+  return path.resolve(rawValue);
+}
+
 export function createSongImportApiPlugin(): Plugin {
   const runtime: SongImportRuntime = {
-    projectRoot: PROJECT_ROOT,
+    projectRoot: resolveProjectRootFromEnv(),
+    assetRoot: resolveAssetRootFromEnv(),
     runtimeSongsDir: PUBLIC_SONGS_DIR,
     runtimeSongManifestPath: path.resolve(PUBLIC_SONGS_DIR, 'manifest.json'),
     importJobs: new Map(),

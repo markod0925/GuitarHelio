@@ -12,6 +12,14 @@ function resolveProjectRoot() {
   return path.resolve(scriptsDir, '..');
 }
 
+function resolveAssetRoot(projectRoot) {
+  const envAssetRoot = String(process.env.GH_ASSET_ROOT || '').trim();
+  if (envAssetRoot.length > 0) {
+    return path.resolve(envAssetRoot);
+  }
+  return projectRoot;
+}
+
 function resolveCliBaseName() {
   return process.platform === 'win32' ? 'nn_transcriber_cli.exe' : 'nn_transcriber_cli';
 }
@@ -21,12 +29,13 @@ function resolveOnnxRuntimeSubdir() {
 }
 
 const projectRoot = resolveProjectRoot();
+const assetRoot = resolveAssetRoot(projectRoot);
 
 const converter = createAudioToMidiConverter({
-  modelDir: path.resolve(projectRoot, 'third_party/neuralnote_core/modeldata'),
+  modelDir: path.resolve(assetRoot, 'third_party/neuralnote_core/modeldata'),
   modelDirLabel: 'third_party/neuralnote_core/modeldata',
-  cliBinaryPath: path.resolve(projectRoot, 'third_party/neuralnote_core/bin', resolveCliBaseName()),
-  onnxLibDir: path.resolve(projectRoot, 'third_party/onnxruntime', resolveOnnxRuntimeSubdir(), 'lib')
+  cliBinaryPath: path.resolve(assetRoot, 'third_party/neuralnote_core/bin', resolveCliBaseName()),
+  onnxLibDir: path.resolve(assetRoot, 'third_party/onnxruntime', resolveOnnxRuntimeSubdir(), 'lib')
 });
 
 export const {

@@ -60,9 +60,9 @@ export async function estimateTempoFromAudioBuffer(
 
     const estimated = await estimateTempo(audioPath, {
       backend: 'onnx',
-      tempoCliBin: path.resolve(runtime.projectRoot, 'third_party/tempocnn_core/bin', TEMPO_CLI_BASENAME),
-      tempoModelOnnxPath: path.resolve(runtime.projectRoot, 'third_party/tempo_cnn/tempocnn/models/fcn.onnx'),
-      onnxLibDir: path.resolve(runtime.projectRoot, 'third_party/onnxruntime', ONNX_RUNTIME_SUBDIR, 'lib'),
+      tempoCliBin: path.resolve(runtime.assetRoot, 'third_party/tempocnn_core/bin', TEMPO_CLI_BASENAME),
+      tempoModelOnnxPath: path.resolve(runtime.assetRoot, 'third_party/tempo_cnn/tempocnn/models/fcn.onnx'),
+      onnxLibDir: path.resolve(runtime.assetRoot, 'third_party/onnxruntime', ONNX_RUNTIME_SUBDIR, 'lib'),
       interpolate: true,
       localTempo: false,
       useFfmpeg: false
