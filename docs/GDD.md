@@ -87,7 +87,8 @@ Like Yousician:
 **Option A (selected):**
 
 - `gh_dsp_core` preset pipeline:
-  - gameplay/practice profile `spectral_game_runtime_unified_v3`
+  - gameplay profile `masp_game_scene_ts_v1` (playhead-aware MASP TS validator)
+  - practice profile `spectral_game_runtime_unified_v3`
   - tuner profile `ac14` (autocorrelation)
 
 The system MUST use preset-based runtime detection through `PitchDetectorService`.
@@ -464,6 +465,19 @@ Pitch analysis MUST run through a DSP stage with preset-dependent analysis signa
 
 - `baseline` / `ac14`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
 - `spectral_game_runtime_unified_v3`: `mic + reference -> delay estimate -> aligned reference diagnostics + clean mic analysis -> spectral pitch detector`
+- `masp_game_scene_ts_v1` (PlayScene only): `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> MASP score-informed validator`
+
+For `masp_game_scene_ts_v1`, runtime MUST use strict MASP frontend settings:
+- target sample rate `22050`
+- FFT size `4096`
+- hop size `512`
+- Hann window
+
+Sample-rate policy for this preset MUST be:
+- `22050Hz`: no resampling
+- `44100Hz`: decimate `2:1` (drop one sample every two)
+- `48000Hz`: linear resampling to `22050`
+- other rates: fallback to the existing non-MASP detector path
 
 The DSP stage MUST use the shared Rust/WASM core (`gh_dsp_core`) as primary backend on runtime targets.
 Generated WASM artifacts MUST be synchronized to both:
@@ -499,6 +513,12 @@ type PitchFrame = {
 
 For `spectral_game_runtime_unified_v3`, `midi_estimate`, `confidence`, `selected_notes`, `chord_scores`, `detected_string`, and `detected_fret` MUST come from the spectral backend output (not from autocorrelation fallback math).
 For this preset, runtime post-processing MUST keep the backend output raw: no reference-contamination gating, no gameplay calibration offset, and no integer-midi rounding.
+
+For `masp_game_scene_ts_v1`, runtime MUST validate against the active playhead note/chord set (`expected_midis`) with a `+10ms` playhead anticipation.
+- if MASP decision fails: `midi_estimate = null`
+- if MASP decision passes: `midi_estimate` MUST be selected from the active `expected_midis`
+- `best_note_id`, `detected_string`, `detected_fret`, `selected_notes`, and `chord_scores` MUST be inferred from the active runtime expected-note set
+- this preset MUST also bypass reference-contamination post-gating, gameplay calibration offset, and integer-midi rounding
 
 Runtime confidence estimation MUST be derived from normalized autocorrelation:
 
@@ -543,7 +563,7 @@ clamp01(x) = min(1, max(0, x))
 ## 9.3 Anti-contamination policy
 
 This policy applies to autocorrelation detector paths (`baseline`, `ac14`).
-`spectral_game_runtime_unified_v3` MUST bypass this policy and keep raw spectral output.
+`spectral_game_runtime_unified_v3` and `masp_game_scene_ts_v1` MUST bypass this policy and keep raw backend output.
 
 The system MUST NOT reject a frame only because detected pitch equals current backing pitch.
 
@@ -918,7 +938,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * each point MUST estimate cents offset using robust statistics (outlier-resistant)
 * the final correction MUST be represented as a piecewise-linear cents curve over MIDI pitch
 * calibration profile MUST persist locally and be reusable in future sessions
-* the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene) when using autocorrelation detector paths; `spectral_game_runtime_unified_v3` keeps raw backend output
+* the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene) when using autocorrelation detector paths; `spectral_game_runtime_unified_v3` and `masp_game_scene_ts_v1` keep raw backend output
 * when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
 * this summary popup MUST close on any click/tap anywhere on screen
 * while tuner is active, if current target string stays inside in-tune green band (`±10c`) for at least `0.5` continuous seconds:

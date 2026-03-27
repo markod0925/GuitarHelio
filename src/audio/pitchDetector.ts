@@ -2,11 +2,21 @@ import type { PitchFrame } from '../types/models';
 import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../types/audioInputMode';
 import type { PitchCalibrationProfile } from './pitchCalibration';
 import { applyPitchCalibration } from './pitchCalibration';
+import {
+  MASP_GAME_SCENE_PRESET,
+  sanitizeMaspValidationContext,
+  type MaspValidationContext
+} from './maspShared';
 import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?url';
 
 export type PitchListener = (frame: PitchFrame) => void;
-export type PitchDetectorPreset = 'baseline' | 'ac14' | 'spectral_game_runtime_unified_v3' | 'fretnet';
+export type PitchDetectorPreset =
+  | 'baseline'
+  | 'ac14'
+  | 'spectral_game_runtime_unified_v3'
+  | 'fretnet'
+  | typeof MASP_GAME_SCENE_PRESET;
 
 export type SpectralRuntimeNote = {
   id: string;
@@ -92,6 +102,13 @@ const FALLBACK_PRESET_CONFIG: Record<
     decayGraceFrames: 8,
     decayEnergyFactor: 0.55,
     decayCorrelationThreshold: 0.52
+  },
+  [MASP_GAME_SCENE_PRESET]: {
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
   }
 };
 
@@ -121,6 +138,7 @@ export class PitchDetectorService {
   private backendStatusResolver: (() => void) | null = null;
   private backendStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private analyserDecayGraceFrames = 0;
+  private maspValidationContext: MaspValidationContext | null = null;
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
@@ -162,6 +180,11 @@ export class PitchDetectorService {
 
   getLegacyFallbackReason(): string | null {
     return this.legacyFallbackReason;
+  }
+
+  updateMaspValidationContext(context: MaspValidationContext | null): void {
+    this.maspValidationContext = sanitizeMaspValidationContext(context);
+    this.postMaspValidationContextToWorklet(this.maspValidationContext);
   }
 
   async start(source: AudioNode, referenceSource?: AudioNode): Promise<void> {
@@ -213,6 +236,7 @@ export class PitchDetectorService {
           detectorPreset: this.detectorPreset,
           spectralModel: this.spectralModel ?? undefined
         });
+        this.postMaspValidationContextToWorklet(this.maspValidationContext);
         workletNode.port.onmessage = (event: MessageEvent<WorkletMessagePayload>) => {
           const payload = event.data;
           if (!payload) return;
@@ -228,7 +252,9 @@ export class PitchDetectorService {
 
           const rustManagedFrame = this.detectorPreset === 'ac14' && payload.reference_policy_applied === true;
           const spectralRawFrame =
-            this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet';
+            this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+            this.detectorPreset === 'fretnet' ||
+            this.detectorPreset === MASP_GAME_SCENE_PRESET;
           const bypassPostProcessing = rustManagedFrame || spectralRawFrame;
           const incomingMidi = sanitizeMidi(payload.midi_estimate);
           const normalizedMidi = bypassPostProcessing
@@ -420,6 +446,16 @@ export class PitchDetectorService {
     });
   }
 
+  private postMaspValidationContextToWorklet(context: MaspValidationContext | null): void {
+    if (this.detectorPreset !== MASP_GAME_SCENE_PRESET) return;
+    if (!this.workletNode) return;
+    this.workletNode.port.postMessage({
+      type: 'masp_context',
+      context,
+      context_audio_time: this.ctx.currentTime
+    });
+  }
+
   private scheduleAnalyserFrame(): void {
     this.analyserRafId = requestAnimationFrame(() => {
       this.analyserRafId = null;
@@ -444,13 +480,16 @@ export class PitchDetectorService {
       const correctedMidi =
         midi === null || !Number.isFinite(midi)
           ? null
-          : this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet'
+          : this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+            this.detectorPreset === 'fretnet' ||
+            this.detectorPreset === MASP_GAME_SCENE_PRESET
             ? midi
             : applyPitchCalibration(midi, this.calibrationProfile);
       const shouldRoundMidi =
         this.roundMidi &&
         this.detectorPreset !== 'spectral_game_runtime_unified_v3' &&
-        this.detectorPreset !== 'fretnet';
+        this.detectorPreset !== 'fretnet' &&
+        this.detectorPreset !== MASP_GAME_SCENE_PRESET;
       const frame: PitchFrame = {
         t_seconds: this.ctx.currentTime,
         midi_estimate: correctedMidi === null ? null : shouldRoundMidi ? Math.round(correctedMidi) : correctedMidi,

@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { JzzTinySynth } from '../../../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../../../audio/midiScrubPlayer';
 import { PitchDetectorService } from '../../../audio/pitchDetector';
+import { MASP_GAME_SCENE_PRESET } from '../../../audio/maspShared';
 import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import { buildSpectralRuntimeModelFromTargets } from '../../../audio/spectralRuntimeModel';
@@ -172,7 +173,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       smoothingAlpha: 0,
       audioInputMode: this.audioInputMode,
       enableDspCore: true,
-      detectorPreset: 'spectral_game_runtime_unified_v3',
+      detectorPreset: MASP_GAME_SCENE_PRESET,
       spectralModel
     });
     await detector.init();

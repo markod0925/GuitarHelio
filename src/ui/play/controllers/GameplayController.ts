@@ -3,6 +3,7 @@ import {
   DEFAULT_MIN_CONFIDENCE,
   TARGET_HIT_GRACE_SECONDS
 } from '../../../app/config';
+import { buildMaspValidationContextForTargetGroup } from '../../../audio/maspShared';
 import { resolveTargetGroup, resolveTargetChordId } from '../../../guitar/targetGrouping';
 import { rateHit } from '../../../game/scoring';
 import { updateRuntimeState, type RuntimeTransition, type RuntimeUpdate } from '../../../game/stateMachine';
@@ -71,6 +72,19 @@ function getRuntimeUpdateScratch(scene: PlaySceneContext): RuntimeUpdate {
   return scene.runtimeUpdateScratch;
 }
 
+function syncMaspValidationContext(scene: PlaySceneContext, targetGroup: TargetNote[]): void {
+  const detector = scene.detector;
+  const tempoMap = scene.tempoMap;
+  if (!detector || !tempoMap) return;
+  if (targetGroup.length === 0) {
+    detector.updateMaspValidationContext(null);
+    return;
+  }
+  const playheadSec = scene.getSongSecondsFromClock();
+  const context = buildMaspValidationContextForTargetGroup(targetGroup, (tick) => tempoMap.tickToSeconds(tick), playheadSec);
+  detector.updateMaspValidationContext(context);
+}
+
 function tickRuntimeImpl(this: PlaySceneContext): void {
   if (!this.audioCtx || !this.tempoMap || this.runtime.state === PlayState.Finished || this.pauseOverlay) return;
   if (!this.playbackStarted) {
@@ -92,6 +106,7 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
 
   const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
   const active = activeGroup[0];
+  syncMaspValidationContext(this, activeGroup);
   syncActiveChordTracking(this, active);
 
   const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;

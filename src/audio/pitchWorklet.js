@@ -1,4 +1,14 @@
 import initDspCore, { DspMode, GhDspCore, PitchDetectorPreset } from './dsp-core/gh_dsp_core.js';
+import {
+  MASP_TUNED_PARAMS,
+  computeCentError,
+  computeHar,
+  computeHarmonicityH,
+  computeMbw,
+  computeValidationDecision,
+  scoreMaspMidiFrame
+} from './maspCore';
+import { MASP_GAME_SCENE_PRESET, resolveMaspResampleMode } from './maspShared';
 
 const DETECTOR_PRESETS = {
   baseline: {
@@ -44,10 +54,26 @@ const DETECTOR_PRESETS = {
     decayGraceFrames: 8,
     decayEnergyFactor: 0.55,
     decayCorrelationThreshold: 0.52
+  },
+  [MASP_GAME_SCENE_PRESET]: {
+    windowSeconds: 4096 / 22050,
+    chunkSeconds: 512 / 22050,
+    minFrequencyHz: 65,
+    maxFrequencyHz: 1200,
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
   }
 };
 
 const DEFAULT_DETECTOR_PRESET = 'baseline';
+const MASP_FFT_SIZE = 4096;
+const MASP_STRICT_SAMPLE_RATE = 22050;
+const MASP_TARGET_RMS = 0.1;
+const MASP_CONTEXT_STALE_SECONDS = 0.25;
+const MASP_HARMONIC_LOCAL_BANDWIDTH_BINS = 2;
 const MAX_DELAY_SAMPLES = 720;
 const NLMS_TAPS = 64;
 const NLMS_MU = 0.08;
@@ -66,6 +92,22 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.dspCore = null;
     this.legacyFallback = false;
     this.backendStatus = null;
+    this.maspContext = null;
+    this.maspContextAudioTime = Number.NEGATIVE_INFINITY;
+    this.maspWindow = buildHannWindow(MASP_FFT_SIZE);
+    this.maspFftPlan = buildFftPlan(MASP_FFT_SIZE);
+    this.maspStrictFrame = new Float32Array(MASP_FFT_SIZE);
+    this.maspRe = new Float64Array(MASP_FFT_SIZE);
+    this.maspIm = new Float64Array(MASP_FFT_SIZE);
+    this.maspMag = new Float32Array(MASP_FFT_SIZE / 2 + 1);
+    this.maspMaps = buildMaspHarmonicMaps(
+      MASP_STRICT_SAMPLE_RATE,
+      MASP_FFT_SIZE,
+      MASP_TUNED_PARAMS.midiMin,
+      88,
+      MASP_TUNED_PARAMS.maxHarmonics,
+      MASP_HARMONIC_LOCAL_BANDWIDTH_BINS
+    );
     this.port.onmessage = (event) => this.handleControlMessage(event.data);
     void this.initializeDspCore();
   }
@@ -89,7 +131,15 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 
   handleControlMessage(payload) {
-    if (!payload || payload.type !== 'config') return;
+    if (!payload || typeof payload !== 'object') return;
+    if (payload.type === 'masp_context') {
+      this.maspContext = sanitizeMaspContext(payload.context);
+      this.maspContextAudioTime = Number.isFinite(payload.context_audio_time)
+        ? payload.context_audio_time
+        : Number.NEGATIVE_INFINITY;
+      return;
+    }
+    if (payload.type !== 'config') return;
     if (payload.audioInputMode !== 'speaker' && payload.audioInputMode !== 'headphones') return;
     this.audioInputMode = payload.audioInputMode;
     this.spectralModel = sanitizeSpectralModel(payload.spectralModel);
@@ -114,6 +164,9 @@ class PitchProcessor extends AudioWorkletProcessor {
   resolvePitchPreset(detectorPreset) {
     if (detectorPreset === 'ac14') {
       return PitchDetectorPreset.Ac14;
+    }
+    if (detectorPreset === MASP_GAME_SCENE_PRESET) {
+      return PitchDetectorPreset.Baseline;
     }
     if (detectorPreset === 'fretnet') {
       return PitchDetectorPreset.Fretnet;
@@ -141,9 +194,28 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 
   configureAnalysisWindow(detectorConfig) {
+    if (this.detectorPreset === MASP_GAME_SCENE_PRESET) {
+      const mode = resolveMaspResampleMode(sampleRate);
+      if (mode === 'native_22050') {
+        this.bufferSize = MASP_FFT_SIZE;
+        this.hopSize = 512;
+      } else if (mode === 'decimate_44100') {
+        this.bufferSize = MASP_FFT_SIZE * 2;
+        this.hopSize = 1024;
+      } else if (mode === 'linear_48000') {
+        this.bufferSize = Math.max(MASP_FFT_SIZE, Math.round((MASP_FFT_SIZE * sampleRate) / MASP_STRICT_SAMPLE_RATE));
+        this.hopSize = Math.max(128, Math.round((512 * sampleRate) / MASP_STRICT_SAMPLE_RATE));
+      } else {
+        this.bufferSize = clampInteger(Math.round(detectorConfig.windowSeconds * sampleRate), 512, 16384);
+        this.hopSize = clampInteger(Math.round(detectorConfig.chunkSeconds * sampleRate), 128, this.bufferSize);
+      }
+      this.minLag = Math.max(1, Math.floor(sampleRate / detectorConfig.maxFrequencyHz));
+      this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / detectorConfig.minFrequencyHz));
+      return;
+    }
     const windowSamples = Math.floor(detectorConfig.windowSeconds * sampleRate);
     const hopSamples = Math.floor(detectorConfig.chunkSeconds * sampleRate);
-    this.bufferSize = clampInteger(windowSamples, 512, 8192);
+    this.bufferSize = clampInteger(windowSamples, 512, 16384);
     this.hopSize = clampInteger(hopSamples, 128, this.bufferSize);
     this.minLag = Math.max(1, Math.floor(sampleRate / detectorConfig.maxFrequencyHz));
     this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / detectorConfig.minFrequencyHz));
@@ -280,6 +352,35 @@ class PitchProcessor extends AudioWorkletProcessor {
       return true;
     }
 
+    if (this.detectorPreset === MASP_GAME_SCENE_PRESET) {
+      const maspResult = this.evaluateMaspFrame(currentTime);
+      if (maspResult) {
+        this.decayGraceFramesRemaining = 0;
+        const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
+        this.port.postMessage({
+          type: 'frame',
+          t_seconds: currentTime,
+          midi_estimate: maspResult.midiEstimate,
+          confidence: maspResult.confidence,
+          mic_rms: suppression.micRms,
+          reference_midi: referenceMidi,
+          reference_correlation: suppression.referenceCorrelation,
+          energy_ratio_db: suppression.energyRatioDb,
+          onset_strength: suppression.onsetStrength,
+          contamination_score: suppression.contaminationScore,
+          rejected_as_reference_bleed: Boolean(suppression.rejectedAsReferenceBleed),
+          reference_policy_applied: Boolean(suppression.referencePolicyApplied),
+          selected_notes: maspResult.selectedNotes,
+          chord_scores: maspResult.chordScores,
+          detected_string: maspResult.detectedString,
+          detected_fret: maspResult.detectedFret,
+          best_note_id: maspResult.bestNoteId,
+          delay_samples: suppression.delaySamples
+        });
+        return true;
+      }
+    }
+
     const hasRustPitch = Number.isFinite(suppression.pitchHz) && suppression.pitchHz > 0;
     let residualPitchHz = hasRustPitch ? suppression.pitchHz : 0;
     let residualPitchConfidence = hasRustPitch ? suppression.pitchConfidence : 0;
@@ -332,6 +433,98 @@ class PitchProcessor extends AudioWorkletProcessor {
       const idx = (this.writeIndex + i) % this.bufferSize;
       frame[i] = ring[idx];
     }
+  }
+
+  evaluateMaspFrame(nowAudioTime) {
+    const mode = resolveMaspResampleMode(sampleRate);
+    if (mode === 'unsupported') {
+      return null;
+    }
+    const context = this.maspContext;
+    if (!context) {
+      return buildMaspNoHitResult();
+    }
+    if (!Number.isFinite(this.maspContextAudioTime) || nowAudioTime - this.maspContextAudioTime > MASP_CONTEXT_STALE_SECONDS) {
+      return buildMaspNoHitResult();
+    }
+    if (context.expected_midis.length === 0 || context.expected_notes.length === 0) {
+      return buildMaspNoHitResult();
+    }
+    const playheadWithinWindow =
+      context.playhead_sec >= context.start_sec - 0.02 && context.playhead_sec <= context.end_sec + 0.02;
+    if (!playheadWithinWindow) {
+      return buildMaspNoHitResult();
+    }
+
+    const strictSamples = resampleForMasp(this.residualFrame, mode, this.maspStrictFrame);
+    if (!strictSamples) {
+      return buildMaspNoHitResult();
+    }
+    const noiseRms = clamp01(computeRms(strictSamples));
+    normalizeToTargetRms(strictSamples, MASP_TARGET_RMS);
+
+    this.maspRe.fill(0);
+    this.maspIm.fill(0);
+    for (let i = 0; i < MASP_FFT_SIZE; i += 1) {
+      this.maspRe[i] = strictSamples[i] * this.maspWindow[i];
+    }
+    fftInPlace(this.maspRe, this.maspIm, this.maspFftPlan);
+    for (let i = 0; i < this.maspMag.length; i += 1) {
+      const re = this.maspRe[i];
+      const im = this.maspIm[i];
+      this.maspMag[i] = Math.hypot(re, im);
+    }
+
+    const pitchSpectrum = scoreMaspMidiFrame(this.maspMag, this.maspMaps, MASP_TUNED_PARAMS);
+    const metrics = {
+      h: computeHarmonicityH(
+        this.maspMag,
+        pitchSpectrum,
+        MASP_STRICT_SAMPLE_RATE,
+        MASP_FFT_SIZE,
+        MASP_TUNED_PARAMS.midiMin
+      ),
+      har: computeHar(pitchSpectrum, context.expected_midis, MASP_TUNED_PARAMS.midiMin),
+      mbw: computeMbw(this.maspMag, context.expected_midis, this.maspMaps),
+      centError: computeCentError(pitchSpectrum, context.expected_midis, MASP_TUNED_PARAMS.midiMin),
+      noiseRms
+    };
+    const decision = computeValidationDecision({
+      metrics,
+      hTarget: 1.0,
+      params: MASP_TUNED_PARAMS
+    });
+    if (!decision.pass) {
+      return buildMaspNoHitResult(clamp01(decision.weightedScore));
+    }
+
+    const bestMidi = pickBestExpectedMidi(pitchSpectrum, context.expected_midis, MASP_TUNED_PARAMS.midiMin);
+    if (bestMidi === null) {
+      return buildMaspNoHitResult(clamp01(decision.weightedScore));
+    }
+
+    const noteScores = buildMaspNoteScores(context.expected_notes, pitchSpectrum, MASP_TUNED_PARAMS.midiMin);
+    const bestNote = noteScores[0] ?? null;
+    return {
+      midiEstimate: bestMidi,
+      confidence: clamp01(decision.weightedScore),
+      selectedNotes: noteScores.map((entry) => ({
+        note_id: entry.note.note_id,
+        midi: entry.note.midi,
+        string: entry.note.string,
+        fret: entry.note.fret,
+        score: entry.score
+      })),
+      chordScores: [
+        {
+          chord_id: `active_${context.expected_midis.join('_')}`,
+          score: metrics.har
+        }
+      ],
+      detectedString: bestNote ? bestNote.note.string : null,
+      detectedFret: bestNote ? bestNote.note.fret : null,
+      bestNoteId: bestNote ? bestNote.note.note_id : null
+    };
   }
 }
 
@@ -600,6 +793,183 @@ function detectPitch(samples, sampleRateHz, minLag, maxLag, options = {}) {
   return { frequencyHz, confidence };
 }
 
+function buildMaspNoHitResult(confidence = 0) {
+  return {
+    midiEstimate: null,
+    confidence: clamp01(confidence),
+    selectedNotes: [],
+    chordScores: [],
+    detectedString: null,
+    detectedFret: null,
+    bestNoteId: null
+  };
+}
+
+function pickBestExpectedMidi(pitchSpectrum, expectedMidis, midiMin) {
+  let bestMidi = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const midi of expectedMidis) {
+    if (!Number.isFinite(midi)) continue;
+    const idx = Math.round(midi) - midiMin;
+    if (idx < 0 || idx >= pitchSpectrum.length) continue;
+    const score = pitchSpectrum[idx];
+    if (score > bestScore) {
+      bestScore = score;
+      bestMidi = Math.round(midi);
+    }
+  }
+  return bestMidi;
+}
+
+function buildMaspNoteScores(expectedNotes, pitchSpectrum, midiMin) {
+  const out = [];
+  for (const note of expectedNotes) {
+    const idx = Math.round(note.midi) - midiMin;
+    const score = idx >= 0 && idx < pitchSpectrum.length ? pitchSpectrum[idx] : 0;
+    out.push({ note, score });
+  }
+  out.sort((a, b) => b.score - a.score || a.note.string - b.note.string || a.note.fret - b.note.fret);
+  return out;
+}
+
+function normalizeToTargetRms(samples, targetRms) {
+  const currentRms = computeRms(samples);
+  if (!(currentRms > 0) || !(targetRms > 0)) return;
+  const gain = targetRms / currentRms;
+  for (let i = 0; i < samples.length; i += 1) {
+    samples[i] *= gain;
+  }
+}
+
+function buildHannWindow(length) {
+  const window = new Float64Array(length);
+  if (length <= 1) {
+    if (length === 1) window[0] = 1;
+    return window;
+  }
+  const denom = length - 1;
+  for (let i = 0; i < length; i += 1) {
+    const phase = (2 * Math.PI * i) / denom;
+    window[i] = 0.5 - 0.5 * Math.cos(phase);
+  }
+  return window;
+}
+
+function buildFftPlan(nfft) {
+  const bits = Math.round(Math.log2(nfft));
+  if (1 << bits !== nfft) {
+    throw new Error(`nfft must be power of two, got ${nfft}`);
+  }
+  const bitrev = new Uint32Array(nfft);
+  for (let i = 0; i < nfft; i += 1) {
+    let x = i;
+    let y = 0;
+    for (let bit = 0; bit < bits; bit += 1) {
+      y = (y << 1) | (x & 1);
+      x >>= 1;
+    }
+    bitrev[i] = y;
+  }
+  const cos = new Float64Array(nfft / 2);
+  const sin = new Float64Array(nfft / 2);
+  for (let i = 0; i < nfft / 2; i += 1) {
+    const angle = (-2 * Math.PI * i) / nfft;
+    cos[i] = Math.cos(angle);
+    sin[i] = Math.sin(angle);
+  }
+  return { nfft, bitrev, cos, sin };
+}
+
+function fftInPlace(re, im, plan) {
+  const n = plan.nfft;
+  for (let i = 0; i < n; i += 1) {
+    const j = plan.bitrev[i];
+    if (j <= i) continue;
+    const tmpRe = re[i];
+    re[i] = re[j];
+    re[j] = tmpRe;
+    const tmpIm = im[i];
+    im[i] = im[j];
+    im[j] = tmpIm;
+  }
+
+  for (let len = 2; len <= n; len <<= 1) {
+    const half = len >> 1;
+    const step = n / len;
+    for (let start = 0; start < n; start += len) {
+      for (let k = 0; k < half; k += 1) {
+        const tableIndex = k * step;
+        const wr = plan.cos[tableIndex];
+        const wi = plan.sin[tableIndex];
+        const even = start + k;
+        const odd = even + half;
+        const tr = wr * re[odd] - wi * im[odd];
+        const ti = wr * im[odd] + wi * re[odd];
+        const ur = re[even];
+        const ui = im[even];
+        re[even] = ur + tr;
+        im[even] = ui + ti;
+        re[odd] = ur - tr;
+        im[odd] = ui - ti;
+      }
+    }
+  }
+}
+
+function buildMaspHarmonicMaps(sampleRate, nfft, midiMin, midiMax, maxHarmonics, localBandwidthBins) {
+  const nyquist = sampleRate * 0.5;
+  const hzPerBin = sampleRate / nfft;
+  const maxBin = Math.floor(nfft / 2);
+  const maps = [];
+  for (let midi = midiMin; midi <= midiMax; midi += 1) {
+    const f0 = 440 * Math.pow(2, (midi - 69) / 12);
+    const ranges = [];
+    for (let harmonic = 1; harmonic <= maxHarmonics; harmonic += 1) {
+      const harmonicHz = f0 * harmonic;
+      if (harmonicHz >= nyquist) break;
+      const center = Math.round(harmonicHz / hzPerBin);
+      ranges.push({
+        start: Math.max(0, center - localBandwidthBins),
+        end: Math.min(maxBin, center + localBandwidthBins)
+      });
+    }
+    maps.push({ midi, f0_hz: f0, ranges });
+  }
+  return maps;
+}
+
+function resampleForMasp(source, mode, out) {
+  if (!source || source.length <= 0 || out.length !== MASP_FFT_SIZE) return null;
+  if (mode === 'native_22050') {
+    if (source.length < MASP_FFT_SIZE) return null;
+    for (let i = 0; i < MASP_FFT_SIZE; i += 1) {
+      out[i] = source[i];
+    }
+    return out;
+  }
+  if (mode === 'decimate_44100') {
+    if (source.length < MASP_FFT_SIZE * 2) return null;
+    for (let i = 0; i < MASP_FFT_SIZE; i += 1) {
+      out[i] = source[i * 2];
+    }
+    return out;
+  }
+  if (mode === 'linear_48000') {
+    if (source.length < 2) return null;
+    const scale = (source.length - 1) / Math.max(1, MASP_FFT_SIZE - 1);
+    for (let i = 0; i < MASP_FFT_SIZE; i += 1) {
+      const srcPos = i * scale;
+      const srcIdx = Math.floor(srcPos);
+      const frac = srcPos - srcIdx;
+      const x0 = source[srcIdx];
+      const x1 = source[Math.min(source.length - 1, srcIdx + 1)];
+      out[i] = x0 + (x1 - x0) * frac;
+    }
+    return out;
+  }
+  return null;
+}
+
 function computeRms(samples) {
   if (!samples.length) return 0;
   let energy = 0;
@@ -722,9 +1092,56 @@ function sanitizeSpectralModel(value) {
   return { notes, chords };
 }
 
+function sanitizeMaspContext(value) {
+  if (!value || typeof value !== 'object') return null;
+  const playheadSec = sanitizeNumber(value.playhead_sec);
+  const startSec = sanitizeNumber(value.start_sec);
+  const endSec = sanitizeNumber(value.end_sec);
+  if (!Number.isFinite(playheadSec) || !Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec < startSec) {
+    return null;
+  }
+  const expectedMidis = Array.isArray(value.expected_midis)
+    ? Array.from(
+      new Set(value.expected_midis
+        .map((entry) => sanitizeOptionalInteger(entry))
+        .filter((entry) => entry !== null))
+    ).sort((a, b) => a - b)
+    : [];
+  const notesRaw = Array.isArray(value.expected_notes) ? value.expected_notes : [];
+  const expectedNotes = [];
+  for (const note of notesRaw) {
+    if (!note || typeof note !== 'object') continue;
+    const noteId = sanitizeOptionalString(note.note_id);
+    const midi = sanitizeOptionalInteger(note.midi);
+    const string = sanitizeOptionalInteger(note.string);
+    const fret = sanitizeOptionalInteger(note.fret);
+    const onsetSec = sanitizeNumber(note.onset_sec);
+    const offsetSec = sanitizeNumber(note.offset_sec);
+    if (!noteId || midi === null || string === null || fret === null) continue;
+    if (!Number.isFinite(onsetSec) || !Number.isFinite(offsetSec) || offsetSec < onsetSec) continue;
+    expectedNotes.push({
+      note_id: noteId,
+      midi,
+      string,
+      fret,
+      onset_sec: onsetSec,
+      offset_sec: offsetSec
+    });
+  }
+  if (expectedMidis.length === 0 || expectedNotes.length === 0) return null;
+  return {
+    playhead_sec: playheadSec,
+    start_sec: startSec,
+    end_sec: endSec,
+    expected_midis: expectedMidis,
+    expected_notes: expectedNotes
+  };
+}
+
 function normalizeDetectorPreset(value) {
   if (value === 'ac14') return 'ac14';
   if (value === 'fretnet') return 'fretnet';
+  if (value === MASP_GAME_SCENE_PRESET) return MASP_GAME_SCENE_PRESET;
   if (value === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
   return DEFAULT_DETECTOR_PRESET;
 }
@@ -732,6 +1149,7 @@ function normalizeDetectorPreset(value) {
 function getDetectorPresetConfig(detectorPreset) {
   if (detectorPreset === 'ac14') return DETECTOR_PRESETS.ac14;
   if (detectorPreset === 'fretnet') return DETECTOR_PRESETS.fretnet;
+  if (detectorPreset === MASP_GAME_SCENE_PRESET) return DETECTOR_PRESETS[MASP_GAME_SCENE_PRESET];
   if (detectorPreset === 'spectral_game_runtime_unified_v3') {
     return DETECTOR_PRESETS.spectral_game_runtime_unified_v3;
   }
