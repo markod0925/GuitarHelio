@@ -78,15 +78,33 @@ const MAX_DELAY_SAMPLES = 720;
 const NLMS_TAPS = 64;
 const NLMS_MU = 0.08;
 const NLMS_EPS = 1e-6;
+const PROFILING_REPORT_INTERVAL_MS = 250;
+const PROFILING_MAX_WINDOW_SAMPLES = 96;
+const PROFILING_MIN_ANALYSES_PER_REPORT = 8;
 
 class PitchProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.detectorPreset = normalizeDetectorPreset(options?.processorOptions?.detectorPreset);
     this.detectorConfig = getDetectorPresetConfig(this.detectorPreset);
+    this.profilingWindowDurationsMs = [];
+    this.profilingWindowTotalMs = 0;
+    this.profilingWindowEchoMs = 0;
+    this.profilingWindowMaspMs = 0;
+    this.profilingWindowPitchMs = 0;
+    this.profilingWindowOverBudgetCount = 0;
+    this.profilingAnalysisTotalCount = 0;
+    this.profilingOverBudgetTotalCount = 0;
+    this.profilingEmittedFramesTotal = 0;
+    this.profilingMaspContextUpdatesTotal = 0;
+    this.profilingConfigUpdatesTotal = 0;
+    this.profilingAnalysesSinceLastReport = 0;
+    this.profilingLastReportAtMs = readMonotonicTimeMs() ?? 0;
     this.configureAnalysisWindow(this.detectorConfig);
     this.resetAnalysisState();
     this.audioInputMode = 'speaker';
+    this.enableEchoSuppression = true;
+    this.enableProfiling = false;
     this.spectralModel = sanitizeSpectralModel(options?.processorOptions?.spectralModel);
     this.dspWasmBytes = options?.processorOptions?.dspWasmBytes ?? null;
     this.dspCore = null;
@@ -137,12 +155,27 @@ class PitchProcessor extends AudioWorkletProcessor {
       this.maspContextAudioTime = Number.isFinite(payload.context_audio_time)
         ? payload.context_audio_time
         : Number.NEGATIVE_INFINITY;
+      if (this.enableProfiling) {
+        this.profilingMaspContextUpdatesTotal += 1;
+      }
       return;
     }
     if (payload.type !== 'config') return;
     if (payload.audioInputMode !== 'speaker' && payload.audioInputMode !== 'headphones') return;
     this.audioInputMode = payload.audioInputMode;
+    if (typeof payload.enableEchoSuppression === 'boolean') {
+      this.enableEchoSuppression = payload.enableEchoSuppression;
+    }
+    if (typeof payload.enableProfiling === 'boolean') {
+      this.enableProfiling = payload.enableProfiling;
+      if (!this.enableProfiling) {
+        this.resetProfilingWindow();
+      }
+    }
     this.spectralModel = sanitizeSpectralModel(payload.spectralModel);
+    if (this.enableProfiling) {
+      this.profilingConfigUpdatesTotal += 1;
+    }
     const nextPreset = normalizeDetectorPreset(payload.detectorPreset);
     if (nextPreset !== this.detectorPreset) {
       this.detectorPreset = nextPreset;
@@ -211,6 +244,7 @@ class PitchProcessor extends AudioWorkletProcessor {
       }
       this.minLag = Math.max(1, Math.floor(sampleRate / detectorConfig.maxFrequencyHz));
       this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / detectorConfig.minFrequencyHz));
+      this.resetProfilingWindow();
       return;
     }
     const windowSamples = Math.floor(detectorConfig.windowSeconds * sampleRate);
@@ -219,6 +253,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.hopSize = clampInteger(hopSamples, 128, this.bufferSize);
     this.minLag = Math.max(1, Math.floor(sampleRate / detectorConfig.maxFrequencyHz));
     this.maxLag = Math.max(this.minLag + 1, Math.floor(sampleRate / detectorConfig.minFrequencyHz));
+    this.resetProfilingWindow();
   }
 
   resetAnalysisState() {
@@ -246,6 +281,110 @@ class PitchProcessor extends AudioWorkletProcessor {
     });
   }
 
+  emitFrame(payload) {
+    if (this.enableProfiling) {
+      this.profilingEmittedFramesTotal += 1;
+    }
+    this.port.postMessage(payload);
+  }
+
+  getAnalysisBudgetMs() {
+    if (!Number.isFinite(this.hopSize) || this.hopSize <= 0 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+      return 0;
+    }
+    return (this.hopSize / sampleRate) * 1000;
+  }
+
+  recordProfilingSample(totalMs, echoMs, maspMs, pitchMs) {
+    if (!this.enableProfiling) {
+      return;
+    }
+    const safeTotalMs = sanitizeNonNegativeNumber(totalMs);
+    const safeEchoMs = sanitizeNonNegativeNumber(echoMs);
+    const safeMaspMs = sanitizeNonNegativeNumber(maspMs);
+    const safePitchMs = sanitizeNonNegativeNumber(pitchMs);
+    const budgetMs = this.getAnalysisBudgetMs();
+    this.profilingAnalysisTotalCount += 1;
+    this.profilingAnalysesSinceLastReport += 1;
+    this.profilingWindowDurationsMs.push(safeTotalMs);
+    this.profilingWindowTotalMs += safeTotalMs;
+    this.profilingWindowEchoMs += safeEchoMs;
+    this.profilingWindowMaspMs += safeMaspMs;
+    this.profilingWindowPitchMs += safePitchMs;
+    if (budgetMs > 0 && safeTotalMs > budgetMs) {
+      this.profilingWindowOverBudgetCount += 1;
+      this.profilingOverBudgetTotalCount += 1;
+    }
+
+    const analysesWindow = this.profilingWindowDurationsMs.length;
+    if (analysesWindow === 0) {
+      return;
+    }
+    const nowMs = readMonotonicTimeMs();
+    const reportIntervalMs = nowMs !== null ? Math.max(0, nowMs - this.profilingLastReportAtMs) : 0;
+    const intervalReached = nowMs === null || reportIntervalMs >= PROFILING_REPORT_INTERVAL_MS;
+    const enoughSamples = this.profilingAnalysesSinceLastReport >= PROFILING_MIN_ANALYSES_PER_REPORT;
+    const cappedWindow = analysesWindow >= PROFILING_MAX_WINDOW_SAMPLES;
+    if ((!intervalReached || !enoughSamples) && !cappedWindow) {
+      return;
+    }
+
+    const sortedDurations = [...this.profilingWindowDurationsMs].sort((a, b) => a - b);
+    const p95Index = Math.min(sortedDurations.length - 1, Math.max(0, Math.ceil(sortedDurations.length * 0.95) - 1));
+    const analysisMsP95 = sortedDurations[p95Index] ?? 0;
+    const analysisMsMax = sortedDurations[sortedDurations.length - 1] ?? 0;
+    const analysisMsAvg = analysesWindow > 0 ? this.profilingWindowTotalMs / analysesWindow : 0;
+    const loadPctAvg = budgetMs > 0 ? (analysisMsAvg / budgetMs) * 100 : 0;
+    const loadPctP95 = budgetMs > 0 ? (analysisMsP95 / budgetMs) * 100 : 0;
+    const shareEchoPct = this.profilingWindowTotalMs > 0 ? (this.profilingWindowEchoMs / this.profilingWindowTotalMs) * 100 : 0;
+    const shareMaspPct = this.profilingWindowTotalMs > 0 ? (this.profilingWindowMaspMs / this.profilingWindowTotalMs) * 100 : 0;
+    const sharePitchPct = this.profilingWindowTotalMs > 0 ? (this.profilingWindowPitchMs / this.profilingWindowTotalMs) * 100 : 0;
+
+    this.port.postMessage({
+      type: 'profiling',
+      detector_preset: this.detectorPreset,
+      sample_rate: sampleRate,
+      buffer_size: this.bufferSize,
+      hop_size: this.hopSize,
+      budget_ms: budgetMs,
+      analysis_ms_avg: analysisMsAvg,
+      analysis_ms_p95: analysisMsP95,
+      analysis_ms_max: analysisMsMax,
+      load_pct_avg: loadPctAvg,
+      load_pct_p95: loadPctP95,
+      share_echo_pct: shareEchoPct,
+      share_masp_pct: shareMaspPct,
+      share_pitch_pct: sharePitchPct,
+      analyses_window: analysesWindow,
+      analyses_total: this.profilingAnalysisTotalCount,
+      over_budget_window: this.profilingWindowOverBudgetCount,
+      over_budget_total: this.profilingOverBudgetTotalCount,
+      emitted_frames_total: this.profilingEmittedFramesTotal,
+      masp_context_updates_total: this.profilingMaspContextUpdatesTotal,
+      config_updates_total: this.profilingConfigUpdatesTotal,
+      report_interval_ms: reportIntervalMs > 0 ? reportIntervalMs : analysesWindow * budgetMs,
+      t_audio_seconds: currentTime
+    });
+
+    if (nowMs !== null) {
+      this.profilingLastReportAtMs = nowMs;
+    }
+    this.resetProfilingWindow();
+  }
+
+  resetProfilingWindow() {
+    if (!Array.isArray(this.profilingWindowDurationsMs)) {
+      this.profilingWindowDurationsMs = [];
+    }
+    this.profilingWindowDurationsMs.length = 0;
+    this.profilingWindowTotalMs = 0;
+    this.profilingWindowEchoMs = 0;
+    this.profilingWindowMaspMs = 0;
+    this.profilingWindowPitchMs = 0;
+    this.profilingWindowOverBudgetCount = 0;
+    this.profilingAnalysesSinceLastReport = 0;
+  }
+
   process(inputs) {
     const micChannel = inputs[0]?.[0];
     if (!micChannel) return true;
@@ -264,42 +403,60 @@ class PitchProcessor extends AudioWorkletProcessor {
     }
     this.samplesSinceLastAnalysis = 0;
 
+    const analysisStartedAtMs = this.enableProfiling ? readMonotonicTimeMs() : null;
     this.copyRingToFrame(this.micRing, this.micFrame);
     this.copyRingToFrame(this.referenceRing, this.referenceFrame);
 
+    let echoMs = 0;
+    let maspMs = 0;
+    let pitchMs = 0;
     let suppression;
-    try {
-      suppression =
-        this.dspCore && !this.legacyFallback
-          ? processEchoSuppressionWithCore(
-              this.dspCore,
-              this.micFrame,
-              this.referenceFrame,
-              this.alignedReferenceFrame,
-              this.residualFrame,
-              this.prevMicRms,
-              this.detectorPreset
-            )
-          : processEchoSuppression(
-              this.micFrame,
-              this.referenceFrame,
-              this.alignedReferenceFrame,
-              this.residualFrame,
-              this.nlmsWeights,
-              this.prevMicRms
-            );
-    } catch (error) {
-      this.dspCore = null;
-      this.legacyFallback = true;
-      this.publishBackendStatus(true, toErrorMessage(error));
-      suppression = processEchoSuppression(
+    const echoStartedAtMs = this.enableProfiling ? readMonotonicTimeMs() : null;
+    if (!this.enableEchoSuppression) {
+      suppression = processEchoSuppressionBypass(
         this.micFrame,
         this.referenceFrame,
         this.alignedReferenceFrame,
         this.residualFrame,
-        this.nlmsWeights,
         this.prevMicRms
       );
+    } else {
+      try {
+        suppression =
+          this.dspCore && !this.legacyFallback
+            ? processEchoSuppressionWithCore(
+                this.dspCore,
+                this.micFrame,
+                this.referenceFrame,
+                this.alignedReferenceFrame,
+                this.residualFrame,
+                this.prevMicRms,
+                this.detectorPreset
+              )
+            : processEchoSuppression(
+                this.micFrame,
+                this.referenceFrame,
+                this.alignedReferenceFrame,
+                this.residualFrame,
+                this.nlmsWeights,
+                this.prevMicRms
+              );
+      } catch (error) {
+        this.dspCore = null;
+        this.legacyFallback = true;
+        this.publishBackendStatus(true, toErrorMessage(error));
+        suppression = processEchoSuppression(
+          this.micFrame,
+          this.referenceFrame,
+          this.alignedReferenceFrame,
+          this.residualFrame,
+          this.nlmsWeights,
+          this.prevMicRms
+        );
+      }
+    }
+    if (this.enableProfiling) {
+      echoMs = computeElapsedMs(echoStartedAtMs, readMonotonicTimeMs());
     }
     this.prevMicRms = suppression.micRms;
 
@@ -307,7 +464,7 @@ class PitchProcessor extends AudioWorkletProcessor {
       this.decayGraceFramesRemaining = 0;
       const midiEstimate = sanitizeMidiEstimate(suppression.midiEstimate);
       const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
-      this.port.postMessage({
+      this.emitFrame({
         type: 'frame',
         t_seconds: currentTime,
         midi_estimate: midiEstimate,
@@ -322,6 +479,9 @@ class PitchProcessor extends AudioWorkletProcessor {
         reference_policy_applied: true,
         delay_samples: suppression.delaySamples
       });
+      if (this.enableProfiling) {
+        this.recordProfilingSample(computeElapsedMs(analysisStartedAtMs, readMonotonicTimeMs()), echoMs, maspMs, pitchMs);
+      }
       return true;
     }
 
@@ -329,7 +489,7 @@ class PitchProcessor extends AudioWorkletProcessor {
       this.decayGraceFramesRemaining = 0;
       const midiEstimate = sanitizeMidiEstimate(suppression.midiEstimate);
       const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
-      this.port.postMessage({
+      this.emitFrame({
         type: 'frame',
         t_seconds: currentTime,
         midi_estimate: midiEstimate,
@@ -349,15 +509,22 @@ class PitchProcessor extends AudioWorkletProcessor {
         best_note_id: suppression.bestNoteId,
         delay_samples: suppression.delaySamples
       });
+      if (this.enableProfiling) {
+        this.recordProfilingSample(computeElapsedMs(analysisStartedAtMs, readMonotonicTimeMs()), echoMs, maspMs, pitchMs);
+      }
       return true;
     }
 
     if (this.detectorPreset === MASP_GAME_SCENE_PRESET) {
+      const maspStartedAtMs = this.enableProfiling ? readMonotonicTimeMs() : null;
       const maspResult = this.evaluateMaspFrame(currentTime);
+      if (this.enableProfiling) {
+        maspMs = computeElapsedMs(maspStartedAtMs, readMonotonicTimeMs());
+      }
       if (maspResult) {
         this.decayGraceFramesRemaining = 0;
         const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
-        this.port.postMessage({
+        this.emitFrame({
           type: 'frame',
           t_seconds: currentTime,
           midi_estimate: maspResult.midiEstimate,
@@ -377,10 +544,14 @@ class PitchProcessor extends AudioWorkletProcessor {
           best_note_id: maspResult.bestNoteId,
           delay_samples: suppression.delaySamples
         });
+        if (this.enableProfiling) {
+          this.recordProfilingSample(computeElapsedMs(analysisStartedAtMs, readMonotonicTimeMs()), echoMs, maspMs, pitchMs);
+        }
         return true;
       }
     }
 
+    const pitchStartedAtMs = this.enableProfiling ? readMonotonicTimeMs() : null;
     const hasRustPitch = Number.isFinite(suppression.pitchHz) && suppression.pitchHz > 0;
     let residualPitchHz = hasRustPitch ? suppression.pitchHz : 0;
     let residualPitchConfidence = hasRustPitch ? suppression.pitchConfidence : 0;
@@ -409,10 +580,13 @@ class PitchProcessor extends AudioWorkletProcessor {
       energyThreshold: this.detectorConfig.energyThreshold,
       correlationThreshold: this.detectorConfig.correlationThreshold
     });
+    if (this.enableProfiling) {
+      pitchMs = computeElapsedMs(pitchStartedAtMs, readMonotonicTimeMs());
+    }
     const residualMidiEstimate = residualPitchHz > 0 ? 69 + 12 * Math.log2(residualPitchHz / 440) : null;
     const referenceMidiEstimate = referencePitch.frequencyHz > 0 ? 69 + 12 * Math.log2(referencePitch.frequencyHz / 440) : null;
 
-    this.port.postMessage({
+    this.emitFrame({
       type: 'frame',
       t_seconds: currentTime,
       midi_estimate: residualMidiEstimate,
@@ -425,6 +599,9 @@ class PitchProcessor extends AudioWorkletProcessor {
       contamination_score: suppression.contaminationScore,
       delay_samples: suppression.delaySamples
     });
+    if (this.enableProfiling) {
+      this.recordProfilingSample(computeElapsedMs(analysisStartedAtMs, readMonotonicTimeMs()), echoMs, maspMs, pitchMs);
+    }
     return true;
   }
 
@@ -649,6 +826,56 @@ function processEchoSuppression(
     onsetStrength,
     contaminationScore,
     micRms
+  };
+}
+
+function processEchoSuppressionBypass(
+  mic,
+  reference,
+  alignedReference,
+  residual,
+  previousMicRms
+) {
+  const copyLength = Math.min(mic.length, residual.length);
+  for (let i = 0; i < copyLength; i += 1) {
+    residual[i] = mic[i];
+  }
+  for (let i = copyLength; i < residual.length; i += 1) {
+    residual[i] = 0;
+  }
+
+  const alignedLength = Math.min(reference.length, alignedReference.length);
+  for (let i = 0; i < alignedLength; i += 1) {
+    alignedReference[i] = reference[i];
+  }
+  for (let i = alignedLength; i < alignedReference.length; i += 1) {
+    alignedReference[i] = 0;
+  }
+
+  const micRms = computeRms(mic);
+  const referenceRms = computeRms(alignedReference);
+  const energyRatioDb = 20 * Math.log10((micRms + 1e-6) / (referenceRms + 1e-6));
+  const onsetStrength = clamp01((micRms - previousMicRms) / Math.max(previousMicRms, 1e-4));
+
+  return {
+    delaySamples: 0,
+    referenceCorrelation: 0,
+    energyRatioDb,
+    onsetStrength,
+    contaminationScore: 0,
+    micRms,
+    midiEstimate: null,
+    confidence: 0,
+    referenceMidi: null,
+    pitchHz: 0,
+    pitchConfidence: 0,
+    rejectedAsReferenceBleed: false,
+    referencePolicyApplied: false,
+    selectedNotes: [],
+    chordScores: [],
+    detectedString: null,
+    detectedFret: null,
+    bestNoteId: null
   };
 }
 
@@ -1159,6 +1386,31 @@ function getDetectorPresetConfig(detectorPreset) {
 function clampInteger(value, min, max) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function sanitizeNonNegativeNumber(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, value);
+}
+
+function readMonotonicTimeMs() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  if (typeof Date !== 'undefined' && typeof Date.now === 'function') {
+    return Date.now();
+  }
+  if (typeof currentTime === 'number' && Number.isFinite(currentTime)) {
+    return currentTime * 1000;
+  }
+  return null;
+}
+
+function computeElapsedMs(startMs, endMs) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return 0;
+  }
+  return Math.max(0, endMs - startMs);
 }
 
 function toErrorMessage(error) {

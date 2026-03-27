@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { DIFFICULTY_PRESETS } from '../../../app/config';
+import { MAX_ALLOWED_FRET, MIN_ALLOWED_FRET } from '../../../app/sessionSettingsConfig';
 import {
   loadSessionSettingsPreference,
   resetAllSongHighScores,
@@ -235,7 +236,7 @@ export class SongSessionController {
     this.audioInputMode = stored.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.selectedStrings = new Set(sanitizeSettingValues(stored.selectedStrings, 1, 6));
     this.selectedFingers = new Set(sanitizeSettingValues(stored.selectedFingers, 1, 4));
-    this.selectedFrets = new Set(sanitizeSettingValues(stored.selectedFrets, 0, 21));
+    this.selectedFrets = new Set(sanitizeSettingValues(stored.selectedFrets, MIN_ALLOWED_FRET, MAX_ALLOWED_FRET));
   }
 
   private persistSessionSettingsPreference(): void {
@@ -600,14 +601,14 @@ export class SongSessionController {
 
     const fretsTitleY = panelY + panelHeight * 0.09;
     const fretsTitle = this.scene.add
-      .text(panelX - panelWidth * 0.42, fretsTitleY, 'Frets (0-21)', {
+      .text(panelX - panelWidth * 0.42, fretsTitleY, `Frets (${MIN_ALLOWED_FRET}-${MAX_ALLOWED_FRET})`, {
         color: '#cbd5e1',
         fontFamily: 'Montserrat, sans-serif',
         fontSize: `${Math.max(14, labelSize)}px`
       })
       .setOrigin(0, 0.5);
 
-    const fretCols = 11;
+    const fretCols = 10;
     const fretSpacingX = Math.min(70, panelWidth * 0.078) - 5;
     const fretButtonWidth = Math.min(52, panelWidth * 0.058);
     const panelRight = panelX + panelWidth * 0.5;
@@ -845,7 +846,7 @@ export class SongSessionController {
     buttonHeight: number,
     labelSize: number
   ): ToggleOption[] {
-    const values = rangeInclusive(0, 21);
+    const values = rangeInclusive(MIN_ALLOWED_FRET, MAX_ALLOWED_FRET);
     const options: ToggleOption[] = [];
 
     values.forEach((value, index) => {

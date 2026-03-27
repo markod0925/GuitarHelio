@@ -18,6 +18,8 @@ type ChordHitProgress = {
   valid: boolean;
 };
 
+const MASP_CONTEXT_MIN_SYNC_INTERVAL_SECONDS = 0.05;
+
 export class GameplayController {
   constructor(private readonly scene: PlaySceneContext) {}
 
@@ -76,13 +78,40 @@ function syncMaspValidationContext(scene: PlaySceneContext, targetGroup: TargetN
   const detector = scene.detector;
   const tempoMap = scene.tempoMap;
   if (!detector || !tempoMap) return;
+  const playheadSec = scene.getSongSecondsFromClock();
+
   if (targetGroup.length === 0) {
-    detector.updateMaspValidationContext(null);
+    if (scene.activeMaspContextTargetKey !== '') {
+      detector.updateMaspValidationContext(null);
+      scene.activeMaspContextTargetKey = '';
+      scene.lastMaspContextSyncSongSeconds = playheadSec;
+    }
     return;
   }
-  const playheadSec = scene.getSongSecondsFromClock();
+  const targetKey = buildMaspTargetKey(targetGroup);
+  const syncElapsed = playheadSec - scene.lastMaspContextSyncSongSeconds;
+  const shouldSync = targetKey !== scene.activeMaspContextTargetKey || syncElapsed < 0 || syncElapsed >= MASP_CONTEXT_MIN_SYNC_INTERVAL_SECONDS;
+  if (!shouldSync) {
+    return;
+  }
+
   const context = buildMaspValidationContextForTargetGroup(targetGroup, (tick) => tempoMap.tickToSeconds(tick), playheadSec);
+  if (!context) {
+    if (scene.activeMaspContextTargetKey !== '') {
+      detector.updateMaspValidationContext(null);
+      scene.activeMaspContextTargetKey = '';
+      scene.lastMaspContextSyncSongSeconds = playheadSec;
+    }
+    return;
+  }
+
   detector.updateMaspValidationContext(context);
+  scene.activeMaspContextTargetKey = targetKey;
+  scene.lastMaspContextSyncSongSeconds = playheadSec;
+}
+
+function buildMaspTargetKey(targetGroup: TargetNote[]): string {
+  return targetGroup.map((target) => target.id).join('|');
 }
 
 function tickRuntimeImpl(this: PlaySceneContext): void {

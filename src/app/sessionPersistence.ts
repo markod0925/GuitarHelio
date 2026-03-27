@@ -3,6 +3,7 @@ import {
   parseAudioInputMode,
   type AudioInputMode
 } from '../types/audioInputMode';
+import { MAX_ALLOWED_FRET, MIN_ALLOWED_FRET } from './sessionSettingsConfig';
 
 export type PersistedDifficulty = 'Easy' | 'Medium' | 'Hard';
 
@@ -28,7 +29,7 @@ export function loadSessionSettingsPreference(): PersistedSessionSettings | null
   const audioInputMode = parseAudioInputMode(data.audioInputMode) ?? DEFAULT_AUDIO_INPUT_MODE;
   const selectedStrings = parseNumberList(data.selectedStrings, 1, 6);
   const selectedFingers = parseNumberList(data.selectedFingers, 1, 4);
-  const selectedFrets = parseNumberList(data.selectedFrets, 0, 21);
+  const selectedFrets = parseNumberList(data.selectedFrets, MIN_ALLOWED_FRET, MAX_ALLOWED_FRET);
   if (!difficulty || !selectedStrings || !selectedFingers || !selectedFrets) {
     return null;
   }
@@ -49,7 +50,7 @@ export function saveSessionSettingsPreference(settings: PersistedSessionSettings
 
   const selectedStrings = normalizeNumberList(settings.selectedStrings, 1, 6);
   const selectedFingers = normalizeNumberList(settings.selectedFingers, 1, 4);
-  const selectedFrets = normalizeNumberList(settings.selectedFrets, 0, 21);
+  const selectedFrets = normalizeNumberList(settings.selectedFrets, MIN_ALLOWED_FRET, MAX_ALLOWED_FRET);
 
   writeStoredJson(SESSION_SETTINGS_STORAGE_KEY, {
     difficulty,

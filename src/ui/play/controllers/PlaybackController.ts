@@ -14,7 +14,11 @@ import {
   resolveSongSecondsForRuntime,
   sanitizeSongSeconds
 } from '../../playbackResumeState';
-import { DEFAULT_GATING_TIMEOUT_SECONDS } from '../../../app/config';
+import {
+  DEFAULT_GATING_TIMEOUT_SECONDS,
+  PLAY_SCENE_ENABLE_ECHO_SUPPRESSION,
+  PLAY_SCENE_ENABLE_PROFILING
+} from '../../../app/config';
 import {
   getSongSecondsFromClock as getSongSecondsFromClockValue,
   pausePlaybackClock as pausePlaybackClockState,
@@ -160,6 +164,8 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   const playbackNotes = buildPlaybackNotes(sourceNotes, this.ticksPerQuarter);
   this.scrubPlayer = new MidiScrubPlayer(compositeOutput, playbackNotes, Math.max(1, Math.floor(this.ticksPerQuarter / 2)));
   this.gameplayPitchStabilizer = undefined;
+  this.audioProfilingSnapshot = undefined;
+  this.audioProfilingSnapshotAtMs = 0;
 
   try {
     const micSource = await createMicNode(audioCtx, {
@@ -173,6 +179,8 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       smoothingAlpha: 0,
       audioInputMode: this.audioInputMode,
       enableDspCore: true,
+      enableEchoSuppression: PLAY_SCENE_ENABLE_ECHO_SUPPRESSION,
+      enableProfiling: PLAY_SCENE_ENABLE_PROFILING,
       detectorPreset: MASP_GAME_SCENE_PRESET,
       spectralModel
     });
@@ -192,7 +200,16 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       if (this.runtime.state === PlayState.Finished) return;
       this.latestFrames.push(gameplayPitchStabilizer.update(frame));
     });
-    await detector.start(micSource, this.referenceInputGain ?? undefined);
+    if (PLAY_SCENE_ENABLE_PROFILING) {
+      detector.onProfiling((snapshot) => {
+        this.audioProfilingSnapshot = snapshot;
+        this.audioProfilingSnapshotAtMs = performance.now();
+      });
+    }
+    await detector.start(
+      micSource,
+      PLAY_SCENE_ENABLE_ECHO_SUPPRESSION ? this.referenceInputGain ?? undefined : undefined
+    );
     this.detectorLegacyFallback = detector.isLegacyFallback();
     if (this.detectorLegacyFallback) {
       const reason = detector.getLegacyFallbackReason();
@@ -206,6 +223,8 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
     console.error('Microphone setup failed', error);
     this.detectorLegacyFallback = false;
     this.gameplayPitchStabilizer = undefined;
+    this.audioProfilingSnapshot = undefined;
+    this.audioProfilingSnapshotAtMs = 0;
     if (this.profile.gating_timeout_seconds === undefined) {
       this.fallbackTimeoutSeconds = DEFAULT_GATING_TIMEOUT_SECONDS;
     }

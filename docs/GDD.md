@@ -465,7 +465,9 @@ Pitch analysis MUST run through a DSP stage with preset-dependent analysis signa
 
 - `baseline` / `ac14`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
 - `spectral_game_runtime_unified_v3`: `mic + reference -> delay estimate -> aligned reference diagnostics + clean mic analysis -> spectral pitch detector`
-- `masp_game_scene_ts_v1` (PlayScene only): `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> MASP score-informed validator`
+- `masp_game_scene_ts_v1` (PlayScene only): configurable by `PLAY_SCENE_ENABLE_ECHO_SUPPRESSION`:
+  - `true`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> MASP score-informed validator`
+  - `false` (current default): `mic -> residual passthrough -> MASP score-informed validator` (echo suppression path disabled)
 
 For `masp_game_scene_ts_v1`, runtime MUST use strict MASP frontend settings:
 - target sample rate `22050`
@@ -844,7 +846,7 @@ Inside this panel, the user can choose:
 
 * allowed strings as an explicit list from 1 to 6 (non-contiguous selections allowed)
 * allowed fingers as an explicit list from 1 to 4 (non-contiguous selections allowed)
-* allowed frets as an explicit list from 0 to 21 (non-contiguous selections allowed)
+* allowed frets as an explicit list from 0 to 18 (non-contiguous selections allowed, 19 total fret toggles)
 
 The number of active fingers is defined by how many fingers are selected.
 
@@ -941,7 +943,7 @@ The tuner MUST also provide a microphone calibration workflow based on multi-poi
 * the same calibration curve SHOULD be applicable to gameplay pitch validation (PlayScene) when using autocorrelation detector paths; `spectral_game_runtime_unified_v3` and `masp_game_scene_ts_v1` keep raw backend output
 * when calibration completes successfully, UI MUST show a popup summary with calibration parameters (points/offsets/quality metrics)
 * this summary popup MUST close on any click/tap anywhere on screen
-* while tuner is active, if current target string stays inside in-tune green band (`±10c`) for at least `0.5` continuous seconds:
+* while tuner is active, if current target string stays inside in-tune green band (`±10c`) for at least `1.0` continuous second:
   - current string toggle MUST be marked as tuned (green)
   - tuner MUST auto-select the next string in tuning sequence and continue until no strings remain
 

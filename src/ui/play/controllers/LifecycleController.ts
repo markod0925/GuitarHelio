@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import {
   DEFAULT_HOLD_MS,
   DEFAULT_MIN_CONFIDENCE,
-  DEFAULT_GATING_TIMEOUT_SECONDS
+  DEFAULT_GATING_TIMEOUT_SECONDS,
+  PLAY_SCENE_ENABLE_DEBUG_OVERLAY,
+  PLAY_SCENE_ENABLE_PROFILING
 } from '../../../app/config';
 import { createInitialRuntimeState } from '../../../game/stateMachine';
 import {
@@ -13,6 +15,7 @@ import { releaseMicStream } from '../../AudioController';
 import { isGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
+const MAIN_LOOP_BUDGET_MS = 16.67;
 
 export class LifecycleController {
   constructor(private readonly scene: PlaySceneContext) {}
@@ -36,6 +39,7 @@ export class LifecycleController {
 
 function initializeSessionStateImpl(this: PlaySceneContext): void {
   void enableKeepScreenOnDuringPlayScene();
+  stopLongTaskObserver(this);
   const sceneClass = this.constructor as PlaySceneStatics;
   this.runtime = createInitialRuntimeState();
   this.scoreEvents = [];
@@ -44,6 +48,8 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.correctlyHitTargetIds.clear();
   this.chordHitTargetIds.clear();
   this.activeChordTrackingId = undefined;
+  this.activeMaspContextTargetKey = '';
+  this.lastMaspContextSyncSongSeconds = Number.NEGATIVE_INFINITY;
   this.latestFrames.clear();
   this.gameplayPitchStabilizer?.reset();
   this.waitingStartMs = null;
@@ -88,7 +94,23 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.lastRuntimeTransition = 'none';
   this.lastRuntimeTransitionAtMs = 0;
   this.lastAudioSeekDebug = undefined;
-  this.debugOverlayEnabled = isGameplayDebugOverlayEnabled();
+  this.runtimeLoopSampleCount = 0;
+  this.runtimeLoopSampleCursor = 0;
+  this.runtimeLoopOverBudgetCount = 0;
+  this.runtimeLoopLastDurationMs = 0;
+  this.runtimeLoopLastAtMs = 0;
+  this.hudUpdateSampleCount = 0;
+  this.hudUpdateSampleCursor = 0;
+  this.hudUpdateOverBudgetCount = 0;
+  this.hudUpdateLastDurationMs = 0;
+  this.hudUpdateLastAtMs = 0;
+  this.longTaskCount = 0;
+  this.longTaskTotalDurationMs = 0;
+  this.longTaskMaxDurationMs = 0;
+  this.longTaskLastAtMs = 0;
+  this.audioProfilingSnapshot = undefined;
+  this.audioProfilingSnapshotAtMs = 0;
+  this.debugOverlayEnabled = PLAY_SCENE_ENABLE_DEBUG_OVERLAY && isGameplayDebugOverlayEnabled();
   this.playbackSpeedMultiplier = sceneClass.PLAYBACK_SPEED_DEFAULT;
 }
 
@@ -107,10 +129,24 @@ function registerResizeHandlerImpl(this: PlaySceneContext): void {
 }
 
 function startRuntimeLoopImpl(this: PlaySceneContext): void {
+  if (PLAY_SCENE_ENABLE_PROFILING) {
+    startLongTaskObserver(this);
+  }
   this.runtimeTimer = this.time.addEvent({
     delay: 16,
     loop: true,
-    callback: () => this.tickRuntime()
+    callback: () => {
+      if (!PLAY_SCENE_ENABLE_PROFILING) {
+        this.tickRuntime();
+        return;
+      }
+      const startedAt = readClockMs();
+      try {
+        this.tickRuntime();
+      } finally {
+        recordRuntimeLoopDuration(this, readClockMs() - startedAt);
+      }
+    }
   });
   this.schedulePlaybackStart();
   this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
@@ -118,6 +154,7 @@ function startRuntimeLoopImpl(this: PlaySceneContext): void {
 
 function cleanupImpl(this: PlaySceneContext): void {
   void disableKeepScreenOnAfterPlayScene();
+  stopLongTaskObserver(this);
   this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);
   this.input.keyboard?.off('keydown-F3', this.toggleDebugOverlay, this);
 
@@ -251,4 +288,73 @@ function cleanupImpl(this: PlaySceneContext): void {
     void this.audioCtx.close();
   }
   this.audioCtx = undefined;
+}
+
+function recordRuntimeLoopDuration(scene: PlaySceneContext, durationMs: number): void {
+  const sample = sanitizeDuration(durationMs);
+  const cursor = scene.runtimeLoopSampleCursor;
+  scene.runtimeLoopDurationsMs[cursor] = sample;
+  scene.runtimeLoopSampleCursor = (cursor + 1) % scene.runtimeLoopDurationsMs.length;
+  scene.runtimeLoopSampleCount = Math.min(scene.runtimeLoopDurationsMs.length, scene.runtimeLoopSampleCount + 1);
+  scene.runtimeLoopLastDurationMs = sample;
+  scene.runtimeLoopLastAtMs = readClockMs();
+  if (sample > MAIN_LOOP_BUDGET_MS) {
+    scene.runtimeLoopOverBudgetCount += 1;
+  }
+}
+
+function startLongTaskObserver(scene: PlaySceneContext): void {
+  stopLongTaskObserver(scene);
+  if (typeof PerformanceObserver === 'undefined') return;
+  let observer: PerformanceObserver;
+  try {
+    observer = new PerformanceObserver((list) => {
+      const entries = list.getEntries();
+      if (!entries.length) return;
+      const now = readClockMs();
+      for (const entry of entries) {
+        const duration = sanitizeDuration(entry.duration);
+        scene.longTaskCount += 1;
+        scene.longTaskTotalDurationMs += duration;
+        scene.longTaskMaxDurationMs = Math.max(scene.longTaskMaxDurationMs, duration);
+        scene.longTaskLastAtMs = now;
+      }
+    });
+  } catch (error) {
+    console.warn('Unable to allocate PerformanceObserver for long tasks.', error);
+    return;
+  }
+  try {
+    observer.observe({ type: 'longtask', buffered: true });
+    scene.longTaskObserver = observer;
+  } catch (error) {
+    try {
+      observer.disconnect();
+    } catch {
+      // best-effort cleanup
+    }
+    console.warn('Long task observer is not supported in this runtime.', error);
+  }
+}
+
+function stopLongTaskObserver(scene: PlaySceneContext): void {
+  if (!scene.longTaskObserver) return;
+  try {
+    scene.longTaskObserver.disconnect();
+  } catch {
+    // best-effort cleanup
+  }
+  scene.longTaskObserver = undefined;
+}
+
+function sanitizeDuration(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return value;
+}
+
+function readClockMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
 }

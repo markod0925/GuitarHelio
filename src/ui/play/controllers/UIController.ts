@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import {
   DEFAULT_HOLD_MS,
   DEFAULT_MIN_CONFIDENCE,
+  PLAY_SCENE_ENABLE_PROFILING,
   TARGET_HIT_GRACE_SECONDS
 } from '../../../app/config';
 import { saveSongHighScoreIfHigher } from '../../../app/sessionPersistence';
@@ -12,7 +13,8 @@ import {
   formatDebugBool,
   formatDebugNumber,
   formatDebugPath,
-  formatSignedMs
+  formatSignedMs,
+  setGameplayDebugOverlayEnabled
 } from '../../playSceneDebug';
 import { RoundedBox } from '../../RoundedBox';
 import {
@@ -21,6 +23,7 @@ import {
 } from '../../UIOverlays';
 import type { PlaySceneContext } from './PlaySceneContext';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
+const MAIN_THREAD_BUDGET_MS = 16.67;
 
 export class UIController {
   constructor(private readonly scene: PlaySceneContext) {}
@@ -625,7 +628,7 @@ function relayoutDebugOverlayImpl(this: PlaySceneContext): void {
 
   const { width, height } = this.scale;
   const panelWidth = Math.min(760, width * 0.84);
-  const panelHeight = Math.min(360, height * 0.56);
+  const panelHeight = Math.min(460, height * 0.72);
   const centerX = width / 2;
   const centerY = height * 0.52;
 
@@ -637,9 +640,19 @@ function relayoutDebugOverlayImpl(this: PlaySceneContext): void {
 }
 
 function toggleDebugOverlayImpl(this: PlaySceneContext): void {
-  if (!this.debugOverlayContainer) return;
+  if (!this.debugOverlayContainer) {
+    this.debugOverlayEnabled = true;
+    setGameplayDebugOverlayEnabled(true);
+    this.createDebugOverlay();
+    this.updateDebugOverlay();
+    this.feedbackText = 'Debug overlay ON (F3)';
+    this.feedbackUntilMs = performance.now() + 900;
+    this.updateHud();
+    return;
+  }
   const nextVisible = !this.debugOverlayContainer.visible;
   this.debugOverlayContainer.setVisible(nextVisible);
+  setGameplayDebugOverlayEnabled(nextVisible);
   this.feedbackText = `Debug overlay ${nextVisible ? 'ON' : 'OFF'} (F3)`;
   this.feedbackUntilMs = performance.now() + 900;
   this.updateHud();
@@ -675,10 +688,24 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
       : undefined;
   const seekDebug = this.lastAudioSeekDebug;
   const seekAgeMs = seekDebug ? performance.now() - seekDebug.atMs : undefined;
+  const runtimeStats = summarizeRollingDurations(this.runtimeLoopDurationsMs, this.runtimeLoopSampleCount);
+  const hudStats = summarizeRollingDurations(this.hudUpdateDurationsMs, this.hudUpdateSampleCount);
+  const runtimeLoadAvgPct = runtimeStats.avgMs > 0 ? (runtimeStats.avgMs / MAIN_THREAD_BUDGET_MS) * 100 : 0;
+  const runtimeLoadP95Pct = runtimeStats.p95Ms > 0 ? (runtimeStats.p95Ms / MAIN_THREAD_BUDGET_MS) * 100 : 0;
+  const hudLoadAvgPct = hudStats.avgMs > 0 ? (hudStats.avgMs / MAIN_THREAD_BUDGET_MS) * 100 : 0;
+  const hudLoadP95Pct = hudStats.p95Ms > 0 ? (hudStats.p95Ms / MAIN_THREAD_BUDGET_MS) * 100 : 0;
+  const runtimeProfileAgeMs = this.runtimeLoopLastAtMs > 0 ? performance.now() - this.runtimeLoopLastAtMs : undefined;
+  const hudProfileAgeMs = this.hudUpdateLastAtMs > 0 ? performance.now() - this.hudUpdateLastAtMs : undefined;
+  const longTaskAvgMs = this.longTaskCount > 0 ? this.longTaskTotalDurationMs / this.longTaskCount : 0;
+  const longTaskAgeMs = this.longTaskLastAtMs > 0 ? performance.now() - this.longTaskLastAtMs : undefined;
+  const audioProfile = this.audioProfilingSnapshot;
+  const audioProfileAgeMs = this.audioProfilingSnapshotAtMs > 0 ? performance.now() - this.audioProfilingSnapshotAtMs : undefined;
+  const workletMissingReason = resolveMissingWorkletTelemetryReason(this);
 
   const lines = [
     'DEBUG OVERLAY (F3)',
     `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
+    `detector=${formatDebugBool(Boolean(this.detector))} legacy=${formatDebugBool(this.detectorLegacyFallback)} mic=${formatDebugBool(Boolean(this.micStream))}`,
     `song id=${this.sceneData?.songId ?? '-'} midi=${formatDebugPath(this.sceneData?.midiUrl)} audio=${formatDebugPath(this.sceneData?.audioUrl)}`,
     active
       ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} chord=${snapshot?.activeChordSize ?? 1} hit=${snapshot?.validatedChordNotes ?? 0} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
@@ -689,6 +716,15 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
     `resume pausedSong=${formatDebugNumber(this.pausedSongSeconds, 3)}s pausedAudio=${formatDebugNumber(this.pausedBackingAudioSeconds, 3)}s lastAudio=${formatDebugNumber(this.lastKnownBackingAudioSeconds, 3)}s speed=${formatDebugNumber(this.playbackSpeedMultiplier, 2)}x started=${formatDebugBool(this.playbackStarted)}`,
     `backing cur=${formatDebugNumber(backingCurrentSeconds, 3)}s dur=${formatDebugNumber(backingDurationSeconds, 3)}s playing=${formatDebugBool(this.backingTrackIsPlaying)} sourceSong=${formatDebugNumber(this.backingTrackSourceStartSongSeconds, 3)}s sourceCtx=${formatDebugNumber(this.backingTrackSourceStartedAtAudioTime, 3)}s drift=${formatSignedMs(backingDriftMs)}`,
     `seek req=${formatDebugNumber(seekDebug?.requestedSongSeconds, 3)}s target=${formatDebugNumber(seekDebug?.targetSeconds, 3)}s before=${formatDebugNumber(seekDebug?.beforeSeekSeconds, 3)}s after=${formatDebugNumber(seekDebug?.afterPlaySeconds, 3)}s retry=${formatDebugNumber(seekDebug?.afterRetrySeconds, 3)}s fallbackMidi=${seekDebug ? formatDebugBool(seekDebug.fallbackToMidi) : '-'} ok=${seekDebug ? formatDebugBool(seekDebug.ok) : '-'} age=${seekAgeMs !== undefined ? `${Math.round(seekAgeMs)}ms` : '-'}`,
+    `cpu mainLoop avg=${formatDebugNumber(runtimeStats.avgMs, 2)}ms p95=${formatDebugNumber(runtimeStats.p95Ms, 2)}ms max=${formatDebugNumber(runtimeStats.maxMs, 2)}ms load=${formatDebugNumber(runtimeLoadAvgPct, 1)}%/${formatDebugNumber(runtimeLoadP95Pct, 1)}% overBudget=${this.runtimeLoopOverBudgetCount} n=${runtimeStats.samples} age=${runtimeProfileAgeMs !== undefined ? `${Math.round(runtimeProfileAgeMs)}ms` : '-'}`,
+    `cpu hud avg=${formatDebugNumber(hudStats.avgMs, 2)}ms p95=${formatDebugNumber(hudStats.p95Ms, 2)}ms max=${formatDebugNumber(hudStats.maxMs, 2)}ms load=${formatDebugNumber(hudLoadAvgPct, 1)}%/${formatDebugNumber(hudLoadP95Pct, 1)}% overBudget=${this.hudUpdateOverBudgetCount} n=${hudStats.samples} age=${hudProfileAgeMs !== undefined ? `${Math.round(hudProfileAgeMs)}ms` : '-'}`,
+    `cpu longtask count=${this.longTaskCount} avg=${formatDebugNumber(longTaskAvgMs, 1)}ms max=${formatDebugNumber(this.longTaskMaxDurationMs, 1)}ms age=${longTaskAgeMs !== undefined ? `${Math.round(longTaskAgeMs)}ms` : '-'}`,
+    audioProfile
+      ? `cpu worklet preset=${audioProfile.detectorPreset} hop=${audioProfile.hopSize} budget=${formatDebugNumber(audioProfile.budgetMs, 2)}ms avg=${formatDebugNumber(audioProfile.analysisMsAvg, 2)}ms p95=${formatDebugNumber(audioProfile.analysisMsP95, 2)}ms max=${formatDebugNumber(audioProfile.analysisMsMax, 2)}ms load=${formatDebugNumber(audioProfile.loadPctAvg, 1)}%/${formatDebugNumber(audioProfile.loadPctP95, 1)}% over=${audioProfile.overBudgetWindow}/${audioProfile.overBudgetTotal} n=${audioProfile.analysesWindow}/${audioProfile.analysesTotal} age=${audioProfileAgeMs !== undefined ? `${Math.round(audioProfileAgeMs)}ms` : '-'}`
+      : `cpu worklet - ${workletMissingReason}`,
+    audioProfile
+      ? `cpu split echo=${formatDebugNumber(audioProfile.shareEchoPct, 1)}% masp=${formatDebugNumber(audioProfile.shareMaspPct, 1)}% pitch=${formatDebugNumber(audioProfile.sharePitchPct, 1)}% msgs frame=${audioProfile.emittedFramesTotal} ctx=${audioProfile.maspContextUpdatesTotal} cfg=${audioProfile.configUpdatesTotal}`
+      : `cpu split - ${workletMissingReason}`,
     `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} refMidi=${formatDebugNumber(latestFrame?.reference_midi, 2)} corr=${formatDebugNumber(latestFrame?.reference_correlation, 2)} er=${formatDebugNumber(latestFrame?.energy_ratio_db, 1)} onset=${formatDebugNumber(latestFrame?.onset_strength, 2)} contam=${formatDebugNumber(latestFrame?.contamination_score, 2)} rej=${formatDebugBool(Boolean(latestFrame?.rejected_as_reference_bleed))} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
     `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
     `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
@@ -698,46 +734,53 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
 }
 
 function updateHudImpl(this: PlaySceneContext): void {
-  if (!this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
+  const hudStartedAtMs = PLAY_SCENE_ENABLE_PROFILING ? readClockMs() : 0;
+  try {
+    if (!this.statusText || !this.liveScoreText || !this.feedbackMessageText) return;
 
-  const sceneClass = this.constructor as Partial<PlaySceneStatics>;
-  const maxComboMultiplier = sceneClass.MAX_COMBO_MULTIPLIER ?? 20;
-  const now = performance.now();
+    const sceneClass = this.constructor as Partial<PlaySceneStatics>;
+    const maxComboMultiplier = sceneClass.MAX_COMBO_MULTIPLIER ?? 20;
+    const now = performance.now();
 
-  const streak = Math.min(maxComboMultiplier, Math.max(1, this.currentComboStreak));
-  let status = `x${streak}`;
-  if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
-    status = `x${streak}`;
+    const streak = Math.min(maxComboMultiplier, Math.max(1, this.currentComboStreak));
+    let status = `x${streak}`;
+    if (!this.playbackStarted && this.runtime.state !== PlayState.Finished) {
+      status = `x${streak}`;
+    }
+    if (this.detectorLegacyFallback && this.runtime.state !== PlayState.Finished) {
+      status = `${status}  |  legacy fallback`;
+    }
+
+    const topMessage = this.resolveTopFeedbackMessage(now);
+    const completed = Math.min(this.runtime.active_target_index, this.targets.length);
+    const fps = Math.max(0, Math.round(this.game.loop.actualFps));
+    const liveScoreText = `${this.totalScore}  |  ${completed}/${this.targets.length}  |  ${fps} FPS`;
+
+    if (this.lastHudStatusText !== status) {
+      this.statusText.setText(status);
+      this.lastHudStatusText = status;
+    }
+
+    if (this.lastHudFeedbackText !== topMessage) {
+      this.feedbackMessageText.setText(topMessage);
+      this.lastHudFeedbackText = topMessage;
+    }
+    this.feedbackMessageText.setVisible(topMessage.length > 0);
+
+    if (this.lastHudLiveScoreText !== liveScoreText) {
+      this.liveScoreText.setText(liveScoreText);
+      this.lastHudLiveScoreText = liveScoreText;
+    }
+    const songSecondsForBpm =
+      this.playbackStarted && this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds;
+    const bpm = this.getCurrentPlaybackBpm(songSecondsForBpm);
+    this.updateMultiplierWidget(now, bpm);
+    this.updateDebugOverlay();
+  } finally {
+    if (PLAY_SCENE_ENABLE_PROFILING) {
+      recordHudUpdateDuration(this, readClockMs() - hudStartedAtMs);
+    }
   }
-  if (this.detectorLegacyFallback && this.runtime.state !== PlayState.Finished) {
-    status = `${status}  |  legacy fallback`;
-  }
-
-  const topMessage = this.resolveTopFeedbackMessage(now);
-  const completed = Math.min(this.runtime.active_target_index, this.targets.length);
-  const fps = Math.max(0, Math.round(this.game.loop.actualFps));
-  const liveScoreText = `${this.totalScore}  |  ${completed}/${this.targets.length}  |  ${fps} FPS`;
-
-  if (this.lastHudStatusText !== status) {
-    this.statusText.setText(status);
-    this.lastHudStatusText = status;
-  }
-
-  if (this.lastHudFeedbackText !== topMessage) {
-    this.feedbackMessageText.setText(topMessage);
-    this.lastHudFeedbackText = topMessage;
-  }
-  this.feedbackMessageText.setVisible(topMessage.length > 0);
-
-  if (this.lastHudLiveScoreText !== liveScoreText) {
-    this.liveScoreText.setText(liveScoreText);
-    this.lastHudLiveScoreText = liveScoreText;
-  }
-  const songSecondsForBpm =
-    this.playbackStarted && this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds;
-  const bpm = this.getCurrentPlaybackBpm(songSecondsForBpm);
-  this.updateMultiplierWidget(now, bpm);
-  this.updateDebugOverlay();
 }
 
 function resolveTopFeedbackMessageImpl(this: PlaySceneContext, now: number): string {
@@ -752,4 +795,81 @@ function resolveTopFeedbackMessageImpl(this: PlaySceneContext, now: number): str
     feedbackUntilMs: this.feedbackUntilMs,
     feedbackText: this.feedbackText
   });
+}
+
+function recordHudUpdateDuration(scene: PlaySceneContext, durationMs: number): void {
+  const sample = sanitizeDuration(durationMs);
+  const cursor = scene.hudUpdateSampleCursor;
+  scene.hudUpdateDurationsMs[cursor] = sample;
+  scene.hudUpdateSampleCursor = (cursor + 1) % scene.hudUpdateDurationsMs.length;
+  scene.hudUpdateSampleCount = Math.min(scene.hudUpdateDurationsMs.length, scene.hudUpdateSampleCount + 1);
+  scene.hudUpdateLastDurationMs = sample;
+  scene.hudUpdateLastAtMs = readClockMs();
+  if (sample > MAIN_THREAD_BUDGET_MS) {
+    scene.hudUpdateOverBudgetCount += 1;
+  }
+}
+
+function summarizeRollingDurations(samples: Float32Array, count: number): {
+  samples: number;
+  avgMs: number;
+  p95Ms: number;
+  maxMs: number;
+} {
+  if (count <= 0) {
+    return {
+      samples: 0,
+      avgMs: 0,
+      p95Ms: 0,
+      maxMs: 0
+    };
+  }
+  const values = new Array<number>(count);
+  let sum = 0;
+  let max = 0;
+  for (let index = 0; index < count; index += 1) {
+    const value = sanitizeDuration(samples[index]);
+    values[index] = value;
+    sum += value;
+    max = Math.max(max, value);
+  }
+  values.sort((a, b) => a - b);
+  const p95Index = Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * 0.95) - 1));
+  return {
+    samples: count,
+    avgMs: sum / count,
+    p95Ms: values[p95Index] ?? 0,
+    maxMs: max
+  };
+}
+
+function sanitizeDuration(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return value;
+}
+
+function readClockMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function resolveMissingWorkletTelemetryReason(scene: PlaySceneContext): string {
+  if (!scene.detector) {
+    return 'detector unavailable';
+  }
+  if (scene.detectorLegacyFallback) {
+    return `legacy fallback (${scene.detector.getLegacyFallbackReason() ?? 'worklet unavailable'})`;
+  }
+  if (!scene.playbackStarted) {
+    return 'session not started';
+  }
+  if (!scene.audioCtx || scene.audioCtx.state !== 'running') {
+    return 'audio context not running';
+  }
+  if (scene.audioCtx.currentTime >= 1.5) {
+    return 'no profiling messages received';
+  }
+  return 'waiting telemetry';
 }

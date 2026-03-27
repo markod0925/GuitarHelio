@@ -36,12 +36,39 @@ export type SpectralRuntimeModel = {
   chords: SpectralRuntimeChord[];
 };
 
+export type PitchDetectorProfilingSnapshot = {
+  detectorPreset: PitchDetectorPreset;
+  sampleRate: number;
+  bufferSize: number;
+  hopSize: number;
+  budgetMs: number;
+  analysisMsAvg: number;
+  analysisMsP95: number;
+  analysisMsMax: number;
+  loadPctAvg: number;
+  loadPctP95: number;
+  shareEchoPct: number;
+  shareMaspPct: number;
+  sharePitchPct: number;
+  analysesWindow: number;
+  analysesTotal: number;
+  overBudgetWindow: number;
+  overBudgetTotal: number;
+  emittedFramesTotal: number;
+  maspContextUpdatesTotal: number;
+  configUpdatesTotal: number;
+  reportIntervalMs: number;
+  audioTimeSeconds: number;
+};
+
 type PitchDetectorOptions = {
   roundMidi?: boolean;
   smoothingAlpha?: number;
   calibrationProfile?: PitchCalibrationProfile | null;
   audioInputMode?: AudioInputMode;
   enableDspCore?: boolean;
+  enableEchoSuppression?: boolean;
+  enableProfiling?: boolean;
   detectorPreset?: PitchDetectorPreset;
   spectralModel?: SpectralRuntimeModel | null;
 };
@@ -63,7 +90,33 @@ type WorkletStatusPayload = {
   reason?: string;
 };
 
-type WorkletMessagePayload = WorkletPitchPayload | WorkletStatusPayload;
+type WorkletProfilingPayload = {
+  type: 'profiling';
+  detector_preset?: unknown;
+  sample_rate?: unknown;
+  buffer_size?: unknown;
+  hop_size?: unknown;
+  budget_ms?: unknown;
+  analysis_ms_avg?: unknown;
+  analysis_ms_p95?: unknown;
+  analysis_ms_max?: unknown;
+  load_pct_avg?: unknown;
+  load_pct_p95?: unknown;
+  share_echo_pct?: unknown;
+  share_masp_pct?: unknown;
+  share_pitch_pct?: unknown;
+  analyses_window?: unknown;
+  analyses_total?: unknown;
+  over_budget_window?: unknown;
+  over_budget_total?: unknown;
+  emitted_frames_total?: unknown;
+  masp_context_updates_total?: unknown;
+  config_updates_total?: unknown;
+  report_interval_ms?: unknown;
+  t_audio_seconds?: unknown;
+};
+
+type WorkletMessagePayload = WorkletPitchPayload | WorkletStatusPayload | WorkletProfilingPayload;
 let dspWasmBytesPromise: Promise<ArrayBuffer | null> | null = null;
 const FALLBACK_PRESET_CONFIG: Record<
   PitchDetectorPreset,
@@ -114,6 +167,7 @@ const FALLBACK_PRESET_CONFIG: Record<
 
 export class PitchDetectorService {
   private listeners = new Set<PitchListener>();
+  private profilingListeners = new Set<(snapshot: PitchDetectorProfilingSnapshot) => void>();
   private workletNode: AudioWorkletNode | null = null;
   private analyser: AnalyserNode | null = null;
   private analyserBuffer: Float32Array | null = null;
@@ -126,6 +180,8 @@ export class PitchDetectorService {
   private readonly calibrationProfile: PitchCalibrationProfile | null;
   private readonly audioInputMode: AudioInputMode;
   private readonly enableDspCore: boolean;
+  private readonly enableEchoSuppression: boolean;
+  private readonly enableProfiling: boolean;
   private readonly detectorPreset: PitchDetectorPreset;
   private readonly spectralModel: SpectralRuntimeModel | null;
   private smoothedMidiEstimate: number | null = null;
@@ -146,6 +202,8 @@ export class PitchDetectorService {
     this.calibrationProfile = options.calibrationProfile ?? null;
     this.audioInputMode = options.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.enableDspCore = options.enableDspCore ?? true;
+    this.enableEchoSuppression = options.enableEchoSuppression ?? true;
+    this.enableProfiling = options.enableProfiling ?? false;
     this.detectorPreset = options.detectorPreset ?? 'baseline';
     this.spectralModel = options.spectralModel ?? null;
   }
@@ -233,6 +291,8 @@ export class PitchDetectorService {
         workletNode.port.postMessage({
           type: 'config',
           audioInputMode: this.audioInputMode,
+          enableEchoSuppression: this.enableEchoSuppression,
+          enableProfiling: this.enableProfiling,
           detectorPreset: this.detectorPreset,
           spectralModel: this.spectralModel ?? undefined
         });
@@ -247,6 +307,16 @@ export class PitchDetectorService {
             if (this.legacyFallback && payload.reason) {
               console.warn('Pitch worklet running in legacy fallback mode.', payload.reason);
             }
+            return;
+          }
+          if (payload.type === 'profiling') {
+            if (!this.enableProfiling || this.profilingListeners.size === 0) return;
+            const profilingSnapshot = sanitizeWorkletProfilingPayload(payload, this.detectorPreset);
+            if (!profilingSnapshot) return;
+            for (const listener of this.profilingListeners) listener(profilingSnapshot);
+            return;
+          }
+          if (payload.type && payload.type !== 'frame') {
             return;
           }
 
@@ -368,6 +438,11 @@ export class PitchDetectorService {
   onPitch(listener: PitchListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  onProfiling(listener: (snapshot: PitchDetectorProfilingSnapshot) => void): () => void {
+    this.profilingListeners.add(listener);
+    return () => this.profilingListeners.delete(listener);
   }
 
   private awaitBackendStatus(timeoutMs: number): Promise<void> {
@@ -783,6 +858,64 @@ function sanitizeChordScores(value: unknown): PitchFrame['chord_scores'] {
     });
   }
   return out;
+}
+
+function sanitizeWorkletProfilingPayload(
+  payload: WorkletProfilingPayload,
+  fallbackPreset: PitchDetectorPreset
+): PitchDetectorProfilingSnapshot | null {
+  const detectorPreset = sanitizePitchDetectorPreset(payload.detector_preset) ?? fallbackPreset;
+  const sampleRate = sanitizeNonNegativeFinite(payload.sample_rate, 48_000);
+  const bufferSize = sanitizeNonNegativeInteger(payload.buffer_size);
+  const hopSize = sanitizeNonNegativeInteger(payload.hop_size);
+  if (sampleRate <= 0 || bufferSize <= 0 || hopSize <= 0) {
+    return null;
+  }
+
+  return {
+    detectorPreset,
+    sampleRate,
+    bufferSize,
+    hopSize,
+    budgetMs: sanitizeNonNegativeFinite(payload.budget_ms, 0),
+    analysisMsAvg: sanitizeNonNegativeFinite(payload.analysis_ms_avg, 0),
+    analysisMsP95: sanitizeNonNegativeFinite(payload.analysis_ms_p95, 0),
+    analysisMsMax: sanitizeNonNegativeFinite(payload.analysis_ms_max, 0),
+    loadPctAvg: sanitizeNonNegativeFinite(payload.load_pct_avg, 0),
+    loadPctP95: sanitizeNonNegativeFinite(payload.load_pct_p95, 0),
+    shareEchoPct: sanitizeBoundedPercent(payload.share_echo_pct),
+    shareMaspPct: sanitizeBoundedPercent(payload.share_masp_pct),
+    sharePitchPct: sanitizeBoundedPercent(payload.share_pitch_pct),
+    analysesWindow: sanitizeNonNegativeInteger(payload.analyses_window),
+    analysesTotal: sanitizeNonNegativeInteger(payload.analyses_total),
+    overBudgetWindow: sanitizeNonNegativeInteger(payload.over_budget_window),
+    overBudgetTotal: sanitizeNonNegativeInteger(payload.over_budget_total),
+    emittedFramesTotal: sanitizeNonNegativeInteger(payload.emitted_frames_total),
+    maspContextUpdatesTotal: sanitizeNonNegativeInteger(payload.masp_context_updates_total),
+    configUpdatesTotal: sanitizeNonNegativeInteger(payload.config_updates_total),
+    reportIntervalMs: sanitizeNonNegativeFinite(payload.report_interval_ms, 0),
+    audioTimeSeconds: sanitizeNonNegativeFinite(payload.t_audio_seconds, 0)
+  };
+}
+
+function sanitizePitchDetectorPreset(value: unknown): PitchDetectorPreset | null {
+  if (value === 'baseline' || value === 'ac14' || value === 'spectral_game_runtime_unified_v3' || value === 'fretnet' || value === MASP_GAME_SCENE_PRESET) {
+    return value;
+  }
+  return null;
+}
+
+function sanitizeNonNegativeFinite(value: unknown, fallback = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, value);
+}
+
+function sanitizeNonNegativeInteger(value: unknown): number {
+  return Math.round(sanitizeNonNegativeFinite(value, 0));
+}
+
+function sanitizeBoundedPercent(value: unknown): number {
+  return Math.max(0, Math.min(100, sanitizeNonNegativeFinite(value, 0)));
 }
 
 function clamp01(value: number): number {

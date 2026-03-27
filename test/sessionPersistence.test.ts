@@ -93,4 +93,22 @@ describe('sessionPersistence high score reset', () => {
       selectedFrets: [5, 6, 7]
     });
   });
+
+  test('clamps persisted frets to max selectable fret (18)', () => {
+    saveSessionSettingsPreference({
+      difficulty: 'Medium',
+      audioInputMode: 'speaker',
+      selectedStrings: [6, 5, 4],
+      selectedFingers: [1, 2, 3],
+      selectedFrets: [16, 18, 19, 21]
+    });
+
+    expect(loadSessionSettingsPreference()).toEqual({
+      difficulty: 'Medium',
+      audioInputMode: 'speaker',
+      selectedStrings: [4, 5, 6],
+      selectedFingers: [1, 2, 3],
+      selectedFrets: [16, 18]
+    });
+  });
 });

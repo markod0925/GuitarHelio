@@ -264,5 +264,31 @@ export function isGameplayDebugOverlayEnabled(): boolean {
   if (typeof window === 'undefined') return false;
 
   const params = new URLSearchParams(window.location.search);
-  return params.get('debugGameplayOverlay') === '1';
+  const queryToggle = params.get('debugGameplayOverlay');
+  if (queryToggle === '1') {
+    setGameplayDebugOverlayEnabled(true);
+    return true;
+  }
+  if (queryToggle === '0') {
+    setGameplayDebugOverlayEnabled(false);
+    return false;
+  }
+  return readGameplayDebugOverlayPreference();
+}
+
+export function setGameplayDebugOverlayEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem('gh_debug_gameplay_overlay', enabled ? '1' : '0');
+  } catch {
+    // Best-effort preference storage only.
+  }
+}
+
+function readGameplayDebugOverlayPreference(): boolean {
+  try {
+    return window.localStorage.getItem('gh_debug_gameplay_overlay') === '1';
+  } catch {
+    return false;
+  }
 }

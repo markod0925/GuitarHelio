@@ -7,13 +7,14 @@ import {
   DIFFICULTY_PRESETS,
   PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
 } from '../app/config';
+import { MAX_ALLOWED_FRET, MIN_ALLOWED_FRET } from '../app/sessionSettingsConfig';
 import { PitchFrameRingBuffer } from '../audio/PitchFrameRingBuffer';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import type { AudioInputMode } from '../types/audioInputMode';
 import { DEFAULT_AUDIO_INPUT_MODE } from '../types/audioInputMode';
 import type { JzzTinySynth } from '../audio/jzzTinySynth';
 import type { MidiScrubPlayer } from '../audio/midiScrubPlayer';
-import type { PitchDetectorService } from '../audio/pitchDetector';
+import type { PitchDetectorProfilingSnapshot, PitchDetectorService } from '../audio/pitchDetector';
 import { summarizeScores } from '../game/scoring';
 import {
   createInitialRuntimeState,
@@ -73,6 +74,8 @@ export class PlayScene extends Phaser.Scene {
   public correctlyHitTargetIds = new Set<string>();
   public readonly chordHitTargetIds = new Set<string>();
   public activeChordTrackingId?: string;
+  public activeMaspContextTargetKey = '';
+  public lastMaspContextSyncSongSeconds = Number.NEGATIVE_INFINITY;
   public readonly latestFrames = new PitchFrameRingBuffer(64);
   public readonly heldHitAnalysisScratch: HeldHitAnalysis = {
     valid: false,
@@ -182,6 +185,25 @@ export class PlayScene extends Phaser.Scene {
   public debugOverlayContainer?: Phaser.GameObjects.Container;
   public debugOverlayPanel?: RoundedBox;
   public debugOverlayText?: Phaser.GameObjects.Text;
+  public readonly runtimeLoopDurationsMs = new Float32Array(120);
+  public runtimeLoopSampleCount = 0;
+  public runtimeLoopSampleCursor = 0;
+  public runtimeLoopOverBudgetCount = 0;
+  public runtimeLoopLastDurationMs = 0;
+  public runtimeLoopLastAtMs = 0;
+  public readonly hudUpdateDurationsMs = new Float32Array(120);
+  public hudUpdateSampleCount = 0;
+  public hudUpdateSampleCursor = 0;
+  public hudUpdateOverBudgetCount = 0;
+  public hudUpdateLastDurationMs = 0;
+  public hudUpdateLastAtMs = 0;
+  public longTaskObserver?: PerformanceObserver;
+  public longTaskCount = 0;
+  public longTaskTotalDurationMs = 0;
+  public longTaskMaxDurationMs = 0;
+  public longTaskLastAtMs = 0;
+  public audioProfilingSnapshot?: PitchDetectorProfilingSnapshot;
+  public audioProfilingSnapshotAtMs = 0;
   public hitDebugSnapshot?: HitDebugSnapshot;
   public lastRuntimeTransition: RuntimeTransition = 'none';
   public lastRuntimeTransitionAtMs = 0;
@@ -695,7 +717,7 @@ export class PlayScene extends Phaser.Scene {
   ): DifficultyProfile {
     const strings = sanitizeSelection(allowedStrings, 1, 6, base.allowed_strings);
     const fingers = sanitizeSelection(allowedFingers, 1, 4, base.allowed_fingers);
-    const frets = sanitizeSelection(allowedFrets, 0, 21, undefined);
+    const frets = sanitizeSelection(allowedFrets, MIN_ALLOWED_FRET, MAX_ALLOWED_FRET, undefined);
     const fallbackFrets: number[] = [];
     for (let fret = base.allowed_frets.min; fret <= base.allowed_frets.max; fret += 1) {
       fallbackFrets.push(fret);

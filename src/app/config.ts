@@ -10,6 +10,12 @@ export const SCHEDULER_UPDATE_MS = 25;
 export const PLAY_SCENE_NOTE_START_CUTOFF_SECONDS = 3;
 export const PLAY_SCENE_MINIMAP_ENABLED = true;
 export const PLAY_SCENE_MINIMAP_UPDATE_INTERVAL_MS = 1000;
+// Keep this flag explicit so echo suppression can be toggled without deleting code paths.
+export const PLAY_SCENE_ENABLE_ECHO_SUPPRESSION = false;
+// Global gameplay diagnostics toggle. When false, no runtime profiling instrumentation is executed.
+export const PLAY_SCENE_ENABLE_PROFILING = false;
+// Global debug overlay toggle. When false, overlay is fully disabled in Play Scene.
+export const PLAY_SCENE_ENABLE_DEBUG_OVERLAY = false;
 
 // Increase/decrease this to tune how tall the ball jump looks on beat.
 export const BALL_BOUNCE_AMPLITUDE_FACTOR = 0.8;
