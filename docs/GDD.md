@@ -938,8 +938,12 @@ Practice scene requirements:
 * show 6 guitar strings and a full fret grid from fret `0` to fret `12`
 * draw all note positions for each string/fret intersection
 * all note positions MUST be gray by default
-* while microphone detection is active, the scene MUST use only `PitchDetectorService` with preset `spectral_game_runtime_unified_v3` and default runtime parameters
-* the scene MUST NOT run AC-14/Tuneo A/B comparison overlays
+* while microphone detection is active, the scene MUST use `PitchDetectorService` with the currently selected practice pipeline
+* the scene MUST expose a segmented practice pipeline selector (`Current`, `FretNet`) on web/android runtimes only
+* the practice pipeline selector MUST be session-only and MUST default to `Current` whenever `Practice` scene starts
+* changing the practice pipeline while microphone detection is active MUST auto-restart microphone listening with the newly selected pipeline
+* phase-2 behavior: selecting `FretNet` in web/android MUST activate a real WASM detector backend (`fretnet`) and MUST produce runtime pitch/string/fret frames without unavailable placeholders
+* the scene MUST NOT run AC-14/Tuneo comparison overlays
 * the scene MUST render a yellow full-width string band for the detected string when available
 * if detected MIDI and detected string are both available, only the matching note position on that string MUST be green
 * if detected MIDI is available but string is missing, all equivalent fretboard positions for that MIDI MUST be green (fallback)

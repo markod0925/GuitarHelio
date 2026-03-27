@@ -75,12 +75,13 @@ export class GhDspCore {
 if (Symbol.dispose) GhDspCore.prototype[Symbol.dispose] = GhDspCore.prototype.free;
 
 /**
- * @enum {0 | 1 | 2}
+ * @enum {0 | 1 | 2 | 3}
  */
 export const PitchDetectorPreset = Object.freeze({
     Baseline: 0, "0": "Baseline",
     Ac14: 1, "1": "Ac14",
     SpectralGameRuntimeUnifiedV3: 2, "2": "SpectralGameRuntimeUnifiedV3",
+    Fretnet: 3, "3": "Fretnet",
 });
 
 function __wbg_get_imports() {

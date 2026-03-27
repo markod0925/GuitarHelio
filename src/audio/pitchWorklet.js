@@ -33,6 +33,17 @@ const DETECTOR_PRESETS = {
     decayGraceFrames: 8,
     decayEnergyFactor: 0.55,
     decayCorrelationThreshold: 0.52
+  },
+  fretnet: {
+    windowSeconds: 4096 / 48000,
+    chunkSeconds: 512 / 22050,
+    minFrequencyHz: 75,
+    maxFrequencyHz: 3600,
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
   }
 };
 
@@ -104,6 +115,9 @@ class PitchProcessor extends AudioWorkletProcessor {
     if (detectorPreset === 'ac14') {
       return PitchDetectorPreset.Ac14;
     }
+    if (detectorPreset === 'fretnet') {
+      return PitchDetectorPreset.Fretnet;
+    }
     if (detectorPreset === 'spectral_game_runtime_unified_v3') {
       return PitchDetectorPreset.SpectralGameRuntimeUnifiedV3;
     }
@@ -111,7 +125,13 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 
   applySpectralModel(core, model) {
-    if (!core || !model || this.detectorPreset !== 'spectral_game_runtime_unified_v3') return;
+    if (
+      !core ||
+      !model ||
+      (this.detectorPreset !== 'spectral_game_runtime_unified_v3' && this.detectorPreset !== 'fretnet')
+    ) {
+      return;
+    }
     try {
       core.set_spectral_model(JSON.stringify(model));
     } catch (error) {
@@ -233,7 +253,7 @@ class PitchProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    if (this.detectorPreset === 'spectral_game_runtime_unified_v3') {
+    if (this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet') {
       this.decayGraceFramesRemaining = 0;
       const midiEstimate = sanitizeMidiEstimate(suppression.midiEstimate);
       const referenceMidi = sanitizeMidiEstimate(suppression.referenceMidi);
@@ -704,12 +724,14 @@ function sanitizeSpectralModel(value) {
 
 function normalizeDetectorPreset(value) {
   if (value === 'ac14') return 'ac14';
+  if (value === 'fretnet') return 'fretnet';
   if (value === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
   return DEFAULT_DETECTOR_PRESET;
 }
 
 function getDetectorPresetConfig(detectorPreset) {
   if (detectorPreset === 'ac14') return DETECTOR_PRESETS.ac14;
+  if (detectorPreset === 'fretnet') return DETECTOR_PRESETS.fretnet;
   if (detectorPreset === 'spectral_game_runtime_unified_v3') {
     return DETECTOR_PRESETS.spectral_game_runtime_unified_v3;
   }

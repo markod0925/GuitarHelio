@@ -28,7 +28,7 @@ const AC14_DECAY_CORRELATION_THRESHOLD: f32 = 0.628858;
 const SPECTRAL_FFT_SIZE: usize = 4096;
 const SPECTRAL_MIN_FREQ_HZ: f32 = 75.0;
 const SPECTRAL_MAX_HARMONIC_FREQ_HZ: f32 = 3600.0;
-const SPECTRAL_MAX_HARMONICS: usize = 4;
+const SPECTRAL_HARMONICS: [f32; 4] = [1.0, 2.0, 3.0, 4.0];
 const SPECTRAL_BASE_BANDWIDTH_HZ: f32 = 17.3;
 const SPECTRAL_RELATIVE_BANDWIDTH: f32 = 0.0148;
 const SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA: f32 = 0.24;
@@ -55,6 +55,34 @@ const SPECTRAL_EMIT_CHORD_SCORES: bool = true;
 const SPECTRAL_DC_REMOVE: bool = true;
 const SPECTRAL_TIE_EPSILON: f32 = 1e-6;
 const SPECTRAL_BYPASS_REFERENCE_CANCELLATION: bool = true;
+const FRETNET_MIN_FREQ_HZ: f32 = 82.406_89;
+const FRETNET_MAX_HARMONIC_FREQ_HZ: f32 = 6500.0;
+const FRETNET_HARMONICS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0];
+const FRETNET_BASE_BANDWIDTH_HZ: f32 = 8.6;
+const FRETNET_RELATIVE_BANDWIDTH: f32 = 0.019_4;
+const FRETNET_MAGNITUDE_COMPRESSION_GAMMA: f32 = 0.38;
+const FRETNET_USE_LOG_MAGNITUDE: bool = true;
+const FRETNET_USE_LOCAL_WHITENING: bool = false;
+const FRETNET_WHITENING_RADIUS_BINS: usize = 8;
+const FRETNET_USE_HARMONIC_PENALTY: bool = true;
+const FRETNET_SUBHARMONIC_PENALTY_ALPHA: f32 = 0.16;
+const FRETNET_NORMALIZE_BY_WEIGHT_SUM: bool = true;
+const FRETNET_NORMALIZE_BY_BAND_ENERGY: bool = false;
+const FRETNET_MIN_RMS: f32 = 0.00004;
+const FRETNET_CONFIDENCE_CONTRAST_WEIGHT: f32 = 0.64;
+const FRETNET_CONFIDENCE_ENERGY_WEIGHT: f32 = 0.36;
+const FRETNET_CONFIDENCE_GAIN: f32 = 1.82;
+const FRETNET_CONFIDENCE_BIAS: f32 = 0.08;
+const FRETNET_POLYPHONY_MAX_NOTES: usize = 1;
+const FRETNET_POLYPHONY_MIN_RELATIVE_SCORE: f32 = 0.0;
+const FRETNET_POLYPHONY_MIN_ABSOLUTE_SCORE: f32 = 0.0;
+const FRETNET_POLYPHONY_HARMONIC_SUPPRESSION: f32 = 0.72;
+const FRETNET_POLYPHONY_HARMONIC_TOLERANCE_CENTS: f32 = 32.0;
+const FRETNET_POLYPHONY_DEDUPE_MIDI: bool = true;
+const FRETNET_CHORD_ALPHA: f32 = 0.7;
+const FRETNET_EMIT_CHORD_SCORES: bool = false;
+const FRETNET_DC_REMOVE: bool = true;
+const FRETNET_TIE_EPSILON: f32 = 1e-6;
 
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
@@ -69,6 +97,7 @@ pub enum PitchDetectorPreset {
     Baseline,
     Ac14,
     SpectralGameRuntimeUnifiedV3,
+    Fretnet,
 }
 
 #[derive(Clone, Copy)]
@@ -123,6 +152,99 @@ struct SpectralFrameOutput {
     detected_fret: Option<u32>,
 }
 
+struct SpectralDetectorProfile {
+    harmonics: &'static [f32],
+    min_freq_hz: f32,
+    max_harmonic_freq_hz: f32,
+    base_bandwidth_hz: f32,
+    relative_bandwidth: f32,
+    magnitude_compression_gamma: f32,
+    use_log_magnitude: bool,
+    use_local_whitening: bool,
+    whitening_radius_bins: usize,
+    use_harmonic_penalty: bool,
+    subharmonic_penalty_alpha: f32,
+    normalize_by_weight_sum: bool,
+    normalize_by_band_energy: bool,
+    min_rms: f32,
+    confidence_contrast_weight: f32,
+    confidence_energy_weight: f32,
+    confidence_gain: f32,
+    confidence_bias: f32,
+    polyphony_max_notes: usize,
+    polyphony_min_relative_score: f32,
+    polyphony_min_absolute_score: f32,
+    polyphony_harmonic_suppression: f32,
+    polyphony_harmonic_tolerance_cents: f32,
+    polyphony_dedupe_midi: bool,
+    chord_alpha: f32,
+    emit_chord_scores: bool,
+    dc_remove: bool,
+    tie_epsilon: f32,
+}
+
+const SPECTRAL_GAME_RUNTIME_PROFILE: SpectralDetectorProfile = SpectralDetectorProfile {
+    harmonics: &SPECTRAL_HARMONICS,
+    min_freq_hz: SPECTRAL_MIN_FREQ_HZ,
+    max_harmonic_freq_hz: SPECTRAL_MAX_HARMONIC_FREQ_HZ,
+    base_bandwidth_hz: SPECTRAL_BASE_BANDWIDTH_HZ,
+    relative_bandwidth: SPECTRAL_RELATIVE_BANDWIDTH,
+    magnitude_compression_gamma: SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA,
+    use_log_magnitude: SPECTRAL_USE_LOG_MAGNITUDE,
+    use_local_whitening: SPECTRAL_USE_LOCAL_WHITENING,
+    whitening_radius_bins: SPECTRAL_WHITENING_RADIUS_BINS,
+    use_harmonic_penalty: SPECTRAL_USE_HARMONIC_PENALTY,
+    subharmonic_penalty_alpha: SPECTRAL_SUBHARMONIC_PENALTY_ALPHA,
+    normalize_by_weight_sum: SPECTRAL_NORMALIZE_BY_WEIGHT_SUM,
+    normalize_by_band_energy: SPECTRAL_NORMALIZE_BY_BAND_ENERGY,
+    min_rms: SPECTRAL_MIN_RMS,
+    confidence_contrast_weight: SPECTRAL_CONFIDENCE_CONTRAST_WEIGHT,
+    confidence_energy_weight: SPECTRAL_CONFIDENCE_ENERGY_WEIGHT,
+    confidence_gain: SPECTRAL_CONFIDENCE_GAIN,
+    confidence_bias: SPECTRAL_CONFIDENCE_BIAS,
+    polyphony_max_notes: SPECTRAL_POLYPHONY_MAX_NOTES,
+    polyphony_min_relative_score: SPECTRAL_POLYPHONY_MIN_RELATIVE_SCORE,
+    polyphony_min_absolute_score: SPECTRAL_POLYPHONY_MIN_ABSOLUTE_SCORE,
+    polyphony_harmonic_suppression: SPECTRAL_POLYPHONY_HARMONIC_SUPPRESSION,
+    polyphony_harmonic_tolerance_cents: SPECTRAL_POLYPHONY_HARMONIC_TOLERANCE_CENTS,
+    polyphony_dedupe_midi: SPECTRAL_POLYPHONY_DEDUPE_MIDI,
+    chord_alpha: SPECTRAL_CHORD_ALPHA,
+    emit_chord_scores: SPECTRAL_EMIT_CHORD_SCORES,
+    dc_remove: SPECTRAL_DC_REMOVE,
+    tie_epsilon: SPECTRAL_TIE_EPSILON,
+};
+
+const FRETNET_PROFILE: SpectralDetectorProfile = SpectralDetectorProfile {
+    harmonics: &FRETNET_HARMONICS,
+    min_freq_hz: FRETNET_MIN_FREQ_HZ,
+    max_harmonic_freq_hz: FRETNET_MAX_HARMONIC_FREQ_HZ,
+    base_bandwidth_hz: FRETNET_BASE_BANDWIDTH_HZ,
+    relative_bandwidth: FRETNET_RELATIVE_BANDWIDTH,
+    magnitude_compression_gamma: FRETNET_MAGNITUDE_COMPRESSION_GAMMA,
+    use_log_magnitude: FRETNET_USE_LOG_MAGNITUDE,
+    use_local_whitening: FRETNET_USE_LOCAL_WHITENING,
+    whitening_radius_bins: FRETNET_WHITENING_RADIUS_BINS,
+    use_harmonic_penalty: FRETNET_USE_HARMONIC_PENALTY,
+    subharmonic_penalty_alpha: FRETNET_SUBHARMONIC_PENALTY_ALPHA,
+    normalize_by_weight_sum: FRETNET_NORMALIZE_BY_WEIGHT_SUM,
+    normalize_by_band_energy: FRETNET_NORMALIZE_BY_BAND_ENERGY,
+    min_rms: FRETNET_MIN_RMS,
+    confidence_contrast_weight: FRETNET_CONFIDENCE_CONTRAST_WEIGHT,
+    confidence_energy_weight: FRETNET_CONFIDENCE_ENERGY_WEIGHT,
+    confidence_gain: FRETNET_CONFIDENCE_GAIN,
+    confidence_bias: FRETNET_CONFIDENCE_BIAS,
+    polyphony_max_notes: FRETNET_POLYPHONY_MAX_NOTES,
+    polyphony_min_relative_score: FRETNET_POLYPHONY_MIN_RELATIVE_SCORE,
+    polyphony_min_absolute_score: FRETNET_POLYPHONY_MIN_ABSOLUTE_SCORE,
+    polyphony_harmonic_suppression: FRETNET_POLYPHONY_HARMONIC_SUPPRESSION,
+    polyphony_harmonic_tolerance_cents: FRETNET_POLYPHONY_HARMONIC_TOLERANCE_CENTS,
+    polyphony_dedupe_midi: FRETNET_POLYPHONY_DEDUPE_MIDI,
+    chord_alpha: FRETNET_CHORD_ALPHA,
+    emit_chord_scores: FRETNET_EMIT_CHORD_SCORES,
+    dc_remove: FRETNET_DC_REMOVE,
+    tie_epsilon: FRETNET_TIE_EPSILON,
+};
+
 #[derive(Deserialize)]
 struct SpectralRuntimeModelPayload {
     notes: Vec<SpectralRuntimeNotePayload>,
@@ -150,8 +272,6 @@ struct SpectralRuntimeChordPayload {
 struct SpectralUnifiedBackend {
     notes: Vec<SpectralNoteCandidate>,
     chords: Vec<SpectralChordCandidate>,
-    max_harmonics: usize,
-    weights: Vec<f32>,
     fft_size: usize,
     fft: Arc<dyn Fft<f32>>,
     fft_buffer: Vec<Complex<f32>>,
@@ -237,8 +357,10 @@ impl GhDspCore {
             return Ok(());
         }
 
-        let payload: SpectralRuntimeModelPayload = serde_json::from_str(&model_json)
-            .map_err(|error| JsValue::from_str(&format!("Failed to parse spectral model JSON: {error}")))?;
+        let payload: SpectralRuntimeModelPayload =
+            serde_json::from_str(&model_json).map_err(|error| {
+                JsValue::from_str(&format!("Failed to parse spectral model JSON: {error}"))
+            })?;
 
         let backend = SpectralUnifiedBackend::from_payload(payload, self.block_size)
             .map_err(|error| JsValue::from_str(&error))?;
@@ -261,7 +383,7 @@ impl GhDspCore {
         );
         let bypass_reference_cancellation = matches!(
             self.pitch_preset,
-            PitchDetectorPreset::SpectralGameRuntimeUnifiedV3
+            PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 | PitchDetectorPreset::Fretnet
         ) && SPECTRAL_BYPASS_REFERENCE_CANCELLATION;
         if bypass_reference_cancellation {
             // Keep the reference-alignment path available for diagnostics, but expose
@@ -306,23 +428,30 @@ impl GhDspCore {
         let mut detected_string: Option<u32> = None;
         let mut detected_fret: Option<u32> = None;
 
-        let (midi_estimate, confidence, pitch_hz, pitch_confidence, rejected_as_reference_bleed, reference_policy_applied) =
-            match self.pitch_preset {
-                PitchDetectorPreset::Baseline => {
-                    let (frequency_hz, autocorr_confidence) = self.detect_pitch_on_residual(config);
-                    (
-                        frequency_hz.map(midi_from_hz),
-                        clamp01(autocorr_confidence),
-                        frequency_hz,
-                        clamp01(autocorr_confidence),
-                        false,
-                        false,
-                    )
-                }
-                PitchDetectorPreset::Ac14 => {
-                    let (frequency_hz, autocorr_confidence) = self.detect_pitch_on_residual(config);
-                    let raw_midi = frequency_hz.map(midi_from_hz);
-                    let (policy_midi, policy_confidence, rejected) = apply_reference_contamination_policy(
+        let (
+            midi_estimate,
+            confidence,
+            pitch_hz,
+            pitch_confidence,
+            rejected_as_reference_bleed,
+            reference_policy_applied,
+        ) = match self.pitch_preset {
+            PitchDetectorPreset::Baseline => {
+                let (frequency_hz, autocorr_confidence) = self.detect_pitch_on_residual(config);
+                (
+                    frequency_hz.map(midi_from_hz),
+                    clamp01(autocorr_confidence),
+                    frequency_hz,
+                    clamp01(autocorr_confidence),
+                    false,
+                    false,
+                )
+            }
+            PitchDetectorPreset::Ac14 => {
+                let (frequency_hz, autocorr_confidence) = self.detect_pitch_on_residual(config);
+                let raw_midi = frequency_hz.map(midi_from_hz);
+                let (policy_midi, policy_confidence, rejected) =
+                    apply_reference_contamination_policy(
                         raw_midi,
                         autocorr_confidence,
                         reference_midi,
@@ -332,39 +461,43 @@ impl GhDspCore {
                         contamination_score,
                         self.mode,
                     );
+                (
+                    policy_midi,
+                    policy_confidence,
+                    frequency_hz,
+                    clamp01(autocorr_confidence),
+                    rejected,
+                    true,
+                )
+            }
+            PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 | PitchDetectorPreset::Fretnet => {
+                let profile = if matches!(self.pitch_preset, PitchDetectorPreset::Fretnet) {
+                    &FRETNET_PROFILE
+                } else {
+                    &SPECTRAL_GAME_RUNTIME_PROFILE
+                };
+                let spectral = self.spectral_backend.as_mut().map(|backend| {
+                    backend.process_window(&self.residual_block, self.sample_rate, profile)
+                });
+                if let Some(frame) = spectral {
+                    selected_notes = frame.selected_notes;
+                    chord_scores = frame.chord_scores;
+                    best_note_id = frame.best_note_id;
+                    detected_string = frame.detected_string;
+                    detected_fret = frame.detected_fret;
                     (
-                        policy_midi,
-                        policy_confidence,
-                        frequency_hz,
-                        clamp01(autocorr_confidence),
-                        rejected,
-                        true,
+                        frame.midi_estimate,
+                        frame.confidence,
+                        None,
+                        frame.confidence,
+                        false,
+                        false,
                     )
+                } else {
+                    (None, 0.0, None, 0.0, false, false)
                 }
-                PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 => {
-                    let spectral = self
-                        .spectral_backend
-                        .as_mut()
-                        .map(|backend| backend.process_window(&self.residual_block, self.sample_rate));
-                    if let Some(frame) = spectral {
-                        selected_notes = frame.selected_notes;
-                        chord_scores = frame.chord_scores;
-                        best_note_id = frame.best_note_id;
-                        detected_string = frame.detected_string;
-                        detected_fret = frame.detected_fret;
-                        (
-                            frame.midi_estimate,
-                            frame.confidence,
-                            None,
-                            frame.confidence,
-                            false,
-                            false,
-                        )
-                    } else {
-                        (None, 0.0, None, 0.0, false, false)
-                    }
-                }
-            };
+            }
+        };
 
         let output = js_sys::Object::new();
         set_number(&output, "delay_samples", delay_samples as f64);
@@ -473,7 +606,9 @@ impl GhDspCore {
 
     fn pitch_config(&self) -> PitchDetectorConfig {
         match self.pitch_preset {
-            PitchDetectorPreset::Baseline | PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 => PitchDetectorConfig {
+            PitchDetectorPreset::Baseline
+            | PitchDetectorPreset::SpectralGameRuntimeUnifiedV3
+            | PitchDetectorPreset::Fretnet => PitchDetectorConfig {
                 min_freq_hz: BASELINE_MIN_FREQ_HZ,
                 max_freq_hz: BASELINE_MAX_FREQ_HZ,
                 energy_threshold: BASELINE_ENERGY_THRESHOLD,
@@ -496,7 +631,10 @@ impl GhDspCore {
 }
 
 impl SpectralUnifiedBackend {
-    fn from_payload(payload: SpectralRuntimeModelPayload, window_size: usize) -> Result<Self, String> {
+    fn from_payload(
+        payload: SpectralRuntimeModelPayload,
+        window_size: usize,
+    ) -> Result<Self, String> {
         if payload.notes.is_empty() {
             return Err("Spectral model must contain at least one note".to_owned());
         }
@@ -550,8 +688,6 @@ impl SpectralUnifiedBackend {
         let mut backend = Self {
             notes,
             chords,
-            max_harmonics: SPECTRAL_MAX_HARMONICS,
-            weights: harmonic_weights(SPECTRAL_MAX_HARMONICS),
             fft_size: SPECTRAL_FFT_SIZE,
             fft: FftPlanner::<f32>::new().plan_fft_forward(SPECTRAL_FFT_SIZE),
             fft_buffer: vec![Complex::new(0.0, 0.0); SPECTRAL_FFT_SIZE],
@@ -583,7 +719,12 @@ impl SpectralUnifiedBackend {
         self.whitening_prefix = vec![0.0; half + 1];
     }
 
-    fn process_window(&mut self, window: &[f32], sample_rate: u32) -> SpectralFrameOutput {
+    fn process_window(
+        &mut self,
+        window: &[f32],
+        sample_rate: u32,
+        profile: &SpectralDetectorProfile,
+    ) -> SpectralFrameOutput {
         if self.notes.is_empty() || sample_rate == 0 || window.is_empty() {
             return SpectralFrameOutput {
                 midi_estimate: None,
@@ -598,7 +739,7 @@ impl SpectralUnifiedBackend {
 
         self.ensure_window_size(window.len());
 
-        let mean = if SPECTRAL_DC_REMOVE {
+        let mean = if profile.dc_remove {
             window.iter().copied().sum::<f32>() / window.len() as f32
         } else {
             0.0
@@ -613,9 +754,10 @@ impl SpectralUnifiedBackend {
         }
         self.fft.process(&mut self.fft_buffer);
 
-        self.prepare_magnitude_spectrum();
+        self.prepare_magnitude_spectrum(profile);
 
         let total_band_energy = self.magnitude_buffer.iter().copied().sum::<f32>().max(1e-9);
+        let harmonic_weights = harmonic_weights(profile.harmonics);
         let mut raw_scores = Vec::<(usize, f32)>::with_capacity(self.notes.len());
         for (index, note) in self.notes.iter().enumerate() {
             let score = note_spectral_score(
@@ -623,16 +765,16 @@ impl SpectralUnifiedBackend {
                 &self.magnitude_buffer,
                 sample_rate as f32,
                 self.fft_size,
-                SPECTRAL_MIN_FREQ_HZ,
-                SPECTRAL_MAX_HARMONIC_FREQ_HZ,
-                self.max_harmonics,
-                &self.weights,
-                SPECTRAL_BASE_BANDWIDTH_HZ,
-                SPECTRAL_RELATIVE_BANDWIDTH,
-                SPECTRAL_USE_HARMONIC_PENALTY,
-                SPECTRAL_SUBHARMONIC_PENALTY_ALPHA,
-                SPECTRAL_NORMALIZE_BY_WEIGHT_SUM,
-                SPECTRAL_NORMALIZE_BY_BAND_ENERGY,
+                profile.min_freq_hz,
+                profile.max_harmonic_freq_hz,
+                profile.harmonics,
+                &harmonic_weights,
+                profile.base_bandwidth_hz,
+                profile.relative_bandwidth,
+                profile.use_harmonic_penalty,
+                profile.subharmonic_penalty_alpha,
+                profile.normalize_by_weight_sum,
+                profile.normalize_by_band_energy,
                 total_band_energy,
             );
             raw_scores.push((index, score));
@@ -642,7 +784,7 @@ impl SpectralUnifiedBackend {
         let (best_index, best_score) = best_note(&raw_scores);
         let second_score = second_best_score(&raw_scores, best_index).unwrap_or(best_score);
 
-        if rms < SPECTRAL_MIN_RMS || !best_score.is_finite() {
+        if rms < profile.min_rms || !best_score.is_finite() {
             return SpectralFrameOutput {
                 midi_estimate: None,
                 confidence: 0.0,
@@ -654,24 +796,32 @@ impl SpectralUnifiedBackend {
             };
         }
 
-        let selected_notes = self.select_polyphonic_notes(&raw_scores, &relative_scores, best_score);
-        let chord_scores = if SPECTRAL_EMIT_CHORD_SCORES {
-            self.score_chords(&raw_scores)
+        let selected_notes =
+            self.select_polyphonic_notes(&raw_scores, &relative_scores, best_score, profile);
+        let chord_scores = if profile.emit_chord_scores {
+            self.score_chords(&raw_scores, profile)
         } else {
             Vec::new()
         };
 
         let spread = (best_score - second_score).max(0.0);
         let contrast = spread / (best_score.abs() + second_score.abs() + 1e-6);
-        let energy = clamp01((rms - SPECTRAL_MIN_RMS) / (SPECTRAL_MIN_RMS * 10.0).max(1e-6));
-        let weight_sum = (SPECTRAL_CONFIDENCE_CONTRAST_WEIGHT + SPECTRAL_CONFIDENCE_ENERGY_WEIGHT).max(1e-6);
-        let base =
-            (SPECTRAL_CONFIDENCE_CONTRAST_WEIGHT * contrast + SPECTRAL_CONFIDENCE_ENERGY_WEIGHT * energy)
-                / weight_sum;
-        let confidence = clamp01(base * SPECTRAL_CONFIDENCE_GAIN + SPECTRAL_CONFIDENCE_BIAS);
+        let energy = clamp01((rms - profile.min_rms) / (profile.min_rms * 10.0).max(1e-6));
+        let weight_sum =
+            (profile.confidence_contrast_weight + profile.confidence_energy_weight).max(1e-6);
+        let base = (profile.confidence_contrast_weight * contrast
+            + profile.confidence_energy_weight * energy)
+            / weight_sum;
+        let confidence = clamp01(base * profile.confidence_gain + profile.confidence_bias);
 
         let best_note = &self.notes[best_index];
-        let (detected_string, detected_fret) = resolve_detected_position(best_index, best_score, &self.notes, &raw_scores);
+        let (detected_string, detected_fret) = resolve_detected_position(
+            best_index,
+            best_score,
+            &self.notes,
+            &raw_scores,
+            profile.tie_epsilon,
+        );
 
         SpectralFrameOutput {
             midi_estimate: Some(best_note.midi),
@@ -684,7 +834,7 @@ impl SpectralUnifiedBackend {
         }
     }
 
-    fn prepare_magnitude_spectrum(&mut self) {
+    fn prepare_magnitude_spectrum(&mut self, profile: &SpectralDetectorProfile) {
         let nyquist_bin = self.fft_size / 2;
         if self.magnitude_buffer.len() != nyquist_bin + 1 {
             self.magnitude_buffer.resize(nyquist_bin + 1, 0.0);
@@ -692,26 +842,27 @@ impl SpectralUnifiedBackend {
         for bin in 0..=nyquist_bin {
             let value = self.fft_buffer[bin];
             let mut magnitude = (value.re * value.re + value.im * value.im).sqrt();
-            if SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA.is_finite()
-                && SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA > 0.0
-                && (SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA - 1.0).abs() > 1e-6
+            if profile.magnitude_compression_gamma.is_finite()
+                && profile.magnitude_compression_gamma > 0.0
+                && (profile.magnitude_compression_gamma - 1.0).abs() > 1e-6
             {
-                magnitude = magnitude.powf(SPECTRAL_MAGNITUDE_COMPRESSION_GAMMA);
+                magnitude = magnitude.powf(profile.magnitude_compression_gamma);
             }
-            if SPECTRAL_USE_LOG_MAGNITUDE {
+            if profile.use_log_magnitude {
                 magnitude = (1.0 + magnitude.max(0.0)).ln();
             }
             self.magnitude_buffer[bin] = magnitude.max(0.0);
         }
 
-        if SPECTRAL_USE_LOCAL_WHITENING {
+        if profile.use_local_whitening {
             local_whiten(
                 &self.magnitude_buffer,
-                SPECTRAL_WHITENING_RADIUS_BINS,
+                profile.whitening_radius_bins,
                 &mut self.whitening_prefix,
                 &mut self.whitening_buffer,
             );
-            self.magnitude_buffer.copy_from_slice(&self.whitening_buffer);
+            self.magnitude_buffer
+                .copy_from_slice(&self.whitening_buffer);
         }
     }
 
@@ -720,8 +871,9 @@ impl SpectralUnifiedBackend {
         raw_scores: &[(usize, f32)],
         relative_scores: &[f32],
         best_score: f32,
+        profile: &SpectralDetectorProfile,
     ) -> Vec<SpectralSelectedNote> {
-        if raw_scores.is_empty() || SPECTRAL_POLYPHONY_MAX_NOTES == 0 {
+        if raw_scores.is_empty() || profile.polyphony_max_notes == 0 {
             return Vec::new();
         }
 
@@ -730,18 +882,18 @@ impl SpectralUnifiedBackend {
             working[*index] = score.max(0.0);
         }
 
-        let min_relative = best_score.max(0.0) * SPECTRAL_POLYPHONY_MIN_RELATIVE_SCORE.max(0.0);
-        let min_absolute = SPECTRAL_POLYPHONY_MIN_ABSOLUTE_SCORE.max(0.0);
+        let min_relative = best_score.max(0.0) * profile.polyphony_min_relative_score.max(0.0);
+        let min_absolute = profile.polyphony_min_absolute_score.max(0.0);
         let mut selected = Vec::<(usize, f32)>::new();
 
-        while selected.len() < SPECTRAL_POLYPHONY_MAX_NOTES {
+        while selected.len() < profile.polyphony_max_notes {
             let Some((best_index, score)) = best_nonzero_index(&working) else {
                 break;
             };
             if score < min_relative || score < min_absolute {
                 break;
             }
-            if SPECTRAL_POLYPHONY_DEDUPE_MIDI
+            if profile.polyphony_dedupe_midi
                 && selected.iter().any(|(selected_index, _)| {
                     (self.notes[*selected_index].midi - self.notes[best_index].midi).abs() < 0.01
                 })
@@ -752,7 +904,7 @@ impl SpectralUnifiedBackend {
 
             selected.push((best_index, score));
             working[best_index] = 0.0;
-            self.apply_polyphonic_suppression(best_index, &mut working);
+            self.apply_polyphonic_suppression(best_index, &mut working, profile);
         }
 
         selected
@@ -767,18 +919,31 @@ impl SpectralUnifiedBackend {
             .collect()
     }
 
-    fn apply_polyphonic_suppression(&self, selected_index: usize, working_scores: &mut [f32]) {
-        if SPECTRAL_POLYPHONY_HARMONIC_SUPPRESSION >= 1.0 {
+    fn apply_polyphonic_suppression(
+        &self,
+        selected_index: usize,
+        working_scores: &mut [f32],
+        profile: &SpectralDetectorProfile,
+    ) {
+        if profile.polyphony_harmonic_suppression >= 1.0 {
             return;
         }
         let selected_note = &self.notes[selected_index];
         let selected_frequency = selected_note.frequency_hz;
+        let max_harmonic_order = profile
+            .harmonics
+            .iter()
+            .copied()
+            .filter(|value| *value >= 2.0)
+            .fold(2.0f32, f32::max)
+            .round()
+            .max(2.0) as usize;
 
         for (index, score) in working_scores.iter_mut().enumerate() {
             if *score <= 0.0 {
                 continue;
             }
-            if SPECTRAL_POLYPHONY_DEDUPE_MIDI
+            if profile.polyphony_dedupe_midi
                 && (self.notes[index].midi - selected_note.midi).abs() < 0.01
             {
                 *score = 0.0;
@@ -788,15 +953,19 @@ impl SpectralUnifiedBackend {
             if harmonic_related(
                 selected_frequency,
                 candidate_frequency,
-                self.max_harmonics.max(8),
-                SPECTRAL_POLYPHONY_HARMONIC_TOLERANCE_CENTS,
+                max_harmonic_order.max(8),
+                profile.polyphony_harmonic_tolerance_cents,
             ) {
-                *score *= SPECTRAL_POLYPHONY_HARMONIC_SUPPRESSION;
+                *score *= profile.polyphony_harmonic_suppression;
             }
         }
     }
 
-    fn score_chords(&self, raw_scores: &[(usize, f32)]) -> Vec<SpectralChordScore> {
+    fn score_chords(
+        &self,
+        raw_scores: &[(usize, f32)],
+        profile: &SpectralDetectorProfile,
+    ) -> Vec<SpectralChordScore> {
         if self.chords.is_empty() {
             return Vec::new();
         }
@@ -820,7 +989,7 @@ impl SpectralUnifiedBackend {
                 .copied()
                 .fold(f32::INFINITY, f32::min)
                 .max(0.0);
-            let score = SPECTRAL_CHORD_ALPHA * mean + (1.0 - SPECTRAL_CHORD_ALPHA) * min;
+            let score = profile.chord_alpha * mean + (1.0 - profile.chord_alpha) * min;
             out.push(SpectralChordScore {
                 chord_id: chord.id.clone(),
                 score: score.max(0.0),
@@ -1094,14 +1263,14 @@ fn compute_contamination_score(
     }
 }
 
-fn harmonic_weights(max_harmonics: usize) -> Vec<f32> {
-    if max_harmonics == 0 {
+fn harmonic_weights(harmonics: &[f32]) -> Vec<f32> {
+    if harmonics.is_empty() {
         return vec![1.0];
     }
-    let mut out = Vec::with_capacity(max_harmonics);
-    for harmonic_index in 0..max_harmonics {
-        let harmonic = harmonic_index as f32 + 1.0;
-        out.push(1.0 / harmonic.sqrt());
+    let mut out = Vec::with_capacity(harmonics.len());
+    for harmonic in harmonics {
+        let safe = harmonic.abs().max(1e-3);
+        out.push(1.0 / safe.sqrt());
     }
     out
 }
@@ -1113,7 +1282,7 @@ fn note_spectral_score(
     fft_size: usize,
     min_freq_hz: f32,
     max_harmonic_freq_hz: f32,
-    max_harmonics: usize,
+    harmonics: &[f32],
     weights: &[f32],
     base_bandwidth_hz: f32,
     relative_bandwidth: f32,
@@ -1137,8 +1306,7 @@ fn note_spectral_score(
     let mut weighted_sum = 0.0f32;
     let mut weight_sum = 0.0f32;
 
-    for harmonic_idx in 0..max_harmonics {
-        let harmonic = harmonic_idx as f32 + 1.0;
+    for (harmonic_idx, harmonic) in harmonics.iter().copied().enumerate() {
         let target_hz = harmonic * frequency_hz;
         if target_hz >= nyquist_hz || target_hz > max_harmonic_freq_hz {
             break;
@@ -1299,6 +1467,7 @@ fn resolve_detected_position(
     best_score: f32,
     notes: &[SpectralNoteCandidate],
     raw_scores: &[(usize, f32)],
+    tie_epsilon: f32,
 ) -> (Option<u32>, Option<u32>) {
     let Some(best_note) = notes.get(best_index) else {
         return (None, None);
@@ -1311,7 +1480,7 @@ fn resolve_detected_position(
         .iter()
         .filter(|(index, score)| {
             (notes[*index].midi - best_note.midi).abs() < 0.01
-                && (*score - best_score).abs() <= SPECTRAL_TIE_EPSILON
+                && (*score - best_score).abs() <= tie_epsilon
         })
         .count();
 

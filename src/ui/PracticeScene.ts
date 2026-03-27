@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import type { PitchFrame } from '../types/models';
 import { PitchStabilityFilter } from '../audio/pitchStabilityFilter';
 import { createMicNode } from '../audio/micInput';
-import { PitchDetectorService } from '../audio/pitchDetector';
+import { PitchDetectorService, type PitchDetectorPreset } from '../audio/pitchDetector';
 import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel';
 import { midiForStringFret } from '../guitar/tuning';
 import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
@@ -16,6 +16,13 @@ import {
   truncateLabel
 } from './song-select/utils/songSelectUtils';
 import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../types/audioInputMode';
+import {
+  createPracticePipelineSessionDefault,
+  formatPracticePipelineLabel,
+  resolvePracticePipelineAvailability,
+  resolvePracticePipelineSwitch,
+  type PracticePipeline
+} from './practicePipeline';
 
 type FretCell = {
   midi: number;
@@ -29,6 +36,12 @@ type DetectorState = {
   confidence: number;
   lockedString: number | null;
   rawString: number | null;
+};
+
+type PipelineToggleOption = {
+  pipeline: PracticePipeline;
+  background: RoundedBox;
+  label: Phaser.GameObjects.Text;
 };
 
 const MIN_CONFIDENCE = 0.62;
@@ -67,6 +80,9 @@ export class PracticeScene extends Phaser.Scene {
   private statusLabel?: Phaser.GameObjects.Text;
   private micStatusMessage = 'Mic inactive.';
   private audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
+  private pipelineToggleEnabled = false;
+  private practicePipeline: PracticePipeline = createPracticePipelineSessionDefault();
+  private pipelineToggleOptions: PipelineToggleOption[] = [];
 
   private metronomeTrack?: Phaser.GameObjects.Rectangle;
   private metronomeKnob?: Phaser.GameObjects.Arc;
@@ -88,6 +104,9 @@ export class PracticeScene extends Phaser.Scene {
   create(data?: { audioInputMode?: AudioInputMode }): void {
     this.isShuttingDown = false;
     this.audioInputMode = data?.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
+    this.pipelineToggleEnabled = shouldEnablePracticePipelineToggle();
+    this.practicePipeline = createPracticePipelineSessionDefault();
+    this.pipelineToggleOptions = [];
     void enableAndroidKeepScreenOn();
     const { width, height } = this.scale;
     this.cellsByMidi.clear();
@@ -136,6 +155,10 @@ export class PracticeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
+    if (this.pipelineToggleEnabled) {
+      this.createPipelineToggleControls(width, title.y + 136);
+    }
+
     this.statusLabel = this.add
       .text(width / 2, height - 26, 'Mic inactive.', {
         color: '#a5b4fc',
@@ -182,6 +205,7 @@ export class PracticeScene extends Phaser.Scene {
 
     this.updateCellHighlights();
     this.updateToggleVisual();
+    this.refreshPipelineToggleVisuals();
     this.refreshMetronomeVisuals();
     this.updateStatusLabel();
     void this.startListening();
@@ -264,6 +288,44 @@ export class PracticeScene extends Phaser.Scene {
     };
     this.metronomeButton.on('pointerdown', onToggleMetronome);
     this.metronomeButtonLabel.on('pointerdown', onToggleMetronome);
+  }
+
+  private createPipelineToggleControls(width: number, centerY: number): void {
+    const panelWidth = Math.min(320, width * 0.42);
+    const panelHeight = 40;
+    const panelX = width / 2;
+    const gap = 8;
+    const buttonWidth = (panelWidth - gap - 10) / 2;
+
+    new RoundedBox(this, panelX, centerY, panelWidth, panelHeight, 0x0b1228, 0.88).setStrokeStyle(1, 0x334155, 0.86);
+    const left = panelX - panelWidth / 2 + 5 + buttonWidth / 2;
+    const options: Array<{ pipeline: PracticePipeline; label: string }> = [
+      { pipeline: 'current', label: 'Current' },
+      { pipeline: 'fretnet', label: 'FretNet' }
+    ];
+
+    this.pipelineToggleOptions = options.map((option, index) => {
+      const x = left + index * (buttonWidth + gap);
+      const background = new RoundedBox(this, x, centerY, buttonWidth, panelHeight - 10, 0x1a2a53, 0.74)
+        .setStrokeStyle(1, 0x334155, 0.56)
+        .setInteractive({ useHandCursor: true });
+      const label = this.add
+        .text(x, centerY, option.label, {
+          color: '#94a3b8',
+          fontFamily: 'Montserrat, sans-serif',
+          fontStyle: 'bold',
+          fontSize: `${Math.max(11, Math.floor(width * 0.0115))}px`
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+
+      const onSelectPipeline = (): void => {
+        void this.switchPracticePipeline(option.pipeline);
+      };
+      background.on('pointerdown', onSelectPipeline);
+      label.on('pointerdown', onSelectPipeline);
+      return { pipeline: option.pipeline, background, label };
+    });
   }
 
   private drawBackdrop(width: number, height: number): void {
@@ -385,6 +447,16 @@ export class PracticeScene extends Phaser.Scene {
 
   private async startListening(): Promise<void> {
     if (this.active) return;
+    const availability = resolvePracticePipelineAvailability(this.practicePipeline);
+    const detectorPreset = this.resolvePracticeDetectorPreset();
+    if (!availability.available || detectorPreset === null) {
+      this.active = false;
+      this.resetPitchState();
+      this.updateToggleVisual();
+      this.micStatusMessage = availability.reason ?? 'Selected pipeline unavailable.';
+      this.updateStatusLabel();
+      return;
+    }
     try {
       this.micStatusMessage = 'Requesting microphone and loading detector...';
       this.updateStatusLabel();
@@ -407,7 +479,7 @@ export class PracticeScene extends Phaser.Scene {
         smoothingAlpha: 0,
         audioInputMode: this.audioInputMode,
         enableDspCore: true,
-        detectorPreset: 'spectral_game_runtime_unified_v3',
+        detectorPreset,
         spectralModel: buildPracticeSpectralRuntimeModel(MAX_FRET)
       });
       await detector.init();
@@ -418,7 +490,10 @@ export class PracticeScene extends Phaser.Scene {
       this.resetPitchState();
       this.active = true;
       this.updateToggleVisual();
-      const calibrationBadge = 'Calibration bypassed (spectral raw)';
+      const calibrationBadge =
+        detectorPreset === 'spectral_game_runtime_unified_v3' || detectorPreset === 'fretnet'
+        ? 'Calibration bypassed (spectral raw)'
+        : 'Calibration bypassed';
       const fallbackReason = detector.getLegacyFallbackReason();
       const fallbackBadge = detector.isLegacyFallback()
         ? fallbackReason
@@ -457,6 +532,37 @@ export class PracticeScene extends Phaser.Scene {
     this.updateToggleVisual();
     this.micStatusMessage = 'Mic inactive.';
     this.updateStatusLabel();
+  }
+
+  private async switchPracticePipeline(nextPipeline: PracticePipeline): Promise<void> {
+    if (!this.pipelineToggleEnabled) return;
+    const transition = resolvePracticePipelineSwitch({
+      currentPipeline: this.practicePipeline,
+      nextPipeline,
+      micActive: this.active
+    });
+    if (transition.isNoop) return;
+
+    this.practicePipeline = transition.nextPipeline;
+    this.refreshPipelineToggleVisuals();
+    const pipelineLabel = formatPracticePipelineLabel(this.practicePipeline);
+    if (!transition.requiresMicRestart) {
+      this.micStatusMessage = 'Mic inactive.';
+      this.updateStatusLabel();
+      return;
+    }
+
+    this.micStatusMessage = `Switching pipeline to ${pipelineLabel}...`;
+    this.updateStatusLabel();
+    await this.stopListening();
+    this.micStatusMessage = `Switching pipeline to ${pipelineLabel}...`;
+    this.updateStatusLabel();
+    await this.startListening();
+  }
+
+  private resolvePracticeDetectorPreset(): PitchDetectorPreset | null {
+    if (this.practicePipeline === 'current') return 'spectral_game_runtime_unified_v3';
+    return 'fretnet';
   }
 
   private handlePitchFrame(frame: PitchFrame): void {
@@ -683,10 +789,11 @@ export class PracticeScene extends Phaser.Scene {
   private updateStatusLabel(): void {
     if (this.isShuttingDown) return;
     if (!isGameObjectAlive(this.statusLabel)) return;
+    const pipelineBadge = `Pipeline ${formatPracticePipelineLabel(this.practicePipeline)}`;
     const metronomeStatus = this.metronomeRunning ? ` • Metronome ON (${this.metronomeBpm} BPM)` : '';
     const midiBadge = this.detectorState.lockedMidi !== null ? ` • ${midiToNoteName(this.detectorState.lockedMidi)}` : '';
     const stringBadge = this.detectorState.lockedString !== null ? ` S${this.detectorState.lockedString}` : '';
-    this.statusLabel.setText(`${this.micStatusMessage}${metronomeStatus}${midiBadge}${stringBadge}`);
+    this.statusLabel.setText(`${pipelineBadge} • ${this.micStatusMessage}${metronomeStatus}${midiBadge}${stringBadge}`);
   }
 
   private updateToggleVisual(): void {
@@ -696,6 +803,17 @@ export class PracticeScene extends Phaser.Scene {
     this.toggleButton.setStrokeStyle(2, this.active ? 0xfca5a5 : 0x93c5fd, 0.86);
     this.toggleLabel.setText(this.active ? 'Stop Mic' : 'Start Mic');
     this.toggleLabel.setColor(this.active ? '#ffe4e6' : '#eff6ff');
+  }
+
+  private refreshPipelineToggleVisuals(): void {
+    if (this.isShuttingDown) return;
+    for (const option of this.pipelineToggleOptions) {
+      if (!isGameObjectAlive(option.background) || !isGameObjectAlive(option.label)) continue;
+      const active = option.pipeline === this.practicePipeline;
+      option.background.setFillStyle(active ? 0x2563eb : 0x1a2a53, active ? 1 : 0.74);
+      option.background.setStrokeStyle(1, active ? 0x93c5fd : 0x334155, active ? 0.86 : 0.56);
+      option.label.setColor(active ? '#eff6ff' : '#94a3b8');
+    }
   }
 }
 
@@ -726,4 +844,16 @@ function normalizeDetectedString(value: number | null | undefined): number | nul
   const rounded = Math.round(value);
   if (rounded < 1 || rounded > 6) return null;
   return rounded;
+}
+
+function shouldEnablePracticePipelineToggle(): boolean {
+  if (Capacitor.isNativePlatform()) {
+    return Capacitor.getPlatform() === 'android';
+  }
+  return !isElectronRuntime();
+}
+
+function isElectronRuntime(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /electron/i.test(navigator.userAgent);
 }

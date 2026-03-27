@@ -22,6 +22,7 @@ export enum PitchDetectorPreset {
     Baseline = 0,
     Ac14 = 1,
     SpectralGameRuntimeUnifiedV3 = 2,
+    Fretnet = 3,
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;

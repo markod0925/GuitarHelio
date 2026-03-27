@@ -6,7 +6,7 @@ import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?url';
 
 export type PitchListener = (frame: PitchFrame) => void;
-export type PitchDetectorPreset = 'baseline' | 'ac14' | 'spectral_game_runtime_unified_v3';
+export type PitchDetectorPreset = 'baseline' | 'ac14' | 'spectral_game_runtime_unified_v3' | 'fretnet';
 
 export type SpectralRuntimeNote = {
   id: string;
@@ -80,6 +80,13 @@ const FALLBACK_PRESET_CONFIG: Record<
     decayCorrelationThreshold: 0.6288579679610562
   },
   spectral_game_runtime_unified_v3: {
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
+  },
+  fretnet: {
     energyThreshold: 0.0032,
     correlationThreshold: 0.58,
     decayGraceFrames: 8,
@@ -220,7 +227,8 @@ export class PitchDetectorService {
           }
 
           const rustManagedFrame = this.detectorPreset === 'ac14' && payload.reference_policy_applied === true;
-          const spectralRawFrame = this.detectorPreset === 'spectral_game_runtime_unified_v3';
+          const spectralRawFrame =
+            this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet';
           const bypassPostProcessing = rustManagedFrame || spectralRawFrame;
           const incomingMidi = sanitizeMidi(payload.midi_estimate);
           const normalizedMidi = bypassPostProcessing
@@ -372,7 +380,10 @@ export class PitchDetectorService {
     } = {
       detectorPreset: this.detectorPreset
     };
-    if (this.spectralModel && this.detectorPreset === 'spectral_game_runtime_unified_v3') {
+    if (
+      this.spectralModel &&
+      (this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet')
+    ) {
       processorOptions.spectralModel = this.spectralModel;
     }
     if (dspWasmBytes) {
@@ -433,10 +444,13 @@ export class PitchDetectorService {
       const correctedMidi =
         midi === null || !Number.isFinite(midi)
           ? null
-          : this.detectorPreset === 'spectral_game_runtime_unified_v3'
+          : this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet'
             ? midi
             : applyPitchCalibration(midi, this.calibrationProfile);
-      const shouldRoundMidi = this.roundMidi && this.detectorPreset !== 'spectral_game_runtime_unified_v3';
+      const shouldRoundMidi =
+        this.roundMidi &&
+        this.detectorPreset !== 'spectral_game_runtime_unified_v3' &&
+        this.detectorPreset !== 'fretnet';
       const frame: PitchFrame = {
         t_seconds: this.ctx.currentTime,
         midi_estimate: correctedMidi === null ? null : shouldRoundMidi ? Math.round(correctedMidi) : correctedMidi,
