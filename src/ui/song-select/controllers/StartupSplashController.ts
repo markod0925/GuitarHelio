@@ -81,7 +81,7 @@ export class StartupSplashController {
 
   private createSplashOverlay(width: number, height: number): Phaser.GameObjects.Container {
     const base = this.scene.add
-      .rectangle(width / 2, height / 2, width, height, 0x030712, 1)
+      .rectangle(width / 2, height / 2, width, height, 0x080a0e, 1)
       .setOrigin(0.5);
 
     const nodes: Phaser.GameObjects.GameObject[] = [base];
@@ -89,7 +89,7 @@ export class StartupSplashController {
       const splashBg = this.scene.add.image(width / 2, height / 2, 'startupSplashBg').setOrigin(0.5);
       const sx = width / Math.max(1, splashBg.width);
       const sy = height / Math.max(1, splashBg.height);
-      const scale = Math.max(sx, sy);
+      const scale = Math.min(sx, sy);
       splashBg.setScale(scale);
       nodes.push(splashBg);
     }

@@ -8,7 +8,7 @@ import {
   type MaspValidationContext
 } from './maspShared';
 import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
-import pitchWorkletUrl from './pitchWorklet.js?url';
+import pitchWorkletUrl from './pitchWorklet.js?worker&url';
 
 export type PitchListener = (frame: PitchFrame) => void;
 export type PitchDetectorPreset =
