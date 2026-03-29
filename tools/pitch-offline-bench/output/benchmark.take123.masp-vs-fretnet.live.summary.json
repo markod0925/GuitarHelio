@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-03-29T11:14:31.758Z",
+  "mode": "live_stream_simulation",
+  "note": "MASP is chart-aware (expected-midis validator); FRETNET is free-running spectral preset with spectral model from manifest notes.",
+  "total": {
+    "masp": {
+      "detect_rate": 0.9708695652173913,
+      "in_tune_rate": 0.9708695652173913,
+      "median_abs_cents": 0,
+      "jitter_cents": 0,
+      "octave_error_rate": 0,
+      "realtime_factor": 1.0255922805180164
+    },
+    "fretnet": {
+      "detect_rate": 1,
+      "in_tune_rate": 0.8053379750507688,
+      "median_abs_cents": 0,
+      "jitter_cents": 479.8993775289937,
+      "octave_error_rate": 0.09675079779518422,
+      "realtime_factor": 2.808261056254195
+    }
+  },
+  "takes": {
+    "take1": {
+      "masp": {
+        "detect_rate": 0.9916666666666667,
+        "in_tune_rate": 0.9916666666666667,
+        "realtime_factor": 1.0421727273138615
+      },
+      "fretnet": {
+        "detect_rate": 1,
+        "in_tune_rate": 0.7636647579385737,
+        "realtime_factor": 2.7937751381529443
+      }
+    },
+    "take2": {
+      "masp": {
+        "detect_rate": 0.9864332603938731,
+        "in_tune_rate": 0.9864332603938731,
+        "realtime_factor": 1.0432373566333464
+      },
+      "fretnet": {
+        "detect_rate": 1,
+        "in_tune_rate": 0.8198948290972831,
+        "realtime_factor": 2.8131023820423793
+      }
+    },
+    "take3": {
+      "masp": {
+        "detect_rate": 0.9428571428571428,
+        "in_tune_rate": 0.9428571428571428,
+        "realtime_factor": 0.9973490455113253
+      },
+      "fretnet": {
+        "detect_rate": 1,
+        "in_tune_rate": 0.822742474916388,
+        "realtime_factor": 2.8156177766240185
+      }
+    }
+  }
+}

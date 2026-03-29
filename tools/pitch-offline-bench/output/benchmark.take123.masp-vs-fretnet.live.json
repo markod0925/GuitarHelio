@@ -1,0 +1,228 @@
+{
+  "generated_at": "2026-03-29T11:15:03.959Z",
+  "mode": "live_stream_simulation",
+  "evaluation": {
+    "min_confidence": 0.25,
+    "in_tune_cents": 35,
+    "octave_error_min_semitones": 5.5,
+    "quality_weight": 0.8,
+    "speed_weight": 0.2
+  },
+  "ranking": [
+    {
+      "rank": 1,
+      "id": "fretnet",
+      "label": "FRETNET (Rust/WASM preset)",
+      "combined_score": 84.8,
+      "quality_score": 81,
+      "detect_rate": 1,
+      "in_tune_rate": 0.8053379750507688,
+      "median_abs_cents": 0,
+      "jitter_cents": 479.8993775289937,
+      "octave_error_rate": 0.09675079779518422,
+      "cpu_ms_per_audio_s": 356.09225067339435,
+      "realtime_factor": 2.808261056254195
+    },
+    {
+      "rank": 2,
+      "id": "masp_game_scene_ts_v1",
+      "label": "MASP (playhead-aware validator)",
+      "combined_score": 78.4,
+      "quality_score": 98,
+      "detect_rate": 0.9708695652173913,
+      "in_tune_rate": 0.9708695652173913,
+      "median_abs_cents": 0,
+      "jitter_cents": 0,
+      "octave_error_rate": 0,
+      "cpu_ms_per_audio_s": 975.0463405349639,
+      "realtime_factor": 1.0255922805180164
+    }
+  ],
+  "candidates": [
+    {
+      "id": "masp_game_scene_ts_v1",
+      "label": "MASP (playhead-aware validator)",
+      "runtime_ms_total": 346544.47004399996,
+      "analyzed_duration_s_total": 355.41333333333336,
+      "cpu_ms_per_audio_s": 975.0463405349639,
+      "realtime_factor": 1.0255922805180164,
+      "quality_score": 98,
+      "metrics": {
+        "total_frames": 6900,
+        "valid_frames": 6699,
+        "detect_rate": 0.9708695652173913,
+        "in_tune_rate": 0.9708695652173913,
+        "median_abs_cents": 0,
+        "jitter_cents": 0,
+        "octave_error_rate": 0,
+        "avg_confidence": 0.6231426068471528,
+        "quality_score": 98
+      },
+      "per_take": [
+        {
+          "take_id": "take1",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take1.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take1.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 105.42931972789115,
+          "runtime_ms": 101163.00011,
+          "cpu_ms_per_audio_s": 959.5338409760932,
+          "realtime_factor": 1.0421727273138615,
+          "buffer_size": 8192,
+          "hop_size": 1024,
+          "mode": "decimate_44100",
+          "metrics": {
+            "total_frames": 1920,
+            "valid_frames": 1904,
+            "detect_rate": 0.9916666666666667,
+            "in_tune_rate": 0.9916666666666667,
+            "median_abs_cents": 0,
+            "jitter_cents": 0,
+            "octave_error_rate": 0,
+            "avg_confidence": 0.6259989055256099,
+            "quality_score": 99
+          }
+        },
+        {
+          "take_id": "take2",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take2.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take2.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 119.42401360544218,
+          "runtime_ms": 114474.441359,
+          "cpu_ms_per_audio_s": 958.5546315434116,
+          "realtime_factor": 1.0432373566333464,
+          "buffer_size": 8192,
+          "hop_size": 1024,
+          "mode": "decimate_44100",
+          "metrics": {
+            "total_frames": 2285,
+            "valid_frames": 2254,
+            "detect_rate": 0.9864332603938731,
+            "in_tune_rate": 0.9864332603938731,
+            "median_abs_cents": 0,
+            "jitter_cents": 0,
+            "octave_error_rate": 0,
+            "avg_confidence": 0.6344794032099473,
+            "quality_score": 99
+          }
+        },
+        {
+          "take_id": "take3",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take3.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take3.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 130.56,
+          "runtime_ms": 130907.02857499997,
+          "cpu_ms_per_audio_s": 1002.6580007276345,
+          "realtime_factor": 0.9973490455113253,
+          "buffer_size": 8192,
+          "hop_size": 1024,
+          "mode": "decimate_44100",
+          "metrics": {
+            "total_frames": 2695,
+            "valid_frames": 2541,
+            "detect_rate": 0.9428571428571428,
+            "in_tune_rate": 0.9428571428571428,
+            "median_abs_cents": 0,
+            "jitter_cents": 0,
+            "octave_error_rate": 0,
+            "avg_confidence": 0.6109460182263237,
+            "quality_score": 96
+          }
+        }
+      ]
+    },
+    {
+      "id": "fretnet",
+      "label": "FRETNET (Rust/WASM preset)",
+      "runtime_ms_total": 126559.93378600001,
+      "analyzed_duration_s_total": 355.41333333333336,
+      "cpu_ms_per_audio_s": 356.09225067339435,
+      "realtime_factor": 2.808261056254195,
+      "quality_score": 81,
+      "metrics": {
+        "total_frames": 6894,
+        "valid_frames": 6894,
+        "detect_rate": 1,
+        "in_tune_rate": 0.8053379750507688,
+        "median_abs_cents": 0,
+        "jitter_cents": 479.8993775289937,
+        "octave_error_rate": 0.09675079779518422,
+        "avg_confidence": 0.7957929484751524,
+        "quality_score": 81
+      },
+      "per_take": [
+        {
+          "take_id": "take1",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take1.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take1.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 105.42931972789115,
+          "runtime_ms": 37737.224549,
+          "cpu_ms_per_audio_s": 357.93861372147956,
+          "realtime_factor": 2.7937751381529443,
+          "buffer_size": 3763,
+          "hop_size": 1024,
+          "metrics": {
+            "total_frames": 1921,
+            "valid_frames": 1921,
+            "detect_rate": 1,
+            "in_tune_rate": 0.7636647579385737,
+            "median_abs_cents": 0,
+            "jitter_cents": 659.1045179663519,
+            "octave_error_rate": 0.14107235814679855,
+            "avg_confidence": 0.7888787555731813,
+            "quality_score": 79
+          }
+        },
+        {
+          "take_id": "take2",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take2.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take2.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 119.42401360544218,
+          "runtime_ms": 42452.778955999995,
+          "cpu_ms_per_audio_s": 355.47941887347025,
+          "realtime_factor": 2.8131023820423793,
+          "buffer_size": 3763,
+          "hop_size": 1024,
+          "metrics": {
+            "total_frames": 2282,
+            "valid_frames": 2282,
+            "detect_rate": 1,
+            "in_tune_rate": 0.8198948290972831,
+            "median_abs_cents": 0,
+            "jitter_cents": 402.232895663764,
+            "octave_error_rate": 0.08194566170026293,
+            "avg_confidence": 0.7950381898075525,
+            "quality_score": 82
+          }
+        },
+        {
+          "take_id": "take3",
+          "wav": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/wav/take3.wav",
+          "manifest": "/mnt/c/Dati/Marco/GameDev/GuitarHelio/tools/pitch-offline-bench/input/manifest.take3.json",
+          "sample_rate": 44100,
+          "audio_duration_s": 130.56,
+          "runtime_ms": 46369.93028100001,
+          "cpu_ms_per_audio_s": 355.1618434512868,
+          "realtime_factor": 2.8156177766240185,
+          "buffer_size": 3763,
+          "hop_size": 1024,
+          "metrics": {
+            "total_frames": 2691,
+            "valid_frames": 2691,
+            "detect_rate": 1,
+            "in_tune_rate": 0.822742474916388,
+            "median_abs_cents": 0,
+            "jitter_cents": 363.16847469404473,
+            "octave_error_rate": 0.07766629505759941,
+            "avg_confidence": 0.8013687655855758,
+            "quality_score": 82
+          }
+        }
+      ]
+    }
+  ]
+}
