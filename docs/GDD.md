@@ -116,7 +116,16 @@ targetGenerator.ts
 synth.ts
 scheduler.ts
 micInput.ts
+AudioCaptureService.ts
+AudioPreprocessService.ts
+FeatureExtractionService.ts
+DebugRecorder.ts
 pitchDetector.ts
+/pitch
+types.ts
+PitchDetectorManager.ts
+/ui/debug
+PitchDebugUIController.ts
 /game
 stateMachine.ts
 scoring.ts
@@ -124,6 +133,7 @@ scoring.ts
 BootScene.ts
 SongSelectScene.ts
 PlayScene.ts
+PitchDebugScene.ts
 hud.ts
 /public
 /songs
@@ -979,6 +989,58 @@ Practice scene requirements:
 * on Capacitor Android runtime, system back navigation (hardware/gesture back) while `Practice` scene is active MUST trigger `Back to Start` and return to `SongSelectScene` (must not background/exit the app directly)
 * on Capacitor Android runtime, `Practice` scene MUST keep the screen awake while the scene is active and MUST restore normal screen-timeout behavior when leaving the scene
 * the scene SHOULD apply persisted calibration profile when available
+
+---
+
+### 11.11.2 Pitch debug scene
+
+The app MUST expose a standalone `PitchDebugScene` developer workbench from `SongSelectScene` through a dedicated `Pitch Debug` action and desktop shortcut key `D`.
+
+`PitchDebugScene` requirements:
+
+* it MUST be fully decoupled from gameplay progression and MUST NOT reuse hidden `PlayScene` / `Practice` accept-reject logic
+* it MUST support live microphone diagnostics, decoded file playback, internal test WAV playback, and replay of recent buffered audio
+* it MUST capture microphone/file audio into a shared analysis frame stream and run all enabled detectors on the exact same frame data
+* it MUST compare these detectors side by side:
+  * `ac14`
+  * `MASP`
+  * `FRETNET`
+  * `spectral_game_runtime_unified_v3`
+* it MUST show:
+  * top status/session metadata
+  * time-domain waveform (current frame + rolling history)
+  * FFT spectrum with low-band emphasis
+  * scrolling spectrogram
+  * side-by-side detector table with accept/reject reason
+  * signal-quality metrics
+  * event log
+* it MUST expose analysis controls for frame size, hop size, FFT size, window type, DC removal, normalization, high-pass, low-pass, noise gate, temporal smoothing, and per-detector enable/disable
+* it MUST include explicit controls for:
+  * `Mic`
+  * `Stop`
+  * `Test WAV`
+  * `Load File`
+  * `Replay 3s`
+  * `Freeze`
+  * `Record`
+  * export actions (`Raw WAV`, `Proc WAV`, `JSONL`, `CSV`)
+* it MUST keep a rolling in-memory buffer of recent live audio for replay and visual inspection
+* it MUST export:
+  * raw WAV
+  * processed WAV
+  * JSONL per-frame diagnostics
+  * CSV session summary
+* it MUST include a guided open-string diagnostic workflow for:
+  * `E2`
+  * `A2`
+  * `D3`
+  * `G3`
+  * `B3`
+  * `E4`
+* the open-string workflow MUST compute per-detector acceptance rate, correct-note rate, median cents error, octave-error rate, median confidence, and rejected-frame rate
+* on Capacitor Android runtime, the scene MUST keep the screen awake while active and MUST restore normal screen-timeout behavior when leaving
+* Android/session diagnostics shown in this scene MUST include requested sample rate, actual sample rate, callback size, callback interval stats, dropped-buffer count, and whether unprocessed/low-latency capture was requested
+* low-frequency diagnostics in this scene MUST explicitly surface energy near `E2` fundamental and harmonics so weak-fundamental cases remain visible during live capture
 
 ---
 

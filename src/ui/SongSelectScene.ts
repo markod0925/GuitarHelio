@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
-import { SONG_SELECT_LAYOUT } from '../app/config';
+import { PITCH_DEBUG_SCENE_ENABLED, SONG_SELECT_LAYOUT } from '../app/config';
 import { IMPORT_DEBUG_LOG_ENABLED } from '../platform/importDebugConfig';
 import {
   SONG_REMOVE_LONG_PRESS_MOVE_TOLERANCE_PX,
@@ -272,6 +272,22 @@ export class SongSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+    const pitchDebugButton = PITCH_DEBUG_SCENE_ENABLED
+      ? new RoundedBox(this, 100, 34, 144, 30, 0x451a03, 0.9)
+          .setStrokeStyle(1, 0xf59e0b, 0.72)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
+    const pitchDebugLabel = pitchDebugButton
+      ? this.add
+          .text(pitchDebugButton.x, pitchDebugButton.y, 'Pitch Debug', {
+            color: '#ffedd5',
+            fontFamily: 'Montserrat, sans-serif',
+            fontStyle: 'bold',
+            fontSize: `${Math.max(11, Math.floor(labelSize * 0.9))}px`
+          })
+          .setOrigin(0.5)
+          .setInteractive({ useHandCursor: true })
+      : undefined;
     const settingsSummary = this.add
       .text(settingsButton.x, settingsButtonY + sideSummaryOffset, '', {
         color: '#a5b4fc',
@@ -487,6 +503,14 @@ export class SongSelectScene extends Phaser.Scene {
       practiceButton.setStrokeStyle(2, practiceDisabled ? 0x64748b : 0x3b82f6, practiceDisabled ? 0.72 : 0.52);
       practiceLabel.setColor(practiceDisabled ? '#cbd5e1' : '#f1f5f9');
       practiceIcon?.setAlpha(practiceDisabled ? 0.72 : 0.94);
+      if (pitchDebugButton && pitchDebugLabel) {
+        const debugDisabled = importState.inProgress || quitPromptOpen;
+        pitchDebugButton.setFillStyle(debugDisabled ? 0x334155 : 0x451a03, debugDisabled ? 0.86 : 0.9);
+        pitchDebugButton.setStrokeStyle(1, debugDisabled ? 0x64748b : 0xf59e0b, debugDisabled ? 0.64 : 0.72);
+        pitchDebugButton.setAlpha(debugDisabled ? 0.76 : 1);
+        pitchDebugLabel.setColor(debugDisabled ? '#cbd5e1' : '#ffedd5');
+        pitchDebugLabel.setAlpha(debugDisabled ? 0.82 : 1);
+      }
 
       importButton.setFillStyle(importState.inProgress || quitPromptOpen ? 0x334155 : 0x1a2a53, importState.inProgress || quitPromptOpen ? 0.9 : 0.74);
       importButton.setStrokeStyle(2, importState.inProgress ? 0xf59e0b : 0x3b82f6, importState.inProgress || quitPromptOpen ? 0.82 : 0.52);
@@ -571,6 +595,15 @@ export class SongSelectScene extends Phaser.Scene {
       this.scene.start('PracticeScene', {
         audioInputMode: settingsController.getAudioInputMode()
       });
+    };
+
+    const openPitchDebug = (): void => {
+      if (importController.isInProgress() || isQuitConfirmOpen()) return;
+      songGridController.hideRemovePrompt();
+      if (settingsController.isOpen()) closeSettings();
+      if (tunerController.isOpen()) closeTuner();
+      void tunerController.stop(false);
+      this.scene.start('PitchDebugScene');
     };
 
     const closeTuner = (): void => {
@@ -664,6 +697,8 @@ export class SongSelectScene extends Phaser.Scene {
     practiceButton.on('pointerdown', openPractice);
     practiceLabel.on('pointerdown', openPractice);
     practiceIcon?.on('pointerdown', openPractice);
+    pitchDebugButton?.on('pointerdown', openPitchDebug);
+    pitchDebugLabel?.on('pointerdown', openPitchDebug);
     importButton.on('pointerdown', openImportPicker);
     importLabel.on('pointerdown', openImportPicker);
     importIcon?.on('pointerdown', openImportPicker);
@@ -747,6 +782,11 @@ export class SongSelectScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-SPACE', () => {
       if (isQuitConfirmOpen() || settingsController.isOpen()) return;
       void startGame();
+    });
+    this.input.keyboard?.on('keydown-D', () => {
+      if (!PITCH_DEBUG_SCENE_ENABLED) return;
+      if (isQuitConfirmOpen() || settingsController.isOpen()) return;
+      openPitchDebug();
     });
     this.input.keyboard?.on('keydown-ESC', () => {
       if (settingsController.isOpen()) {

@@ -16,6 +16,7 @@ export const PLAY_SCENE_ENABLE_ECHO_SUPPRESSION = false;
 export const PLAY_SCENE_ENABLE_PROFILING = false;
 // Global debug overlay toggle. When false, overlay is fully disabled in Play Scene.
 export const PLAY_SCENE_ENABLE_DEBUG_OVERLAY = false;
+export const PITCH_DEBUG_SCENE_ENABLED = true;
 
 // Increase/decrease this to tune how tall the ball jump looks on beat.
 export const BALL_BOUNCE_AMPLITUDE_FACTOR = 0.8;
