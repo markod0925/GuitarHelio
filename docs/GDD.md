@@ -927,6 +927,7 @@ Inside this tuner menu, show a tuner panel that:
 * MUST use `PitchDetectorService` with detector preset `ac14` during tuner listening and tuner calibration
 
 The tuner must update in real time while active.
+On Capacitor Android runtime, while the tuner panel is open in `SongSelectScene`, runtime MUST keep the screen awake (no automatic dim/standby).
 The tuner display (detected note + cents + needle) MUST apply temporal stabilization to avoid noisy oscillation:
 
 * confidence gating for unreliable frames

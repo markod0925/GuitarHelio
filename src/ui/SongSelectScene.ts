@@ -30,6 +30,7 @@ import {
   truncateLabel
 } from './song-select/utils/songSelectUtils';
 import { RoundedBox } from './RoundedBox';
+import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
 
 export class SongSelectScene extends Phaser.Scene {
   private readonly assetExistenceCache = new Map<string, AssetExistenceCacheEntry>();
@@ -407,6 +408,17 @@ export class SongSelectScene extends Phaser.Scene {
     lifecycleController.initialize(width, height, labelSize);
     const isQuitConfirmOpen = (): boolean => lifecycleController.isQuitConfirmOpen();
     const requestQuitConfirm = (): void => lifecycleController.requestQuitConfirm();
+    let tunerOverlayKeepAwakeEnabled = false;
+
+    const setTunerOverlayKeepAwake = (enabled: boolean): void => {
+      if (enabled === tunerOverlayKeepAwakeEnabled) return;
+      tunerOverlayKeepAwakeEnabled = enabled;
+      if (enabled) {
+        void enableAndroidKeepScreenOn();
+        return;
+      }
+      void disableAndroidKeepScreenOn();
+    };
 
     const cycleDifficulty = (): void => {
       if (settingsController.isOpen() || importController.isInProgress() || isQuitConfirmOpen()) return;
@@ -545,6 +557,7 @@ export class SongSelectScene extends Phaser.Scene {
       if (settingsController.isOpen()) return;
       songGridController.hideRemovePrompt();
       tunerController.openOverlay();
+      setTunerOverlayKeepAwake(true);
       refreshSelections();
     };
 
@@ -563,6 +576,7 @@ export class SongSelectScene extends Phaser.Scene {
     const closeTuner = (): void => {
       if (tunerController.isCalibrating()) return;
       tunerController.closeOverlay();
+      setTunerOverlayKeepAwake(false);
       refreshSelections();
     };
 
@@ -776,6 +790,7 @@ export class SongSelectScene extends Phaser.Scene {
     void reloadSongsInBackground();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      setTunerOverlayKeepAwake(false);
       startupSplashController.destroy();
       settingsController.destroy();
       tunerController.destroy();
