@@ -1,4 +1,5 @@
 import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../types/audioInputMode';
+import { shouldUseNativePitchInput } from '../platform/nativePitchInput';
 
 type MicNodeOptions = {
   audioInputMode?: AudioInputMode;
@@ -8,10 +9,22 @@ type MicNodeOptions = {
   channelCount?: number;
 };
 
+export type MicInputNode = AudioNode & {
+  mediaStream?: MediaStream;
+};
+
 export async function createMicNode(
   ctx: AudioContext,
   options: MicNodeOptions = {}
-): Promise<MediaStreamAudioSourceNode> {
+): Promise<MicInputNode> {
+  if (shouldUseNativePitchInput()) {
+    const placeholderGain = ctx.createGain();
+    placeholderGain.gain.value = 0;
+    const placeholder = placeholderGain as MicInputNode;
+    placeholder.mediaStream = undefined;
+    return placeholder;
+  }
+
   const audioInputMode = options.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
   const speakerProfile = audioInputMode === 'speaker';
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -23,5 +36,7 @@ export async function createMicNode(
     },
     video: false
   });
-  return ctx.createMediaStreamSource(stream);
+  const source = ctx.createMediaStreamSource(stream) as MicInputNode;
+  source.mediaStream = stream;
+  return source;
 }

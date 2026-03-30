@@ -9,3 +9,4 @@ AGENTS.md
 tsconfig.tsbuildinfo
 *.jams
 *.wav
+/tools/native_pitch_runtime/target/

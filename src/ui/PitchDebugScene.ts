@@ -14,8 +14,20 @@ import {
   buildSyntheticReferenceWav
 } from '../audio/debugSignalProcessing';
 import { decodeAudioBuffer } from '../audio/decodeAudioBuffer';
+import { MASP_GAME_SCENE_PRESET } from '../audio/maspShared';
+import type { PitchDetectorPreset } from '../audio/pitchDetector';
 import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel';
 import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
+import {
+  ensureNativePitchInputPermission,
+  pollNativePitchResults,
+  resetNativePitchDetector,
+  shouldUseNativePitchInput,
+  startNativePitchCapture,
+  stopNativePitchCapture,
+  type NativePitchDetectionResult,
+  type NativePitchDiagnostics
+} from '../platform/nativePitchInput';
 import { AC14Adapter } from '../pitch/adapters/AC14Adapter';
 import { FretNetAdapter } from '../pitch/adapters/FretNetAdapter';
 import { MASPAdapter } from '../pitch/adapters/MASPAdapter';
@@ -24,6 +36,8 @@ import { PitchDetectorManager } from '../pitch/PitchDetectorManager';
 import type {
   AudioCaptureMetadata,
   AudioFrameContext,
+  FrameSignalMetrics,
+  PrecomputedFeatures,
   PitchDebugFrameSnapshot,
   PitchDetectorConfig,
   PitchDetectorResult,
@@ -54,6 +68,7 @@ type AnalysisConfig = {
 
 export class PitchDebugScene extends Phaser.Scene {
   private readonly spectralModel = buildPracticeSpectralRuntimeModel(12);
+  private readonly useNativePitchInput = shouldUseNativePitchInput();
   private captureMetadata: AudioCaptureMetadata | null = null;
   private captureService?: AudioCaptureService;
   private preprocessService = new AudioPreprocessService(DEFAULT_FRAME_SIZE);
@@ -110,6 +125,10 @@ export class PitchDebugScene extends Phaser.Scene {
   private referenceRuns: ReferenceTestNoteRun[] = [];
   private currentReferenceRun: ReferenceTestNoteRun | null = null;
   private nativeBackButtonListener?: { remove: () => Promise<void> };
+  private nativePollTimerId: number | null = null;
+  private nativePollInFlight = false;
+  private nativeLiveMicRunning = false;
+  private nativeDiagnostics: NativePitchDiagnostics | null = null;
 
   constructor() {
     super('PitchDebugScene');
@@ -173,7 +192,15 @@ export class PitchDebugScene extends Phaser.Scene {
       this.ui = undefined;
       this.detectorManager?.dispose();
       this.detectorManager = undefined;
+      if (this.nativePollTimerId !== null) {
+        window.clearInterval(this.nativePollTimerId);
+        this.nativePollTimerId = null;
+      }
+      this.nativeLiveMicRunning = false;
+      this.nativePollInFlight = false;
+      this.nativeDiagnostics = null;
       void this.captureService?.stop();
+      void stopNativePitchCapture().catch(() => undefined);
       this.captureService = undefined;
       void disableAndroidKeepScreenOn();
     });
@@ -211,7 +238,7 @@ export class PitchDebugScene extends Phaser.Scene {
       { key: 'gate', label: 'Gate', x: 622, y: 192, width: 48, height: 22, onClick: () => this.toggleAnalysisFlag('noiseGate') },
       { key: 'smooth', label: 'Smooth', x: 676, y: 192, width: 60, height: 22, onClick: () => this.toggleAnalysisFlag('temporalSmoothing') },
       { key: 'strings', label: 'Open Strings', x: 742, y: 192, width: 92, height: 22, onClick: () => this.toggleOpenStringsTest() },
-      { key: 'resetDet', label: 'Reset Det', x: 840, y: 192, width: 76, height: 22, onClick: () => this.detectorManager?.resetAll() },
+      { key: 'resetDet', label: 'Reset Det', x: 840, y: 192, width: 76, height: 22, onClick: () => void this.resetDetectors() },
       { key: 'harmonics', label: 'Harm+', x: 922, y: 192, width: 56, height: 22, onClick: () => this.cycleHarmonicOverlays() },
       { key: 'tolerance', label: 'Tol+', x: 984, y: 192, width: 44, height: 22, onClick: () => this.cycleReferenceTolerance() }
     ];
@@ -242,7 +269,12 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async startLiveMic(): Promise<void> {
+    if (this.useNativePitchInput) {
+      await this.startNativeLiveMic();
+      return;
+    }
     if (!this.captureService) return;
+    await this.stopNativeLiveMic(false);
     this.addLog('Starting live microphone diagnostics...');
     this.resetRunState();
     this.captureService.updateFrameConfig(this.analysisConfig.frameSize, this.analysisConfig.hopSize);
@@ -257,6 +289,7 @@ export class PitchDebugScene extends Phaser.Scene {
 
   private async startInternalTestWav(): Promise<void> {
     if (!this.captureService) return;
+    await this.stopNativeLiveMic(false);
     const bytes = buildSyntheticReferenceWav(this.referenceSelection.enabled ? this.referenceSelection : {
       ...this.referenceSelection,
       enabled: true
@@ -271,6 +304,7 @@ export class PitchDebugScene extends Phaser.Scene {
   private async loadLocalAudioFile(): Promise<void> {
     const file = await promptForAudioFile();
     if (!file || !this.captureService) return;
+    await this.stopNativeLiveMic(false);
     const arrayBuffer = await file.arrayBuffer();
     const decoded = await decodeAudioBuffer(arrayBuffer);
     this.resetRunState();
@@ -279,6 +313,7 @@ export class PitchDebugScene extends Phaser.Scene {
 
   private async startReplay(seconds: number): Promise<void> {
     if (!this.captureService) return;
+    await this.stopNativeLiveMic(false);
     const sampleRate = this.captureMetadata?.actualSampleRate ?? 48_000;
     const samples = this.rollingRawAudio.readLatest(Math.round(sampleRate * seconds));
     if (samples.length <= 0) {
@@ -295,11 +330,13 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async stopCapture(): Promise<void> {
+    await this.stopNativeLiveMic(false);
     await this.captureService?.stop();
     this.addLog('Capture stopped.');
   }
 
   private async leaveScene(): Promise<void> {
+    await this.stopNativeLiveMic(false);
     await this.captureService?.stop();
     await disableAndroidKeepScreenOn();
     if (this.scene.isActive()) {
@@ -385,7 +422,12 @@ export class PitchDebugScene extends Phaser.Scene {
     if (snapshot.rawMetrics.clippingRatio > 0.002) {
       this.addLog(`Clipping warning: ${(snapshot.rawMetrics.clippingRatio * 100).toFixed(2)}% of current frame`);
     }
-    if (this.referenceSelection.enabled && this.referenceSelection.midi === 40 && snapshot.features.metrics.lowBandEnergyRatio < 0.03) {
+    if (
+      snapshot.captureMetadata.inputSource !== 'native_android_oboe' &&
+      this.referenceSelection.enabled &&
+      this.referenceSelection.midi === 40 &&
+      snapshot.features.metrics.lowBandEnergyRatio < 0.03
+    ) {
       this.addLog('Low-band warning: E2 diagnostic shows weak energy below 200 Hz');
     }
     for (const result of snapshot.detectorResults) {
@@ -634,6 +676,16 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async toggleDetector(detectorName: DetectorToggleName): Promise<void> {
+    if (this.nativeLiveMicRunning) {
+      const changed = this.setExclusiveDetectorSelection(detectorName);
+      if (changed) {
+        await this.refreshDetectors();
+      }
+      this.addLog(`${detectorName} selected for Android native live mic`);
+      await this.startNativeLiveMic();
+      this.updateUi();
+      return;
+    }
     this.detectorEnabled[detectorName] = !this.detectorEnabled[detectorName];
     await this.refreshDetectors();
     this.addLog(`${detectorName} ${this.detectorEnabled[detectorName] ? 'enabled' : 'disabled'}`);
@@ -685,16 +737,27 @@ export class PitchDebugScene extends Phaser.Scene {
     this.captureService?.updateFrameConfig(this.analysisConfig.frameSize, this.analysisConfig.hopSize);
     this.debugRecorder.setFrameShape(this.analysisConfig.frameSize, this.analysisConfig.hopSize);
     this.addLog(`Analysis config updated: frame ${this.analysisConfig.frameSize}, hop ${this.analysisConfig.hopSize}, fft ${this.analysisConfig.fftSize}, window ${this.analysisConfig.windowType}`);
+    if (this.nativeLiveMicRunning) {
+      void this.startNativeLiveMic();
+    }
     this.updateUi();
   }
 
   private async exportRawWav(): Promise<void> {
+    if (this.nativeLiveMicRunning) {
+      this.addLog('Raw WAV export unavailable: Android native live mic does not stream PCM into JS.');
+      return;
+    }
     const sampleRate = this.captureMetadata?.actualSampleRate ?? 48_000;
     const target = await this.debugRecorder.exportRawWav(sampleRate, this.analysisConfig.frameSize, this.analysisConfig.hopSize);
     this.addLog(`Raw WAV exported: ${target}`);
   }
 
   private async exportProcessedWav(): Promise<void> {
+    if (this.nativeLiveMicRunning) {
+      this.addLog('Processed WAV export unavailable: Android native live mic does not stream PCM into JS.');
+      return;
+    }
     const sampleRate = this.captureMetadata?.actualSampleRate ?? 48_000;
     const target = await this.debugRecorder.exportProcessedWav(sampleRate, this.analysisConfig.frameSize, this.analysisConfig.hopSize);
     this.addLog(`Processed WAV exported: ${target}`);
@@ -732,6 +795,234 @@ export class PitchDebugScene extends Phaser.Scene {
       detectorResults
     });
     this.addLog(`CSV summary exported: ${target}`);
+  }
+
+  private async startNativeLiveMic(): Promise<void> {
+    const granted = await ensureNativePitchInputPermission().catch((error) => {
+      this.addLog(`Native mic permission failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    });
+    if (!granted) {
+      this.addLog('Native mic permission denied.');
+      return;
+    }
+
+    await this.captureService?.stop();
+    if (this.nativePollTimerId !== null) {
+      window.clearInterval(this.nativePollTimerId);
+      this.nativePollTimerId = null;
+    }
+    this.nativePollInFlight = false;
+    await stopNativePitchCapture().catch(() => undefined);
+
+    const detectorName = this.resolveNativeDetectorSelection();
+    this.setExclusiveDetectorSelection(detectorName);
+    this.resetRunState();
+    this.nativeDiagnostics = null;
+    this.captureMetadata = buildNativeCaptureMetadata(null, detectorName, this.analysisConfig.frameSize);
+    this.updateUi();
+    this.addLog(`Starting Android native live mic (${detectorName})...`);
+
+    const detectorPreset = this.resolveNativeDetectorPreset(detectorName);
+    try {
+      const response = await startNativePitchCapture({
+        detectorPreset,
+        requestedSampleRate: 48_000,
+        blockSize: this.analysisConfig.frameSize,
+        audioInputMode: 'speaker',
+        spectralModel: needsNativeSpectralModel(detectorPreset) ? this.spectralModel : null
+      });
+      this.nativeDiagnostics = response.diagnostics ?? null;
+      this.captureMetadata = buildNativeCaptureMetadata(this.nativeDiagnostics, detectorName, this.analysisConfig.frameSize);
+      this.nativeLiveMicRunning = Boolean(response.running);
+      if (!this.nativeLiveMicRunning) {
+        const reason = this.nativeDiagnostics?.fallback_reason ?? 'unknown native start failure';
+        this.addLog(`Android native live mic failed: ${reason}`);
+        this.updateUi();
+        return;
+      }
+      this.logNativeDiagnostics(detectorName, this.nativeDiagnostics);
+      this.nativePollTimerId = window.setInterval(() => {
+        void this.pollNativeDebugResults();
+      }, 50);
+      this.updateUi();
+    } catch (error) {
+      this.nativeLiveMicRunning = false;
+      this.captureMetadata = buildNativeCaptureMetadata(this.nativeDiagnostics, detectorName, this.analysisConfig.frameSize);
+      this.addLog(`Android native live mic start failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.updateUi();
+    }
+  }
+
+  private async stopNativeLiveMic(logStop = true): Promise<void> {
+    if (this.nativePollTimerId !== null) {
+      window.clearInterval(this.nativePollTimerId);
+      this.nativePollTimerId = null;
+    }
+    this.nativePollInFlight = false;
+    const wasRunning = this.nativeLiveMicRunning;
+    this.nativeLiveMicRunning = false;
+    this.nativeDiagnostics = null;
+    if (!this.useNativePitchInput) {
+      return;
+    }
+    await stopNativePitchCapture().catch(() => undefined);
+    if (wasRunning && logStop) {
+      this.addLog('Android native live mic stopped.');
+    }
+  }
+
+  private async pollNativeDebugResults(): Promise<void> {
+    if (!this.nativeLiveMicRunning || this.nativePollInFlight) {
+      return;
+    }
+    this.nativePollInFlight = true;
+    try {
+      const response = await pollNativePitchResults(6);
+      this.nativeDiagnostics = response.diagnostics ?? this.nativeDiagnostics;
+      if (this.captureMetadata) {
+        this.captureMetadata = buildNativeCaptureMetadata(
+          this.nativeDiagnostics,
+          this.resolveNativeDetectorSelection(),
+          this.analysisConfig.frameSize
+        );
+      }
+      if (response.running === false) {
+        this.nativeLiveMicRunning = false;
+        if (this.nativePollTimerId !== null) {
+          window.clearInterval(this.nativePollTimerId);
+          this.nativePollTimerId = null;
+        }
+        this.addLog(`Android native live mic stopped by plugin${this.nativeDiagnostics?.fallback_reason ? `: ${this.nativeDiagnostics.fallback_reason}` : ''}`);
+        this.updateUi();
+        return;
+      }
+
+      const results = response.results ?? [];
+      if (results.length <= 0) {
+        this.updateUi();
+        return;
+      }
+
+      for (const result of results) {
+        const snapshot = this.buildNativeSnapshot(result);
+        this.currentSnapshot = snapshot;
+        if (this.recording) {
+          this.debugRecorder.appendDiagnosticsOnly(snapshot);
+        }
+        this.handleFrameLogs(snapshot);
+        this.collectReferenceTestFrame(snapshot.detectorResults, snapshot.frameContext.timestampMs);
+        this.frameIndex += 1;
+        this.analysisWindowId += 1;
+      }
+      if (!this.freezeFrame && (performance.now() - this.lastUiUpdateMs >= 60 || this.lastUiUpdateMs === 0)) {
+        this.lastUiUpdateMs = performance.now();
+        this.updateUi();
+      }
+    } catch (error) {
+      this.addLog(`Android native poll failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.nativePollInFlight = false;
+    }
+  }
+
+  private buildNativeSnapshot(result: NativePitchDetectionResult): PitchDebugFrameSnapshot {
+    const detectorName = mapNativeDetectorName(result.backend_name, this.resolveNativeDetectorSelection());
+    const sampleRate = this.captureMetadata?.actualSampleRate ?? this.nativeDiagnostics?.sample_rate ?? 48_000;
+    const timestampMs = Number.isFinite(result.timestamp_sec) ? Number(result.timestamp_sec) * 1000 : performance.now();
+    const rawFrame = new Float32Array(this.analysisConfig.frameSize);
+    const processedFrame = new Float32Array(this.analysisConfig.frameSize);
+    const metrics = buildNativeMetrics(this.nativeDiagnostics);
+    const features: PrecomputedFeatures = {
+      metrics,
+      fftSize: this.analysisConfig.fftSize,
+      magnitudeSpectrum: new Float32Array(Math.max(1, Math.floor(this.analysisConfig.fftSize / 2))),
+      frequencyResolutionHz: sampleRate / Math.max(1, this.analysisConfig.fftSize),
+      topSpectralPeaks: [],
+      spectralEnergyTotal: 0,
+      referenceNote: this.referenceSelection.enabled ? this.referenceSelection : null,
+      spectralModel: this.spectralModel,
+      candidateNotes: []
+    };
+    const frameContext: AudioFrameContext = {
+      timestampMs,
+      frameIndex: this.frameIndex,
+      sampleRate,
+      rawFrame,
+      processedFrame,
+      analysisWindowId: this.analysisWindowId,
+      optionalFeatures: features
+    };
+    const detectorResultRaw = buildDetectorResultFromNative(result, detectorName, this.referenceSelection);
+    const detectorResult = this.analysisConfig.temporalSmoothing
+      ? this.applyTemporalSmoothing(detectorResultRaw)
+      : detectorResultRaw;
+    return {
+      frameContext,
+      rawMetrics: metrics,
+      features,
+      detectorResults: [detectorResult],
+      captureMetadata: buildNativeCaptureMetadata(this.nativeDiagnostics, this.resolveNativeDetectorSelection(), this.analysisConfig.frameSize),
+      analysisTimeMs: result.processing_time_ms ?? 0,
+      overload: Boolean(result.overrun) || ((result.callback_to_result_latency_ms ?? 0) > ((this.analysisConfig.hopSize / sampleRate) * 1000 * 2))
+    };
+  }
+
+  private resolveNativeDetectorSelection(): DetectorToggleName {
+    const active = (Object.entries(this.detectorEnabled) as Array<[DetectorToggleName, boolean]>)
+      .filter(([, enabled]) => enabled)
+      .map(([name]) => name);
+    if (active.length > 0) {
+      return active[0];
+    }
+    this.detectorEnabled.ac14 = true;
+    return 'ac14';
+  }
+
+  private setExclusiveDetectorSelection(detectorName: DetectorToggleName): boolean {
+    let changed = false;
+    for (const name of Object.keys(this.detectorEnabled) as DetectorToggleName[]) {
+      const enabled = name === detectorName;
+      if (this.detectorEnabled[name] !== enabled) {
+        this.detectorEnabled[name] = enabled;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private resolveNativeDetectorPreset(detectorName: DetectorToggleName): PitchDetectorPreset {
+    if (detectorName === 'MASP') {
+      return MASP_GAME_SCENE_PRESET;
+    }
+    if (detectorName === 'FRETNET') {
+      return 'fretnet';
+    }
+    return detectorName;
+  }
+
+  private logNativeDiagnostics(detectorName: DetectorToggleName, diagnostics: NativePitchDiagnostics | null): void {
+    if (!diagnostics) {
+      this.addLog(`Android native live mic running with ${detectorName}.`);
+      return;
+    }
+    const preset = diagnostics.actual_input_preset ?? 'unknown';
+    const audioApi = diagnostics.audio_api ?? 'unknown_api';
+    const sampleRate = diagnostics.sample_rate ?? 0;
+    const fallbackReason = diagnostics.fallback_reason ? ` | fallback ${diagnostics.fallback_reason}` : '';
+    this.addLog(`Android native live mic active: ${detectorName} | ${audioApi} | ${sampleRate} Hz | preset ${preset}${fallbackReason}`);
+  }
+
+  private async resetDetectors(): Promise<void> {
+    if (this.nativeLiveMicRunning) {
+      await resetNativePitchDetector().catch((error) => {
+        this.addLog(`Native detector reset failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+      this.addLog('Android native detector reset.');
+      return;
+    }
+    this.detectorManager?.resetAll();
+    this.addLog('Detector state reset.');
   }
 
   private resetRunState(): void {
@@ -800,4 +1091,142 @@ function fallbackMetadata(): AudioCaptureMetadata {
     lowLatencyActive: null,
     androidInfo: null
   };
+}
+
+function needsNativeSpectralModel(detectorPreset: PitchDetectorPreset): boolean {
+  return detectorPreset === 'fretnet' || detectorPreset === 'spectral_game_runtime_unified_v3';
+}
+
+function mapNativeDetectorName(backendName: string | undefined, fallback: DetectorToggleName): string {
+  if (backendName === 'fretnet') return 'FRETNET';
+  if (backendName === 'masp') return 'MASP';
+  if (backendName === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
+  if (backendName === 'ac14') return 'ac14';
+  if (fallback === 'FRETNET') return 'FRETNET';
+  if (fallback === 'MASP') return 'MASP';
+  return fallback;
+}
+
+function buildDetectorResultFromNative(
+  result: NativePitchDetectionResult,
+  detectorName: string,
+  referenceSelection: ReferenceNoteSelection
+): PitchDetectorResult {
+  const midi = Number.isFinite(result.midi_estimate) ? Number(result.midi_estimate) : undefined;
+  const pitchHz = Number.isFinite(result.pitch_hz) ? Number(result.pitch_hz) : undefined;
+  const accepted = result.validation_passed === false
+    ? false
+    : Boolean(pitchHz !== undefined || midi !== undefined || (result.selected_notes?.length ?? 0) > 0);
+  return {
+    detectorName,
+    accepted,
+    pitchHz,
+    midi,
+    noteName: midi === undefined ? undefined : midiToNoteName(Math.round(midi)),
+    cents: midi === undefined || !referenceSelection.enabled ? undefined : (midi - referenceSelection.midi) * 100,
+    confidence: result.confidence,
+    stringId: result.detected_string ?? result.selected_notes?.[0]?.string ?? null,
+    fret: result.detected_fret ?? result.selected_notes?.[0]?.fret ?? null,
+    candidates: (result.selected_notes ?? [])
+      .filter((note): note is NonNullable<typeof result.selected_notes>[number] & { midi: number } => Number.isFinite(note.midi))
+      .map((note) => ({
+        pitchHz: midiToHz(note.midi),
+        midi: note.midi,
+        noteName: midiToNoteName(Math.round(note.midi)),
+        confidence: note.score,
+        label: note.note_id ?? undefined
+      })),
+    rejectReason: accepted ? null : (result.reason ?? (result.validation_passed === false ? 'native_validation_failed' : 'native_no_detection')),
+    processingTimeMs: result.processing_time_ms,
+    debug: {
+      backend_name: result.backend_name ?? detectorName,
+      best_note_id: result.best_note_id ?? null,
+      detected_string: result.detected_string ?? null,
+      detected_fret: result.detected_fret ?? null,
+      callback_to_result_latency_ms: result.callback_to_result_latency_ms ?? null,
+      detector_queue_depth: result.detector_queue_depth ?? null,
+      dropped_blocks: result.dropped_blocks ?? null,
+      overrun: result.overrun ?? false,
+      validation_passed: result.validation_passed ?? null
+    }
+  };
+}
+
+function buildNativeCaptureMetadata(
+  diagnostics: NativePitchDiagnostics | null,
+  detectorName: DetectorToggleName,
+  blockSize: number
+): AudioCaptureMetadata {
+  const sampleRate = diagnostics?.sample_rate ?? diagnostics?.hardware_sample_rate ?? 48_000;
+  const callbackFrames = diagnostics?.frames_per_callback ?? blockSize;
+  const callbackIntervalMs = sampleRate > 0 ? (callbackFrames / sampleRate) * 1000 : 0;
+  const actualPreset = diagnostics?.actual_input_preset ?? 'native_android';
+  const detectorLabel = detectorName === 'MASP' ? 'MASP' : detectorName;
+  const androidInfoParts = [
+    diagnostics?.audio_api,
+    actualPreset,
+    diagnostics?.performance_mode,
+    diagnostics?.sharing_mode
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+  return {
+    mode: 'live_mic',
+    requestedSampleRate: 48_000,
+    actualSampleRate: sampleRate,
+    requestedBufferSize: blockSize,
+    callbackBufferSize: callbackFrames,
+    callbackIntervalMs,
+    callbackIntervalAvgMs: callbackIntervalMs,
+    callbackIntervalMaxMs: callbackIntervalMs,
+    droppedBuffers: diagnostics?.dropped_blocks ?? 0,
+    channels: diagnostics?.channel_count ?? 1,
+    unprocessedRequested: true,
+    processingConstraintsDisabled: actualPreset === 'unprocessed',
+    inputSource: 'native_android_oboe',
+    deviceLabel: diagnostics?.device_id === undefined ? null : `device ${diagnostics.device_id}`,
+    fileName: null,
+    capturePreset: `Android native mic (${detectorLabel})`,
+    lowLatencyRequested: true,
+    lowLatencyActive: diagnostics?.performance_mode === 'low_latency',
+    androidInfo: androidInfoParts.length > 0 ? androidInfoParts.join(' | ') : 'native_android_oboe'
+  };
+}
+
+function buildNativeMetrics(diagnostics: NativePitchDiagnostics | null): FrameSignalMetrics {
+  const rms = clampAmplitude(diagnostics?.rms ?? 0);
+  const peak = clampAmplitude(diagnostics?.peak ?? 0);
+  const noiseFloor = clampAmplitude(diagnostics?.noise_floor ?? 0);
+  return {
+    rms,
+    rmsDbfs: toDbfs(rms),
+    peak,
+    peakDbfs: toDbfs(peak),
+    crestFactor: rms > 0 ? peak / rms : 0,
+    dcOffset: 0,
+    clippingRatio: peak >= 0.999 ? 1 : 0,
+    zcr: 0,
+    spectralCentroidHz: 0,
+    spectralRolloffHz: 0,
+    spectralFlatness: 0,
+    bandEnergy_60_100: 0,
+    bandEnergy_100_200: 0,
+    bandEnergy_200_400: 0,
+    bandEnergy_400_800: 0,
+    bandEnergy_800_1600: 0,
+    bandEnergy_1600_3200: 0,
+    lowBandEnergyRatio: 0,
+    estimatedNoiseFloorDb: toDbfs(noiseFloor),
+    estimatedSnrDb: rms > 0 && noiseFloor > 0 ? toDbfs(rms) - toDbfs(noiseFloor) : 0
+  };
+}
+
+function clampAmplitude(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function toDbfs(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return -120;
+  }
+  return 20 * Math.log10(value);
 }

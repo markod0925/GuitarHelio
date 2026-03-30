@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use rustfft::num_complex::Complex;
@@ -126,22 +126,22 @@ struct SpectralChordCandidate {
     member_indices: Vec<usize>,
 }
 
-#[derive(Clone, Debug)]
-struct SpectralSelectedNote {
-    note_id: String,
-    midi: f32,
-    guitar_string: u32,
-    fret: u32,
-    score: f32,
+#[derive(Clone, Debug, Serialize)]
+pub struct SpectralSelectedNote {
+    pub note_id: String,
+    pub midi: f32,
+    pub guitar_string: u32,
+    pub fret: u32,
+    pub score: f32,
 }
 
-#[derive(Clone, Debug)]
-struct SpectralChordScore {
-    chord_id: String,
-    score: f32,
+#[derive(Clone, Debug, Serialize)]
+pub struct SpectralChordScore {
+    pub chord_id: String,
+    pub score: f32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 struct SpectralFrameOutput {
     midi_estimate: Option<f32>,
     confidence: f32,
@@ -150,6 +150,28 @@ struct SpectralFrameOutput {
     best_note_id: Option<String>,
     detected_string: Option<u32>,
     detected_fret: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NativePitchFrame {
+    pub delay_samples: i32,
+    pub reference_correlation: f32,
+    pub energy_ratio_db: f32,
+    pub onset_strength: f32,
+    pub contamination_score: f32,
+    pub midi_estimate: Option<f32>,
+    pub confidence: f32,
+    pub reference_midi: Option<f32>,
+    pub pitch_hz: Option<f32>,
+    pub pitch_confidence: f32,
+    pub rejected_as_reference_bleed: bool,
+    pub reference_policy_applied: bool,
+    pub detected_string: Option<u32>,
+    pub detected_fret: Option<u32>,
+    pub best_note_id: Option<String>,
+    pub selected_notes: Vec<SpectralSelectedNote>,
+    pub chord_scores: Vec<SpectralChordScore>,
+    pub residual_block: Vec<f32>,
 }
 
 struct SpectralDetectorProfile {
@@ -352,24 +374,106 @@ impl GhDspCore {
 
     #[wasm_bindgen]
     pub fn set_spectral_model(&mut self, model_json: String) -> Result<(), JsValue> {
+        self.set_spectral_model_json(&model_json)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen]
+    pub fn process_block(&mut self, mic_block: Vec<f32>) -> JsValue {
+        let native = self.process_block_internal(&mic_block);
+
+        let output = js_sys::Object::new();
+        set_number(&output, "delay_samples", native.delay_samples as f64);
+        set_number(
+            &output,
+            "reference_correlation",
+            native.reference_correlation as f64,
+        );
+        set_number(&output, "energy_ratio_db", native.energy_ratio_db as f64);
+        set_number(&output, "onset_strength", native.onset_strength as f64);
+        set_number(&output, "contamination_score", native.contamination_score as f64);
+        set_number(
+            &output,
+            "midi_estimate",
+            native.midi_estimate.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(&output, "confidence", native.confidence as f64);
+        set_number(
+            &output,
+            "reference_midi",
+            native.reference_midi.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(
+            &output,
+            "pitch_hz",
+            native.pitch_hz.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(&output, "pitch_confidence", native.pitch_confidence as f64);
+        set_bool(
+            &output,
+            "rejected_as_reference_bleed",
+            native.rejected_as_reference_bleed,
+        );
+        set_bool(
+            &output,
+            "reference_policy_applied",
+            native.reference_policy_applied,
+        );
+        set_number(
+            &output,
+            "detected_string",
+            native.detected_string.map_or(f64::NAN, |value| value as f64),
+        );
+        set_number(
+            &output,
+            "detected_fret",
+            native.detected_fret.map_or(f64::NAN, |value| value as f64),
+        );
+        if let Some(note_id) = native.best_note_id {
+            set_value(&output, "best_note_id", &JsValue::from_str(&note_id));
+        }
+        let selected_notes_value = spectral_selected_notes_to_js_array(&native.selected_notes);
+        set_value(&output, "selected_notes", selected_notes_value.as_ref());
+        let chord_scores_value = spectral_chord_scores_to_js_array(&native.chord_scores);
+        set_value(&output, "chord_scores", chord_scores_value.as_ref());
+
+        let residual = js_sys::Float32Array::from(native.residual_block.as_slice());
+        set_value(&output, "residual_block", residual.as_ref());
+        output.into()
+    }
+
+    #[wasm_bindgen]
+    pub fn reset(&mut self) {
+        self.reference_block.fill(0.0);
+        self.aligned_reference.fill(0.0);
+        self.residual_block.fill(0.0);
+        self.nlms_weights.fill(0.0);
+        self.prev_mic_rms = 0.0;
+        self.pitch_decay_frames_remaining = 0;
+    }
+}
+
+impl GhDspCore {
+    pub fn set_spectral_model_json(&mut self, model_json: &str) -> Result<(), String> {
         if model_json.trim().is_empty() {
             self.spectral_backend = None;
             return Ok(());
         }
 
-        let payload: SpectralRuntimeModelPayload =
-            serde_json::from_str(&model_json).map_err(|error| {
-                JsValue::from_str(&format!("Failed to parse spectral model JSON: {error}"))
-            })?;
+        let payload: SpectralRuntimeModelPayload = serde_json::from_str(model_json)
+            .map_err(|error| format!("Failed to parse spectral model JSON: {error}"))?;
 
         let backend = SpectralUnifiedBackend::from_payload(payload, self.block_size)
-            .map_err(|error| JsValue::from_str(&error))?;
+            .map_err(|error| error.to_string())?;
         self.spectral_backend = Some(backend);
         Ok(())
     }
 
-    #[wasm_bindgen]
-    pub fn process_block(&mut self, mic_block: Vec<f32>) -> JsValue {
+    pub fn process_block_native(&mut self, mic_block: &[f32]) -> NativePitchFrame {
+        self.process_block_internal(mic_block)
+    }
+
+    fn process_block_internal(&mut self, mic_block: &[f32]) -> NativePitchFrame {
         let mut safe_mic_block = vec![0.0; self.block_size];
         let copy_len = mic_block.len().min(self.block_size);
         safe_mic_block[..copy_len].copy_from_slice(&mic_block[..copy_len]);
@@ -386,8 +490,6 @@ impl GhDspCore {
             PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 | PitchDetectorPreset::Fretnet
         ) && SPECTRAL_BYPASS_REFERENCE_CANCELLATION;
         if bypass_reference_cancellation {
-            // Keep the reference-alignment path available for diagnostics, but expose
-            // the spectral detector to the clean mic signal (pitch-agent-lab parity).
             self.residual_block.copy_from_slice(&safe_mic_block);
             self.nlms_weights.fill(0.0);
         } else {
@@ -499,78 +601,28 @@ impl GhDspCore {
             }
         };
 
-        let output = js_sys::Object::new();
-        set_number(&output, "delay_samples", delay_samples as f64);
-        set_number(
-            &output,
-            "reference_correlation",
-            reference_correlation as f64,
-        );
-        set_number(&output, "energy_ratio_db", energy_ratio_db as f64);
-        set_number(&output, "onset_strength", onset_strength as f64);
-        set_number(&output, "contamination_score", contamination_score as f64);
-        set_number(
-            &output,
-            "midi_estimate",
-            midi_estimate.map_or(f64::NAN, |value| value as f64),
-        );
-        set_number(&output, "confidence", confidence as f64);
-        set_number(
-            &output,
-            "reference_midi",
-            reference_midi.map_or(f64::NAN, |value| value as f64),
-        );
-        set_number(
-            &output,
-            "pitch_hz",
-            pitch_hz.map_or(f64::NAN, |value| value as f64),
-        );
-        set_number(&output, "pitch_confidence", pitch_confidence as f64);
-        set_bool(
-            &output,
-            "rejected_as_reference_bleed",
+        NativePitchFrame {
+            delay_samples: delay_samples as i32,
+            reference_correlation,
+            energy_ratio_db,
+            onset_strength,
+            contamination_score,
+            midi_estimate,
+            confidence,
+            reference_midi,
+            pitch_hz,
+            pitch_confidence,
             rejected_as_reference_bleed,
-        );
-        set_bool(
-            &output,
-            "reference_policy_applied",
             reference_policy_applied,
-        );
-        set_number(
-            &output,
-            "detected_string",
-            detected_string.map_or(f64::NAN, |value| value as f64),
-        );
-        set_number(
-            &output,
-            "detected_fret",
-            detected_fret.map_or(f64::NAN, |value| value as f64),
-        );
-        if let Some(note_id) = best_note_id {
-            set_value(&output, "best_note_id", &JsValue::from_str(&note_id));
+            detected_string,
+            detected_fret,
+            best_note_id,
+            selected_notes,
+            chord_scores,
+            residual_block: self.residual_block.clone(),
         }
-        let selected_notes_value = spectral_selected_notes_to_js_array(&selected_notes);
-        set_value(&output, "selected_notes", selected_notes_value.as_ref());
-        let chord_scores_value = spectral_chord_scores_to_js_array(&chord_scores);
-        set_value(&output, "chord_scores", chord_scores_value.as_ref());
-
-        let residual = js_sys::Float32Array::from(self.residual_block.as_slice());
-        set_value(&output, "residual_block", residual.as_ref());
-        output.into()
     }
 
-    #[wasm_bindgen]
-    pub fn reset(&mut self) {
-        self.reference_block.fill(0.0);
-        self.aligned_reference.fill(0.0);
-        self.residual_block.fill(0.0);
-        self.nlms_weights.fill(0.0);
-        self.prev_mic_rms = 0.0;
-        self.pitch_decay_frames_remaining = 0;
-    }
-}
-
-impl GhDspCore {
     fn detect_pitch_on_residual(&mut self, config: PitchDetectorConfig) -> (Option<f32>, f32) {
         let decay_active = self.pitch_decay_frames_remaining > 0;
         let energy_threshold = if decay_active {

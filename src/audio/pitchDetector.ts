@@ -7,6 +7,17 @@ import {
   sanitizeMaspValidationContext,
   type MaspValidationContext
 } from './maspShared';
+import {
+  ensureNativePitchInputPermission,
+  pollNativePitchResults,
+  resetNativePitchDetector,
+  shouldUseNativePitchInput,
+  startNativePitchCapture,
+  stopNativePitchCapture,
+  type NativePitchDetectionResult,
+  type NativePitchDiagnostics,
+  updateNativePitchGameplayContext
+} from '../platform/nativePitchInput';
 import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?worker&url';
 
@@ -195,6 +206,10 @@ export class PitchDetectorService {
   private backendStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private analyserDecayGraceFrames = 0;
   private maspValidationContext: MaspValidationContext | null = null;
+  private readonly useNativePitchInput: boolean;
+  private nativeDiagnostics: NativePitchDiagnostics | null = null;
+  private nativePollTimerId: number | null = null;
+  private nativePollInFlight = false;
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
@@ -206,9 +221,20 @@ export class PitchDetectorService {
     this.enableProfiling = options.enableProfiling ?? false;
     this.detectorPreset = options.detectorPreset ?? 'baseline';
     this.spectralModel = options.spectralModel ?? null;
+    this.useNativePitchInput =
+      shouldUseNativePitchInput() &&
+      this.enableDspCore &&
+      this.detectorPreset !== 'baseline';
   }
 
   async init(): Promise<void> {
+    if (this.useNativePitchInput) {
+      this.workletReady = false;
+      this.legacyFallback = false;
+      this.legacyFallbackReason = null;
+      this.initialized = true;
+      return;
+    }
     this.workletReady = false;
     this.legacyFallback = false;
     this.legacyFallbackReason = null;
@@ -242,6 +268,12 @@ export class PitchDetectorService {
 
   updateMaspValidationContext(context: MaspValidationContext | null): void {
     this.maspValidationContext = sanitizeMaspValidationContext(context);
+    if (this.useNativePitchInput) {
+      void updateNativePitchGameplayContext(this.maspValidationContext).catch((error) => {
+        console.warn('Failed to update native MASP gameplay context.', error);
+      });
+      return;
+    }
     this.postMaspValidationContextToWorklet(this.maspValidationContext);
   }
 
@@ -250,6 +282,11 @@ export class PitchDetectorService {
     this.stop();
     this.smoothedMidiEstimate = null;
     this.analyserDecayGraceFrames = 0;
+
+    if (this.useNativePitchInput) {
+      await this.startNativeBackend();
+      return;
+    }
 
     const sink = this.ctx.createGain();
     sink.gain.value = 0;
@@ -397,6 +434,17 @@ export class PitchDetectorService {
   }
 
   stop(): void {
+    if (this.nativePollTimerId !== null) {
+      window.clearInterval(this.nativePollTimerId);
+      this.nativePollTimerId = null;
+    }
+    this.nativePollInFlight = false;
+    if (this.useNativePitchInput) {
+      void stopNativePitchCapture().catch((error) => {
+        console.warn('Failed to stop native pitch capture.', error);
+      });
+      void resetNativePitchDetector().catch(() => undefined);
+    }
     this.workletNode?.disconnect();
     this.workletNode = null;
     this.channelMergerNode?.disconnect();
@@ -471,6 +519,58 @@ export class PitchDetectorService {
 
   private resolveBackendStatus(): void {
     this.backendStatusResolver?.();
+  }
+
+  private async startNativeBackend(): Promise<void> {
+    const granted = await ensureNativePitchInputPermission();
+    if (!granted) {
+      throw new Error('Microphone permission denied.');
+    }
+
+    const start = await startNativePitchCapture({
+      detectorPreset: this.detectorPreset,
+      requestedSampleRate: this.ctx.sampleRate,
+      blockSize: 2048,
+      audioInputMode: this.audioInputMode,
+      spectralModel: this.spectralModel
+    });
+
+    this.nativeDiagnostics = start.diagnostics ?? null;
+    const fallbackReason = this.nativeDiagnostics?.fallback_reason;
+    const presetMismatch =
+      this.nativeDiagnostics?.requested_input_preset &&
+      this.nativeDiagnostics?.actual_input_preset &&
+      this.nativeDiagnostics.requested_input_preset !== this.nativeDiagnostics.actual_input_preset
+        ? `Input preset downgraded to ${this.nativeDiagnostics.actual_input_preset}`
+        : null;
+    this.legacyFallbackReason = fallbackReason ?? presetMismatch;
+    this.legacyFallback = this.legacyFallbackReason !== null;
+
+    if (this.maspValidationContext) {
+      await updateNativePitchGameplayContext(this.maspValidationContext);
+    }
+
+    this.nativePollTimerId = window.setInterval(() => {
+      void this.pollNativeBackend();
+    }, 16);
+  }
+
+  private async pollNativeBackend(): Promise<void> {
+    if (this.nativePollInFlight) return;
+    this.nativePollInFlight = true;
+    try {
+      const response = await pollNativePitchResults(6);
+      this.nativeDiagnostics = response.diagnostics ?? this.nativeDiagnostics;
+      for (const payload of response.results ?? []) {
+        const frame = sanitizeNativeDetectionPayload(payload, this.ctx.currentTime);
+        if (!frame) continue;
+        for (const listener of this.listeners) listener(frame);
+      }
+    } catch (error) {
+      console.warn('Native pitch polling failed.', error);
+    } finally {
+      this.nativePollInFlight = false;
+    }
   }
 
   private createWorkletNode(dspWasmBytes: ArrayBuffer | null): AudioWorkletNode {
@@ -592,6 +692,57 @@ export class PitchDetectorService {
     this.smoothedMidiEstimate += this.smoothingAlpha * (midiEstimate - this.smoothedMidiEstimate);
     return this.smoothedMidiEstimate;
   }
+}
+
+function sanitizeNativeDetectionPayload(
+  payload: NativePitchDetectionResult,
+  fallbackTimeSeconds: number
+): PitchFrame | null {
+  const midiEstimate = sanitizeMidi(payload.midi_estimate);
+  const confidence = clamp01(payload.confidence ?? 0);
+  const selectedNotes = Array.isArray(payload.selected_notes)
+    ? payload.selected_notes
+      .map((note) => {
+        const midi = sanitizeOptionalNumber(note?.midi);
+        if (midi === undefined) return null;
+        return {
+          note_id: sanitizeOptionalString(note?.note_id),
+          midi,
+          string: sanitizeOptionalInteger(note?.string),
+          fret: sanitizeOptionalInteger(note?.fret),
+          score: sanitizeOptionalNumber(note?.score) ?? undefined
+        };
+      })
+      .filter((note): note is NonNullable<typeof note> => note !== null)
+    : [];
+  const chordScores = Array.isArray(payload.chord_scores)
+    ? payload.chord_scores
+      .map((score) => {
+        const chordId = sanitizeOptionalString(score?.chord_id);
+        const value = sanitizeOptionalNumber(score?.score);
+        if (!chordId || value === undefined) return null;
+        return { chord_id: chordId, score: value };
+      })
+      .filter((score): score is NonNullable<typeof score> => score !== null)
+    : [];
+
+  return {
+    t_seconds: sanitizeOptionalNumber(payload.timestamp_sec) ?? fallbackTimeSeconds,
+    midi_estimate: midiEstimate,
+    confidence: midiEstimate === null ? 0 : confidence,
+    reference_midi: sanitizeMidi(payload.reference_midi),
+    reference_correlation: sanitizeSigned(payload.reference_correlation),
+    energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
+    onset_strength: clamp01(payload.onset_strength ?? 0),
+    contamination_score: clamp01(payload.contamination_score ?? 0),
+    rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed),
+    detected_string: sanitizeOptionalInteger(payload.detected_string),
+    detected_fret: sanitizeOptionalInteger(payload.detected_fret),
+    best_note_id: sanitizeOptionalString(payload.best_note_id),
+    selected_notes: selectedNotes,
+    chord_scores: chordScores,
+    mic_rms: undefined
+  };
 }
 
 export function applyReferenceContaminationPolicy(frame: PitchFrame, mode: AudioInputMode): PitchFrame {

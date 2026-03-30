@@ -81,18 +81,28 @@ Like Yousician:
 - WebAudio API
 - JZZ + jzz-synth-tiny (MIDI synth playback engine)
 - Rust/WASM pitch detection core (`gh_dsp_core`) with preset-based runtime profiles
+- Android native microphone/runtime stack for Capacitor builds:
+  - Oboe input capture
+  - C++ lock-free ring buffer + worker thread
+  - Rust native detector runtime linked through JNI/CMake
+  - Capacitor plugin bridge for control, diagnostics, and compact polling results
 
 ## 2.3 Pitch detection library (MANDATORY)
 
 **Option A (selected):**
 
-- `gh_dsp_core` preset pipeline:
-  - gameplay profile `masp_game_scene_ts_v1` (playhead-aware MASP TS validator)
-  - practice profile `spectral_game_runtime_unified_v3`
-  - tuner profile `ac14` (autocorrelation)
+- shared detector family:
+  - `ac14`
+  - `MASP`
+  - `FRETNET`
+  - `spectral_game_runtime_unified_v3`
+- runtime split:
+  - web / desktop webview path: Rust/WASM `gh_dsp_core` + existing WebAudio pipeline
+  - Capacitor Android gameplay/tuner/practice path: native Android mic pipeline with Oboe + Rust native detectors
 
 The system MUST use preset-based runtime detection through `PitchDetectorService`.
 The start-screen tuner MUST use `ac14` for both live tuning and calibration capture.
+On Capacitor Android runtime, gameplay/tuner/practice microphone capture MUST avoid `getUserMedia` and use the native input plugin instead.
 
 ---
 
@@ -469,7 +479,26 @@ When there is no active target left (`active_target_index` past the last target)
 
 ## 9.1 Input
 
-Microphone via WebAudio.
+Microphone input is platform-dependent:
+
+- web / desktop browser path: WebAudio microphone input
+- Capacitor Android gameplay/tuner/practice path: native microphone input through `NativePitchInput` (Capacitor plugin + JNI + Oboe + Rust runtime)
+
+For the native Android path:
+
+- the Oboe realtime callback MUST stay minimal and only push samples into a lock-free ring buffer
+- heavy DSP, FFT, MASP validation, and model inference MUST run on a separate native worker thread
+- TypeScript MUST receive only compact detection results and diagnostics
+- continuous raw PCM transfer from native to JS is forbidden
+- detector logic MUST be reused from Rust implementations instead of being rewritten in C++
+- startup MUST expose diagnostics for requested vs actual stream behavior before detector quality is trusted
+
+Native Android detectors that MUST be supported in this pipeline:
+
+- `ac14`
+- `MASP`
+- `FRETNET`
+- `spectral_game_runtime_unified_v3`
 
 Pitch analysis MUST run through a DSP stage with preset-dependent analysis signal:
 
@@ -498,9 +527,39 @@ Generated WASM artifacts MUST be synchronized to both:
 
 When WASM core initialization fails, runtime MUST fall back to the legacy JS DSP path without blocking session startup.
 
+On Capacitor Android runtime, the native detector path MUST not silently fall back to WebAudio microphone capture.
+If native detector initialization fails, runtime MUST surface an explicit native error and diagnostics payload instead of streaming raw audio to JS.
+
 The `reference` stream SHOULD come from the active backing playback path:
 - backing audio tap when audio file playback is active
 - synthetic MIDI-aligned reference when MIDI fallback playback is active
+
+### 9.1.1 Android native diagnostics
+
+The native Android input plugin MUST expose a diagnostics-first capture mode before detector integration is trusted on device.
+
+Diagnostics MUST include at least:
+
+- `requested_input_preset`
+- `actual_input_preset`
+- `audio_api`
+- `sharing_mode`
+- `performance_mode`
+- `sample_rate`
+- `hardware_sample_rate`
+- `channel_count`
+- `hardware_channel_count`
+- `format`
+- `frames_per_burst`
+- `frames_per_callback`
+- `device_id`
+- `support_unprocessed_property`
+- `stream_state`
+- `xrun_count`
+- `fallback_reason`
+- empirical sanity metrics such as `rms`, `peak`, `noise_floor`, and `average_abs`
+
+The Android runtime MUST explicitly report whether `InputPreset::Unprocessed` was requested and what the stream actually granted after open.
 
 ## 9.2 Required output
 
@@ -522,6 +581,15 @@ type PitchFrame = {
   chord_scores?: { chord_id: string; score: number }[]
 }
 ```
+
+For the native Android detector path, result delivery MUST be polling-friendly and compact.
+The native payload MAY include additional runtime telemetry such as:
+
+- `processing_time_ms`
+- `callback_to_result_latency_ms`
+- `detector_queue_depth`
+- `dropped_blocks`
+- `overrun`
 
 For `spectral_game_runtime_unified_v3`, `midi_estimate`, `confidence`, `selected_notes`, `chord_scores`, `detected_string`, and `detected_fret` MUST come from the spectral backend output (not from autocorrelation fallback math).
 For this preset, runtime post-processing MUST keep the backend output raw: no reference-contamination gating, no gameplay calibration offset, and no integer-midi rounding.
@@ -1001,6 +1069,9 @@ The app MUST expose a standalone `PitchDebugScene` developer workbench from `Son
 * it MUST be fully decoupled from gameplay progression and MUST NOT reuse hidden `PlayScene` / `Practice` accept-reject logic
 * it MUST support live microphone diagnostics, decoded file playback, internal test WAV playback, and replay of recent buffered audio
 * it MUST capture microphone/file audio into a shared analysis frame stream and run all enabled detectors on the exact same frame data
+* on Capacitor Android, live microphone mode MUST use the native `NativePitchInput` pipeline instead of `getUserMedia`
+* on Capacitor Android, native live microphone mode MUST run one detector backend at a time because the native pipeline owns a single active backend instance
+* decoded file playback, internal test WAV playback, and replay MAY continue to use the existing JS debug analysis path so side-by-side detector comparison remains available there
 * it MUST compare these detectors side by side:
   * `ac14`
   * `MASP`
@@ -1025,6 +1096,7 @@ The app MUST expose a standalone `PitchDebugScene` developer workbench from `Son
   * `Record`
   * export actions (`Raw WAV`, `Proc WAV`, `JSONL`, `CSV`)
 * it MUST keep a rolling in-memory buffer of recent live audio for replay and visual inspection
+* on Capacitor Android native live microphone mode, `Raw WAV`, `Proc WAV`, and replay MUST remain unavailable unless PCM capture is explicitly mirrored into JS; the scene MUST surface that limitation in diagnostics instead of exporting synthetic audio
 * it MUST export:
   * raw WAV
   * processed WAV

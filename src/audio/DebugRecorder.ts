@@ -63,6 +63,14 @@ export class DebugRecorder {
 
   append(snapshot: PitchDebugFrameSnapshot): void {
     this.appendWindow(snapshot.frameContext.rawFrame, snapshot.frameContext.processedFrame, snapshot.frameContext.analysisWindowId);
+    this.appendDiagnosticRecord(snapshot);
+  }
+
+  appendDiagnosticsOnly(snapshot: PitchDebugFrameSnapshot): void {
+    this.appendDiagnosticRecord(snapshot);
+  }
+
+  private appendDiagnosticRecord(snapshot: PitchDebugFrameSnapshot): void {
     const detectors: Record<string, PitchDetectorResult> = {};
     for (const result of snapshot.detectorResults) {
       detectors[result.detectorName] = result;

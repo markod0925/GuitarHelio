@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "config_hash": 1904041380671767041,
+  "model_params": {
+    "mode": "strict",
+    "strict_sample_rate": 22050,
+    "bins_per_octave": 36,
+    "max_harmonics": 8,
+    "b_exponent": 0.99708,
+    "cent_tolerance": 50.0,
+    "rms_window_ms": 50,
+    "rms_h_relax": 0.25,
+    "pretrain_trials": 64
+  },
+  "validation_rule": {
+    "score_threshold": 0.47282815,
+    "score_weights": {
+      "har": 0.18267795,
+      "mbw": 0.45499218,
+      "cent": 0.044534355,
+      "rms": 0.31779554
+    },
+    "target_mono_recall": 0.99,
+    "target_comp_recall": 0.7,
+    "calibrated_precision": 0.42418343,
+    "calibrated_mono_recall": 0.9900362,
+    "calibrated_comp_recall": 0.9601504
+  },
+  "mode": "strict",
+  "strict_sample_rate": 22050,
+  "bins_per_octave": 36,
+  "max_harmonics": 8,
+  "b_exponent": 0.99708,
+  "cent_tolerance": 50.0,
+  "rms_window_ms": 50,
+  "rms_h_relax": 0.25,
+  "validation_score_threshold": 0.47282815,
+  "pretrain_trials": 64,
+  "target_mono_recall": 0.99,
+  "target_comp_recall": 0.7,
+  "calibrated_precision": 0.42418343,
+  "calibrated_mono_recall": 0.9900362,
+  "calibrated_comp_recall": 0.9601504,
+  "weights": {
+    "har": 0.18267795,
+    "mbw": 0.45499218,
+    "cent": 0.044534355,
+    "rms": 0.31779554
+  }
+}
