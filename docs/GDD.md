@@ -86,6 +86,11 @@ Like Yousician:
   - C++ lock-free ring buffer + worker thread
   - Rust native detector runtime linked through JNI/CMake
   - Capacitor plugin bridge for control, diagnostics, and compact polling results
+- Windows native microphone/runtime stack for Electron builds:
+  - PortAudio input capture with WASAPI Exclusive preferred and explicit fallback to Shared
+  - C++ lock-free ring buffer + worker thread
+  - Rust native detector runtime linked through C ABI static library
+  - Electron main-process IPC bridge for control, diagnostics, sanity checks, and compact polling results
 
 ## 2.3 Pitch detection library (MANDATORY)
 
@@ -99,10 +104,12 @@ Like Yousician:
 - runtime split:
   - web / desktop webview path: Rust/WASM `gh_dsp_core` + existing WebAudio pipeline
   - Capacitor Android gameplay/tuner/practice path: native Android mic pipeline with Oboe + Rust native detectors
+  - Electron Windows gameplay/tuner/practice path: native Windows mic pipeline with PortAudio/WASAPI + Rust native detectors
 
 The system MUST use preset-based runtime detection through `PitchDetectorService`.
 The start-screen tuner MUST use `ac14` for both live tuning and calibration capture.
 On Capacitor Android runtime, gameplay/tuner/practice microphone capture MUST avoid `getUserMedia` and use the native input plugin instead.
+On Electron Windows runtime, gameplay/tuner/practice microphone capture MUST avoid WebAudio `getUserMedia` and use the native addon pipeline instead.
 
 ---
 
@@ -483,10 +490,11 @@ Microphone input is platform-dependent:
 
 - web / desktop browser path: WebAudio microphone input
 - Capacitor Android gameplay/tuner/practice path: native microphone input through `NativePitchInput` (Capacitor plugin + JNI + Oboe + Rust runtime)
+- Electron Windows gameplay/tuner/practice path: native microphone input through Electron main-process addon (N-API + PortAudio + WASAPI + Rust runtime)
 
-For the native Android path:
+For the native Android and Electron Windows native paths:
 
-- the Oboe realtime callback MUST stay minimal and only push samples into a lock-free ring buffer
+- the realtime callback MUST stay minimal and only push samples into a lock-free ring buffer
 - heavy DSP, FFT, MASP validation, and model inference MUST run on a separate native worker thread
 - TypeScript MUST receive only compact detection results and diagnostics
 - continuous raw PCM transfer from native to JS is forbidden
@@ -527,16 +535,16 @@ Generated WASM artifacts MUST be synchronized to both:
 
 When WASM core initialization fails, runtime MUST fall back to the legacy JS DSP path without blocking session startup.
 
-On Capacitor Android runtime, the native detector path MUST not silently fall back to WebAudio microphone capture.
+On Capacitor Android and Electron Windows runtimes, the native detector path MUST not silently fall back to WebAudio microphone capture.
 If native detector initialization fails, runtime MUST surface an explicit native error and diagnostics payload instead of streaming raw audio to JS.
 
 The `reference` stream SHOULD come from the active backing playback path:
 - backing audio tap when audio file playback is active
 - synthetic MIDI-aligned reference when MIDI fallback playback is active
 
-### 9.1.1 Android native diagnostics
+### 9.1.1 Native diagnostics (Android + Windows)
 
-The native Android input plugin MUST expose a diagnostics-first capture mode before detector integration is trusted on device.
+Native input integrations MUST expose a diagnostics-first capture mode before detector integration is trusted on device.
 
 Diagnostics MUST include at least:
 
@@ -546,6 +554,7 @@ Diagnostics MUST include at least:
 - `sharing_mode`
 - `performance_mode`
 - `sample_rate`
+- `sample_rate_requested` / `sample_rate_obtained`
 - `hardware_sample_rate`
 - `channel_count`
 - `hardware_channel_count`
@@ -553,6 +562,9 @@ Diagnostics MUST include at least:
 - `frames_per_burst`
 - `frames_per_callback`
 - `device_id`
+- `device_name`
+- `latency_ms`
+- `preprocessing_active`
 - `support_unprocessed_property`
 - `stream_state`
 - `xrun_count`
@@ -560,6 +572,7 @@ Diagnostics MUST include at least:
 - empirical sanity metrics such as `rms`, `peak`, `noise_floor`, and `average_abs`
 
 The Android runtime MUST explicitly report whether `InputPreset::Unprocessed` was requested and what the stream actually granted after open.
+The Windows runtime MUST explicitly report whether WASAPI Exclusive was granted or downgraded to Shared.
 
 ## 9.2 Required output
 
