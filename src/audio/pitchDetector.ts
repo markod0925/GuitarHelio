@@ -277,7 +277,7 @@ export class PitchDetectorService {
     this.postMaspValidationContextToWorklet(this.maspValidationContext);
   }
 
-  async start(source: AudioNode, referenceSource?: AudioNode): Promise<void> {
+  async start(source?: AudioNode, referenceSource?: AudioNode): Promise<void> {
     if (!this.initialized) throw new Error('PitchDetectorService not initialized');
     this.stop();
     this.smoothedMidiEstimate = null;
@@ -286,6 +286,10 @@ export class PitchDetectorService {
     if (this.useNativePitchInput) {
       await this.startNativeBackend();
       return;
+    }
+
+    if (!source) {
+      throw new Error('Microphone source node is required for WebAudio pitch backend.');
     }
 
     const sink = this.ctx.createGain();
@@ -491,6 +495,10 @@ export class PitchDetectorService {
   onProfiling(listener: (snapshot: PitchDetectorProfilingSnapshot) => void): () => void {
     this.profilingListeners.add(listener);
     return () => this.profilingListeners.delete(listener);
+  }
+
+  isUsingNativePitchInput(): boolean {
+    return this.useNativePitchInput;
   }
 
   private awaitBackendStatus(timeoutMs: number): Promise<void> {

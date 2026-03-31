@@ -23,6 +23,9 @@
     "preview:mobile": "vite preview --host 0.0.0.0 --port 4173",
     "build:android": "npm run build && npx cap sync android",
     "build:native-pitch:android": "bash ./scripts/build-native-pitch-android.sh",
+    "build:native-pitch:windows": "cmd.exe /c \"scripts\\build-native-pitch-windows.cmd\"",
+    "build:electron-native:addon": "cmd.exe /c \"scripts\\build-electron-native-addon-windows.cmd\"",
+    "build:electron-native:windows": "cmd.exe /c \"npm run build:native-pitch:windows && npm run build:electron-native:addon\"",
     "cap:init": "npx cap init GuitarHelio com.guitarhelio.app --web-dir dist",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync android",
@@ -39,7 +42,7 @@
     "pitch:offline:bench": "node tools/pitch-offline-bench/benchmark.mjs",
     "perf:startup": "node scripts/benchmark-startup.mjs --repeat 20",
     "desktop:start": "electron electron/main.mjs",
-    "build:windows": "npm run build && electron-builder --win nsis portable --publish never",
+    "build:windows": "npm run build && npm run build:electron-native:windows && electron-builder --win nsis portable --publish never",
     "build:windows:clean": "cmd /c \"taskkill /F /IM GuitarHelio.exe /IM electron.exe /IM app-builder.exe 2>nul & attrib -R release\\win-unpacked\\* /S /D 2>nul & rmdir /S /Q release\\win-unpacked 2>nul & npm run install:windows && npm run build:windows\""
   },
   "build": {
@@ -52,6 +55,8 @@
     "asar": true,
     "asarUnpack": [
       "third_party/**",
+      "electron/native/**",
+      "android/app/src/main/assets/native-pitch/**",
       "vite.config.ts",
       "src/server/**",
       "src/platform/converterMode.ts"
@@ -68,6 +73,7 @@
       "third_party/tempo_cnn/tempocnn/models/fcn.onnx",
       "third_party/onnxruntime/windows-x64/lib/onnxruntime.dll",
       "third_party/onnxruntime/windows-x64/lib/onnxruntime_providers_shared.dll",
+      "android/app/src/main/assets/native-pitch/**/*",
       "src/server/**/*",
       "src/platform/converterMode.ts",
       "vite.config.ts",
@@ -97,8 +103,10 @@
   "devDependencies": {
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
+    "cmake-js": "^8.0.0",
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
+    "node-addon-api": "^8.5.0",
     "typescript": "^5.6.2",
     "vitest": "^4.1.0"
   }

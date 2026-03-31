@@ -541,14 +541,6 @@ export class SongTunerController {
         await ctx.resume();
       }
 
-      const micSource = await createMicNode(ctx, {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1
-      });
-      calibrationMicStream = micSource.mediaStream;
-
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
         smoothingAlpha: 0,
@@ -557,6 +549,19 @@ export class SongTunerController {
       await detector.init();
       calibrationDetector = detector;
 
+      let micSource: Awaited<ReturnType<typeof createMicNode>> | null = null;
+      if (!detector.isUsingNativePitchInput()) {
+        micSource = await createMicNode(ctx, {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1
+        });
+        calibrationMicStream = micSource.mediaStream;
+      } else {
+        calibrationMicStream = undefined;
+      }
+
       let collecting = false;
       let currentSamples: number[] = [];
       offPitch = detector.onPitch((frame) => {
@@ -564,7 +569,7 @@ export class SongTunerController {
         if (frame.midi_estimate === null || frame.confidence < 0.55) return;
         currentSamples.push(frame.midi_estimate);
       });
-      await detector.start(micSource);
+      await detector.start(micSource ?? undefined);
 
       const measurements: PitchCalibrationMeasurement[] = [];
       const points = DEFAULT_PITCH_CALIBRATION_REFERENCE_MIDI;
@@ -738,13 +743,6 @@ export class SongTunerController {
       }
 
       const audioInputMode = this.getAudioInputMode();
-      const micSource = await createMicNode(ctx, {
-        echoCancellation: audioInputMode === 'speaker',
-        noiseSuppression: audioInputMode === 'speaker',
-        autoGainControl: audioInputMode === 'speaker',
-        channelCount: 1
-      });
-      this.micStream = micSource.mediaStream;
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
         calibrationProfile: this.pitchCalibrationProfile ?? undefined,
@@ -754,6 +752,20 @@ export class SongTunerController {
       });
       await detector.init();
       this.detector = detector;
+
+      let micSource: Awaited<ReturnType<typeof createMicNode>> | null = null;
+      if (!detector.isUsingNativePitchInput()) {
+        micSource = await createMicNode(ctx, {
+          echoCancellation: audioInputMode === 'speaker',
+          noiseSuppression: audioInputMode === 'speaker',
+          autoGainControl: audioInputMode === 'speaker',
+          channelCount: 1
+        });
+        this.micStream = micSource.mediaStream;
+      } else {
+        this.micStream = undefined;
+      }
+
       this.tunedStrings.clear();
       this.inTuneStreakStartSeconds = null;
       this.pitchStabilizer.reset();
@@ -804,7 +816,7 @@ export class SongTunerController {
         panel.detectedLabel.setText(`Detected: ${detected} (${sign}${Math.round(cents)}c)`);
         this.setNeedleFromCents(cents);
       });
-      await detector.start(micSource);
+      await detector.start(micSource ?? undefined);
 
       this.active = true;
       if (detector.isLegacyFallback()) {

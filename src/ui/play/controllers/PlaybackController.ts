@@ -168,11 +168,6 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
   this.audioProfilingSnapshotAtMs = 0;
 
   try {
-    const micSource = await createMicNode(audioCtx, {
-      audioInputMode: this.audioInputMode,
-      channelCount: 1
-    });
-    this.micStream = micSource.mediaStream;
     const spectralModel = buildSpectralRuntimeModelFromTargets(this.targets);
     const detector = new PitchDetectorService(audioCtx, {
       roundMidi: false,
@@ -185,6 +180,18 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       spectralModel
     });
     await detector.init();
+
+    let micSource: Awaited<ReturnType<typeof createMicNode>> | null = null;
+    if (!detector.isUsingNativePitchInput()) {
+      micSource = await createMicNode(audioCtx, {
+        audioInputMode: this.audioInputMode,
+        channelCount: 1
+      });
+      this.micStream = micSource.mediaStream;
+    } else {
+      this.micStream = undefined;
+    }
+
     const gameplayPitchStabilizer = new PitchStabilityFilter({
       minConfidence: 0.62,
       smoothingAlpha: 0.24,
@@ -207,7 +214,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       });
     }
     await detector.start(
-      micSource,
+      micSource ?? undefined,
       PLAY_SCENE_ENABLE_ECHO_SUPPRESSION ? this.referenceInputGain ?? undefined : undefined
     );
     this.detectorLegacyFallback = detector.isLegacyFallback();

@@ -1,13 +1,64 @@
-import { app, BrowserWindow, dialog, session } from 'electron';
+import { app, BrowserWindow, crashReporter, dialog, session } from 'electron';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { NativePitchHost } from './native-host.mjs';
 
 let mainWindow = null;
 let previewServer = null;
 let baseUrl = null;
 let shuttingDown = false;
+let nativePitchHost = null;
+let desktopLogFile = null;
+
+function formatError(error) {
+  if (!error) return '';
+  if (error instanceof Error) {
+    const stack = typeof error.stack === 'string' ? error.stack : '';
+    return stack.length > 0 ? stack : error.message;
+  }
+  return String(error);
+}
+
+function logDesktop(message, error) {
+  const errorText = formatError(error);
+  const line = `[${new Date().toISOString()}] ${message}${errorText ? ` | ${errorText}` : ''}`;
+  console.error(line);
+  if (!desktopLogFile) return;
+  try {
+    fsSync.appendFileSync(desktopLogFile, `${line}\n`, 'utf8');
+  } catch {
+    // Ignore logging failures to avoid feedback loops during crash handling.
+  }
+}
+
+function setupDesktopLogging() {
+  try {
+    const logDir = path.join(app.getPath('userData'), 'logs');
+    fsSync.mkdirSync(logDir, { recursive: true });
+    desktopLogFile = path.join(logDir, 'desktop-native.log');
+    fsSync.appendFileSync(desktopLogFile, `\n[${new Date().toISOString()}] ---- app boot ----\n`, 'utf8');
+  } catch {
+    desktopLogFile = null;
+  }
+}
+
+function setupCrashReporting() {
+  try {
+    const crashDumpDir = path.join(app.getPath('userData'), 'crashDumps');
+    app.setPath('crashDumps', crashDumpDir);
+    crashReporter.start({
+      productName: 'GuitarHelio',
+      companyName: 'GuitarHelio Team',
+      uploadToServer: false,
+      compress: true
+    });
+    logDesktop(`Crash dumps path: ${crashDumpDir}`);
+  } catch (error) {
+    logDesktop('Failed to initialize crash reporter.', error);
+  }
+}
 
 function isDirectory(entryPath) {
   try {
@@ -144,6 +195,12 @@ function createMainWindow() {
 
   const iconPath = path.join(app.getAppPath(), 'assets', 'guitarhelio.ico');
   const windowIcon = fsSync.existsSync(iconPath) ? iconPath : undefined;
+  const preloadCandidates = [
+    path.join(app.getAppPath(), 'electron', 'preload.cjs'),
+    path.join(resolveAssetRoot(app.getAppPath()), 'electron', 'preload.cjs')
+  ];
+  const preloadPath = preloadCandidates.find((candidate) => fsSync.existsSync(candidate));
+  logDesktop(`Creating main window. preload=${preloadPath ?? 'missing'}`);
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -156,7 +213,8 @@ function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      preload: preloadPath
     }
   });
 
@@ -168,6 +226,22 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.on('minimize', () => {
+    nativePitchHost?.handleBackground();
+  });
+
+  mainWindow.on('hide', () => {
+    nativePitchHost?.handleBackground();
+  });
+
+  mainWindow.on('restore', () => {
+    nativePitchHost?.handleForeground();
+  });
+
+  mainWindow.on('show', () => {
+    nativePitchHost?.handleForeground();
   });
 
   void mainWindow.loadURL(baseUrl);
@@ -183,9 +257,24 @@ async function bootDesktopApp() {
   });
 
   const appRoot = app.getAppPath();
+  setupDesktopLogging();
+  logDesktop(`Boot start. appRoot=${appRoot}`);
+  setupCrashReporting();
+  const assetRoot = resolveAssetRoot(appRoot);
+  logDesktop(`Asset root resolved: ${assetRoot}`);
   const runtimeSongsDir = await ensureRuntimeSongsDirectory(appRoot);
+  logDesktop(`Runtime songs ready: ${runtimeSongsDir}`);
   await startPreviewServer(appRoot, runtimeSongsDir);
+  logDesktop(`Preview server ready: ${baseUrl ?? 'missing'}`);
+  nativePitchHost = new NativePitchHost({
+    appRoot,
+    assetRoot,
+    logger: (message, error) => logDesktop(message, error)
+  });
+  nativePitchHost.registerIpc();
+  logDesktop('Native pitch IPC handlers registered.');
   createMainWindow();
+  logDesktop('Main window created.');
 }
 
 function toErrorMessage(error) {
@@ -198,6 +287,7 @@ function toErrorMessage(error) {
 app.whenReady()
   .then(() => bootDesktopApp())
   .catch((error) => {
+    logDesktop('Desktop startup failed.', error);
     dialog.showErrorBox('GuitarHelio startup failed', toErrorMessage(error));
     void app.quit();
   });
@@ -206,6 +296,26 @@ app.on('activate', () => {
   if (mainWindow !== null) return;
   if (!baseUrl) return;
   createMainWindow();
+});
+
+app.on('browser-window-blur', () => {
+  nativePitchHost?.handleBackground();
+});
+
+app.on('browser-window-focus', () => {
+  nativePitchHost?.handleForeground();
+});
+
+app.on('render-process-gone', (_event, webContents, details) => {
+  logDesktop(
+    `Renderer process gone. URL=${webContents?.getURL?.() ?? 'unknown'} reason=${details?.reason ?? 'unknown'} exitCode=${details?.exitCode ?? 'unknown'}`
+  );
+});
+
+app.on('child-process-gone', (_event, details) => {
+  logDesktop(
+    `Child process gone. type=${details?.type ?? 'unknown'} reason=${details?.reason ?? 'unknown'} exitCode=${details?.exitCode ?? 'unknown'} serviceName=${details?.serviceName ?? ''}`
+  );
 });
 
 app.on('window-all-closed', () => {
@@ -218,7 +328,16 @@ app.on('will-quit', (event) => {
   if (shuttingDown) return;
   shuttingDown = true;
   event.preventDefault();
+  nativePitchHost?.shutdown();
   void stopPreviewServer().finally(() => {
     app.quit();
   });
+});
+
+process.on('uncaughtException', (error) => {
+  logDesktop('Uncaught exception in main process.', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logDesktop('Unhandled rejection in main process.', reason);
 });

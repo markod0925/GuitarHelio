@@ -466,14 +466,6 @@ export class PracticeScene extends Phaser.Scene {
         await ctx.resume();
       }
 
-      const micSource = await createMicNode(ctx, {
-        echoCancellation: this.audioInputMode === 'speaker',
-        noiseSuppression: this.audioInputMode === 'speaker',
-        autoGainControl: this.audioInputMode === 'speaker',
-        channelCount: 1
-      });
-      this.micStream = micSource.mediaStream;
-
       const detector = new PitchDetectorService(ctx, {
         roundMidi: false,
         smoothingAlpha: 0,
@@ -484,8 +476,22 @@ export class PracticeScene extends Phaser.Scene {
       });
       await detector.init();
       this.detector = detector;
+
+      let micSource: Awaited<ReturnType<typeof createMicNode>> | null = null;
+      if (!detector.isUsingNativePitchInput()) {
+        micSource = await createMicNode(ctx, {
+          echoCancellation: this.audioInputMode === 'speaker',
+          noiseSuppression: this.audioInputMode === 'speaker',
+          autoGainControl: this.audioInputMode === 'speaker',
+          channelCount: 1
+        });
+        this.micStream = micSource.mediaStream;
+      } else {
+        this.micStream = undefined;
+      }
+
       this.offPitch = detector.onPitch((frame) => this.handlePitchFrame(frame));
-      await detector.start(micSource);
+      await detector.start(micSource ?? undefined);
 
       this.resetPitchState();
       this.active = true;

@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
+use std::any::Any;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -1055,19 +1057,43 @@ fn write_optional_string(target: *mut *mut c_char, value: Option<String>) {
     }
 }
 
+fn panic_payload_to_string(payload: Box<dyn Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_owned();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "unknown panic payload".to_owned()
+}
+
 #[no_mangle]
 pub extern "C" fn gh_native_pitch_runtime_new(
     config_json: *const c_char,
     error_out: *mut *mut c_char,
 ) -> *mut NativePitchRuntimeHandle {
     write_optional_string(error_out, None);
-    let result = unsafe {
+    let guarded = catch_unwind(AssertUnwindSafe(|| unsafe {
         parse_c_string(config_json, "config_json").and_then(|text| {
             let config: RuntimeConfig = serde_json::from_str(text)
                 .map_err(|error| format!("Invalid runtime config JSON: {error}"))?;
             let detector = DetectorKind::new(config)?;
             Ok(NativePitchRuntimeHandle { detector })
         })
+    }));
+
+    let result = match guarded {
+        Ok(result) => result,
+        Err(payload) => {
+            write_optional_string(
+                error_out,
+                Some(format!(
+                    "native runtime panic in gh_native_pitch_runtime_new: {}",
+                    panic_payload_to_string(payload)
+                )),
+            );
+            return std::ptr::null_mut();
+        }
     };
 
     match result {
@@ -1081,22 +1107,26 @@ pub extern "C" fn gh_native_pitch_runtime_new(
 
 #[no_mangle]
 pub extern "C" fn gh_native_pitch_runtime_destroy(handle: *mut NativePitchRuntimeHandle) {
-    if handle.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(handle));
-    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if handle.is_null() {
+            return;
+        }
+        unsafe {
+            drop(Box::from_raw(handle));
+        }
+    }));
 }
 
 #[no_mangle]
 pub extern "C" fn gh_native_pitch_runtime_reset(handle: *mut NativePitchRuntimeHandle) {
-    if handle.is_null() {
-        return;
-    }
-    unsafe {
-        (*handle).detector.reset();
-    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if handle.is_null() {
+            return;
+        }
+        unsafe {
+            (*handle).detector.reset();
+        }
+    }));
 }
 
 #[no_mangle]
@@ -1104,14 +1134,23 @@ pub extern "C" fn gh_native_pitch_runtime_update_gameplay_context(
     handle: *mut NativePitchRuntimeHandle,
     context_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() {
-        return into_c_string("runtime handle is null".to_owned());
-    }
-    let result = unsafe {
+    let guarded = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if handle.is_null() {
+            return Err("runtime handle is null".to_owned());
+        }
         parse_c_string(context_json, "context_json").and_then(|text| {
             (*handle).detector.update_gameplay_context(text)
         })
+    }));
+
+    let result = match guarded {
+        Ok(result) => result,
+        Err(payload) => Err(format!(
+            "native runtime panic in gh_native_pitch_runtime_update_gameplay_context: {}",
+            panic_payload_to_string(payload)
+        )),
     };
+
     match result {
         Ok(()) => std::ptr::null_mut(),
         Err(error) => into_c_string(error),
@@ -1127,14 +1166,18 @@ pub extern "C" fn gh_native_pitch_runtime_process_audio_block(
     result_json_out: *mut *mut c_char,
 ) -> *mut c_char {
     write_optional_string(result_json_out, None);
-    if handle.is_null() {
-        return into_c_string("runtime handle is null".to_owned());
-    }
-    if samples.is_null() && sample_count > 0 {
-        return into_c_string("samples must not be null".to_owned());
-    }
-    let result = unsafe {
-        let slice = std::slice::from_raw_parts(samples, sample_count);
+    let guarded = catch_unwind(AssertUnwindSafe(|| unsafe {
+        if handle.is_null() {
+            return Err("runtime handle is null".to_owned());
+        }
+        if samples.is_null() && sample_count > 0 {
+            return Err("samples must not be null".to_owned());
+        }
+        let slice = if sample_count == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(samples, sample_count)
+        };
         (*handle)
             .detector
             .process_audio_block(slice, capture_time_sec)
@@ -1146,7 +1189,16 @@ pub extern "C" fn gh_native_pitch_runtime_process_audio_block(
                     })
                     .transpose()
             })
+    }));
+
+    let result = match guarded {
+        Ok(result) => result,
+        Err(payload) => Err(format!(
+            "native runtime panic in gh_native_pitch_runtime_process_audio_block: {}",
+            panic_payload_to_string(payload)
+        )),
     };
+
     match result {
         Ok(Some(json)) => {
             write_optional_string(result_json_out, Some(json));

@@ -1,8 +1,20 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { MaspValidationContext } from '../audio/maspShared';
 import type { PitchDetectorPreset, SpectralRuntimeModel } from '../audio/pitchDetector';
+import {
+  isElectronRuntime,
+  requireElectronNativePitchBridge
+} from '../../electron/src/audio-bridge';
 
 export type NativePitchDiagnostics = {
+  backend_effective?: string;
+  backend_requested?: string;
+  sample_rate_requested?: number;
+  sample_rate_obtained?: number;
+  buffer_frames_requested?: number;
+  latency_ms?: number;
+  preprocessing_active?: boolean;
+  device_name?: string;
   requested_input_preset?: string;
   actual_input_preset?: string;
   audio_api?: string;
@@ -106,17 +118,21 @@ type NativePitchInputPlugin = {
 };
 
 const NativePitchInput = registerPlugin<NativePitchInputPlugin>('NativePitchInput');
+let electronNativeCaptureRunning = false;
 
 export function shouldUseNativePitchInput(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  return shouldUseAndroidNativePitchInput() || shouldUseElectronNativePitchInput();
 }
 
 export async function ensureNativePitchInputPermission(): Promise<boolean> {
-  if (!shouldUseNativePitchInput()) {
-    return false;
+  if (shouldUseAndroidNativePitchInput()) {
+    const result = await NativePitchInput.requestMicrophonePermission();
+    return Boolean(result?.granted);
   }
-  const result = await NativePitchInput.requestMicrophonePermission();
-  return Boolean(result?.granted);
+  if (shouldUseElectronNativePitchInput()) {
+    return true;
+  }
+  return false;
 }
 
 export async function getNativePitchDiagnostics(options: {
@@ -125,19 +141,42 @@ export async function getNativePitchDiagnostics(options: {
   framesPerCallback?: number;
   captureSeconds?: number;
 } = {}): Promise<NativePitchDiagnostics | null> {
-  if (!shouldUseNativePitchInput()) {
-    return null;
+  if (shouldUseAndroidNativePitchInput()) {
+    const result = await NativePitchInput.getDiagnostics({
+      requested_sample_rate: options.requestedSampleRate,
+      channel_count: options.channelCount,
+      frames_per_callback: options.framesPerCallback,
+      requested_input_preset: 'unprocessed',
+      performance_mode: 'low_latency',
+      sharing_mode: 'exclusive',
+      capture_seconds: options.captureSeconds ?? 2
+    });
+    return result?.diagnostics ?? null;
   }
-  const result = await NativePitchInput.getDiagnostics({
-    requested_sample_rate: options.requestedSampleRate,
-    channel_count: options.channelCount,
-    frames_per_callback: options.framesPerCallback,
-    requested_input_preset: 'unprocessed',
-    performance_mode: 'low_latency',
-    sharing_mode: 'exclusive',
-    capture_seconds: options.captureSeconds ?? 2
-  });
-  return result?.diagnostics ?? null;
+
+  if (shouldUseElectronNativePitchInput()) {
+    const bridge = requireElectronNativePitchBridge();
+    const diagnosticsResult = toRecord(await bridge.getDiagnostics());
+    let diagnostics = toDiagnostics(diagnosticsResult?.diagnostics);
+
+    const sanityResult = toRecord(await bridge.runSanityTest({ captureSeconds: options.captureSeconds ?? 2 }));
+    const sanity = toRecord(sanityResult?.sanity);
+
+    if (diagnostics && sanity) {
+      diagnostics = {
+        ...diagnostics,
+        rms: toNumber(sanity.rms) ?? diagnostics.rms,
+        peak: toNumber(sanity.peak) ?? diagnostics.peak,
+        noise_floor: toNumber(sanity.noise_floor) ?? diagnostics.noise_floor,
+        average_abs: toNumber(sanity.average_abs) ?? diagnostics.average_abs,
+        callback_count: toNumber(sanity.callback_count) ?? diagnostics.callback_count
+      };
+    }
+
+    return diagnostics;
+  }
+
+  return null;
 }
 
 export async function startNativePitchCapture(options: {
@@ -148,45 +187,160 @@ export async function startNativePitchCapture(options: {
   spectralModel?: SpectralRuntimeModel | null;
 }): Promise<NativePitchStartResponse> {
   const backendName = mapPresetToNativeBackend(options.detectorPreset);
-  return await NativePitchInput.startCapture({
-    backend_name: backendName,
-    requested_sample_rate: options.requestedSampleRate,
-    block_size: options.blockSize,
-    channel_count: 1,
-    frames_per_callback: 0,
-    requested_input_preset: 'unprocessed',
-    performance_mode: 'low_latency',
-    sharing_mode: 'exclusive',
-    audio_input_mode: options.audioInputMode,
-    spectral_model_json: options.spectralModel ? JSON.stringify(options.spectralModel) : undefined
-  });
+
+  if (shouldUseAndroidNativePitchInput()) {
+    return await NativePitchInput.startCapture({
+      backend_name: backendName,
+      requested_sample_rate: options.requestedSampleRate,
+      block_size: options.blockSize,
+      channel_count: 1,
+      frames_per_callback: 0,
+      requested_input_preset: 'unprocessed',
+      performance_mode: 'low_latency',
+      sharing_mode: 'exclusive',
+      audio_input_mode: options.audioInputMode,
+      spectral_model_json: options.spectralModel ? JSON.stringify(options.spectralModel) : undefined
+    });
+  }
+
+  if (shouldUseElectronNativePitchInput()) {
+    const bridge = requireElectronNativePitchBridge();
+    const response = toRecord(await bridge.startCapture({
+      detector: backendName,
+      sampleRateHint: options.requestedSampleRate,
+      bufferFrames: options.blockSize,
+      audioInputMode: options.audioInputMode,
+      spectralModelJson: options.spectralModel ? JSON.stringify(options.spectralModel) : undefined
+    }));
+
+    const running = toBoolean(response?.running);
+    if (running !== undefined) {
+      electronNativeCaptureRunning = running;
+    }
+
+    return {
+      running,
+      diagnostics: toDiagnostics(response?.diagnostics) ?? undefined
+    };
+  }
+
+  throw new Error('Native pitch capture is unavailable in this runtime.');
 }
 
 export async function stopNativePitchCapture(): Promise<void> {
-  if (!shouldUseNativePitchInput()) {
+  if (shouldUseAndroidNativePitchInput()) {
+    await NativePitchInput.stopCapture();
     return;
   }
-  await NativePitchInput.stopCapture();
+
+  if (shouldUseElectronNativePitchInput()) {
+    if (!electronNativeCaptureRunning) {
+      return;
+    }
+    const bridge = requireElectronNativePitchBridge();
+    try {
+      await bridge.stopCapture();
+    } finally {
+      electronNativeCaptureRunning = false;
+    }
+  }
 }
 
 export async function pollNativePitchResults(maxResults = 4): Promise<NativePitchPollResponse> {
-  return await NativePitchInput.pollResults({ maxResults });
+  if (shouldUseAndroidNativePitchInput()) {
+    return await NativePitchInput.pollResults({ maxResults });
+  }
+
+  if (shouldUseElectronNativePitchInput()) {
+    const bridge = requireElectronNativePitchBridge();
+    const response = toRecord(await bridge.pollDetections({ maxResults }));
+    const running = toBoolean(response?.running);
+    if (running !== undefined) {
+      electronNativeCaptureRunning = running;
+    }
+
+    return {
+      running,
+      diagnostics: toDiagnostics(response?.diagnostics) ?? undefined,
+      results: toDetectionResults(response?.results) ?? []
+    };
+  }
+
+  return { running: false, results: [] };
 }
 
 export async function updateNativePitchGameplayContext(
   context: MaspValidationContext | null
 ): Promise<void> {
-  if (!shouldUseNativePitchInput()) {
+  if (shouldUseAndroidNativePitchInput()) {
+    await NativePitchInput.updateGameplayContext(context ? { ...context } : null);
     return;
   }
-  await NativePitchInput.updateGameplayContext(context ? { ...context } : null);
+
+  if (shouldUseElectronNativePitchInput()) {
+    const bridge = requireElectronNativePitchBridge();
+    await bridge.updateGameplayContext(context ? { ...context } : null);
+  }
 }
 
 export async function resetNativePitchDetector(): Promise<void> {
-  if (!shouldUseNativePitchInput()) {
+  if (shouldUseAndroidNativePitchInput()) {
+    await NativePitchInput.resetDetector();
     return;
   }
-  await NativePitchInput.resetDetector();
+
+  if (shouldUseElectronNativePitchInput()) {
+    if (!electronNativeCaptureRunning) {
+      return;
+    }
+    const bridge = requireElectronNativePitchBridge();
+    await bridge.resetDetector();
+  }
+}
+
+function shouldUseAndroidNativePitchInput(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+function shouldUseElectronNativePitchInput(): boolean {
+  // Strict policy on desktop Electron: native addon or explicit failure, never WebAudio fallback.
+  return isElectronRuntime();
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || Number.isFinite(value) === false) {
+    return null;
+  }
+  return value;
+}
+
+function toBoolean(value: unknown): boolean | undefined {
+  if (typeof value !== 'boolean') {
+    return undefined;
+  }
+  return value;
+}
+
+function toDiagnostics(value: unknown): NativePitchDiagnostics | null {
+  const record = toRecord(value);
+  if (record === null) {
+    return null;
+  }
+  return record as NativePitchDiagnostics;
+}
+
+function toDetectionResults(value: unknown): NativePitchDetectionResult[] | null {
+  if (Array.isArray(value) === false) {
+    return null;
+  }
+  return value.filter((entry): entry is NativePitchDetectionResult => toRecord(entry) !== null);
 }
 
 function mapPresetToNativeBackend(

@@ -42,6 +42,8 @@ This document is a quick map of the repository to:
 - `src/ui/PlayScene.ts`: core gameplay loop and controllers.
 - `src/ui/PracticeScene.ts`: dedicated practice flow.
 - `electron/main.mjs`: desktop app entry; starts preview server and BrowserWindow.
+- `electron/preload.cjs`: sandbox-safe renderer bridge for Electron IPC.
+- `electron/native/`: Windows native pitch addon (`cmake-js`, PortAudio, Rust staticlib bridge).
 
 ## 3) `src/` structure by domain
 
@@ -62,6 +64,7 @@ This document is a quick map of the repository to:
 
 Desktop (Windows):
 - `electron/main.mjs`: Electron main process.
+- `electron/native-host.mjs`: main-process native pitch addon host + IPC registration.
 - `package.json` (`build` + `build:windows`): electron-builder config and packaging script.
 - `release/`: generated Windows artifacts (`.exe`, metadata, unpacked app).
 
