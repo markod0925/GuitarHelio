@@ -14,6 +14,7 @@ import {
 import { releaseMicStream } from '../../AudioController';
 import { isGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
+import { runtimeLog } from '../../../app/runtimeLog';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_LOOP_BUDGET_MS = 16.67;
 
@@ -38,6 +39,12 @@ export class LifecycleController {
 }
 
 function initializeSessionStateImpl(this: PlaySceneContext): void {
+  runtimeLog(
+    { scene: 'PlayScene', subsystem: 'scene' },
+    'INFO',
+    'Initializing play scene session state.',
+    { audioInputMode: this.audioInputMode }
+  );
   void enableKeepScreenOnDuringPlayScene();
   stopLongTaskObserver(this);
   const sceneClass = this.constructor as PlaySceneStatics;
@@ -153,6 +160,7 @@ function startRuntimeLoopImpl(this: PlaySceneContext): void {
 }
 
 function cleanupImpl(this: PlaySceneContext): void {
+  runtimeLog({ scene: 'PlayScene', subsystem: 'scene' }, 'INFO', 'Cleaning up play scene.');
   void disableKeepScreenOnAfterPlayScene();
   stopLongTaskObserver(this);
   this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);

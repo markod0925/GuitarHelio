@@ -574,6 +574,35 @@ Diagnostics MUST include at least:
 The Android runtime MUST explicitly report whether `InputPreset::Unprocessed` was requested and what the stream actually granted after open.
 The Windows runtime MUST explicitly report whether WASAPI Exclusive was granted or downgraded to Shared.
 
+### 9.1.2 Native diagnostics overhead and debug flags
+
+The Android native pitch path MUST keep low-overhead diagnostics enabled by default while preserving explicit troubleshooting modes.
+
+Always-on (default) diagnostics MUST keep:
+
+- core counters and stream state fields
+- lifecycle checkpoints (`start`, `stop`, `failure`)
+- error reporting (`fallback_reason`, `last_error`)
+- final snapshots returned by start/stop and periodic poll diagnostics
+
+Verbose diagnostics MUST be explicitly opt-in through runtime flags carried in `NativePitchInput.startCapture(...)`:
+
+- `debug_logging_enabled` (default `false`): enables verbose plugin/JNI informational logging
+- `verbose_native_pitch_diagnostics` (default `false`): enables high-frequency poll/callback/worker summary logging
+- `trace_fretnet_runtime` (default `false`): enables extra FRETNET runtime tracing in native worker summaries
+- `native_pitch_file_logging_enabled` (default `false`): enables persistent Android file logging for native pitch diagnostics
+
+High-frequency poll calls MUST support reduced serialization overhead:
+
+- poll responses MUST allow omitting full diagnostics snapshots on most ticks
+- diagnostics snapshots MUST still be emitted periodically and on-demand
+
+Lifecycle/reset behavior MUST be deterministic:
+
+- reset while capture is running MUST be blocked by default (`allow_while_running=false`)
+- explicit troubleshooting resets while running MUST require `allow_while_running=true`
+- when a running reset is explicitly allowed, pending staged samples and queued pending detector results MUST be cleared deterministically before continuing
+
 ## 9.2 Required output
 
 ```ts

@@ -31,6 +31,7 @@ import {
   waitMs
 } from '../utils/songSelectUtils';
 import { DEFAULT_AUDIO_INPUT_MODE, type AudioInputMode } from '../../../types/audioInputMode';
+import { runtimeLog, toRuntimeErrorMessage } from '../../../app/runtimeLog';
 
 export type SongTunerSnapshot = {
   targetString: number;
@@ -91,6 +92,7 @@ export class SongTunerController {
 
   openOverlay(): void {
     if (!this.panel) return;
+    runtimeLog({ scene: 'SongSelectScene', subsystem: 'tuner' }, 'INFO', 'Opening tuner overlay.');
     this.open = true;
     this.panel.container.setVisible(true);
     this.refresh();
@@ -100,6 +102,7 @@ export class SongTunerController {
   closeOverlay(): void {
     if (this.calibrating) return;
     if (!this.panel) return;
+    runtimeLog({ scene: 'SongSelectScene', subsystem: 'tuner' }, 'INFO', 'Closing tuner overlay.');
     this.open = false;
     this.panel.container.setVisible(false);
     void this.stop(false).then(() => this.requestRefresh());
@@ -161,6 +164,12 @@ export class SongTunerController {
   }
 
   async stop(clearDetectedText: boolean): Promise<void> {
+    runtimeLog(
+      { scene: 'SongSelectScene', subsystem: 'tuner' },
+      'INFO',
+      'Stopping tuner microphone pipeline.',
+      { active: this.active, calibrating: this.calibrating }
+    );
     this.detector?.stop();
     this.detector = undefined;
     this.inTuneStreakStartSeconds = null;
@@ -734,6 +743,12 @@ export class SongTunerController {
     if (!panel) return;
 
     try {
+      runtimeLog(
+        { scene: 'SongSelectScene', subsystem: 'tuner' },
+        'INFO',
+        'Starting tuner microphone pipeline.',
+        { audioInputMode: this.getAudioInputMode() }
+      );
       panel.detectedLabel.setText('Detected: requesting mic...');
       this.setNeedleFromCents(null);
       const ctx = new AudioContext();
@@ -831,8 +846,23 @@ export class SongTunerController {
       }
       this.setNeedleFromCents(null);
       this.refresh();
+      runtimeLog(
+        { scene: 'SongSelectScene', subsystem: 'tuner' },
+        detector.isLegacyFallback() ? 'WARN' : 'INFO',
+        'Tuner microphone pipeline active.',
+        {
+          legacyFallback: detector.isLegacyFallback(),
+          fallbackReason: detector.getLegacyFallbackReason()
+        }
+      );
     } catch (error) {
       console.error('Failed to start tuner', error);
+      runtimeLog(
+        { scene: 'SongSelectScene', subsystem: 'tuner' },
+        'ERROR',
+        'Failed to start tuner microphone pipeline.',
+        { error: toRuntimeErrorMessage(error) }
+      );
       const reason = describeMicFailure(error);
       await this.stop(false);
       panel.detectedLabel.setText(

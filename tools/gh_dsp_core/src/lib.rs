@@ -391,7 +391,11 @@ impl GhDspCore {
         );
         set_number(&output, "energy_ratio_db", native.energy_ratio_db as f64);
         set_number(&output, "onset_strength", native.onset_strength as f64);
-        set_number(&output, "contamination_score", native.contamination_score as f64);
+        set_number(
+            &output,
+            "contamination_score",
+            native.contamination_score as f64,
+        );
         set_number(
             &output,
             "midi_estimate",
@@ -422,7 +426,9 @@ impl GhDspCore {
         set_number(
             &output,
             "detected_string",
-            native.detected_string.map_or(f64::NAN, |value| value as f64),
+            native
+                .detected_string
+                .map_or(f64::NAN, |value| value as f64),
         );
         set_number(
             &output,

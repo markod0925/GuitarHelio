@@ -8,6 +8,8 @@ API_LEVEL="${ANDROID_NATIVE_API_LEVEL:-24}"
 NDK_ROOT="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
 FRETNET_MODEL_SOURCE="${FRETNET_MODEL_SOURCE:-}"
 FRETNET_MODEL_DEST="$ROOT_DIR/android/app/src/main/assets/native-pitch/fretnet/model.onnx"
+ORT_ANDROID_LIB_DIR="${ORT_ANDROID_LIB_DIR:-$ROOT_DIR/third_party/onnxruntime/android-arm64-v8a/lib}"
+FRETNET_ORT_ANDROID_LIB="${FRETNET_ORT_ANDROID_LIB:-$ROOT_DIR/third_party/onnxruntime_fretnet/android-arm64-v8a/lib/libonnxruntime.so}"
 
 if [[ -z "$NDK_ROOT" ]]; then
   echo "ANDROID_NDK_HOME or ANDROID_NDK_ROOT must be set." >&2
@@ -41,6 +43,21 @@ else
 export AR_aarch64_linux_android="$TOOLCHAIN/llvm-ar.exe"
 fi
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+export ORT_LIB_PATH="$ORT_ANDROID_LIB_DIR"
+export ORT_LIB_LOCATION="$ORT_ANDROID_LIB_DIR"
+export ORT_PREFER_DYNAMIC_LINK=1
+
+if [[ ! -f "$ORT_ANDROID_LIB_DIR/libonnxruntime.so" ]]; then
+  echo "ONNX Runtime Android shared library not found at: $ORT_ANDROID_LIB_DIR/libonnxruntime.so" >&2
+  echo "Set ORT_ANDROID_LIB_DIR to a directory containing libonnxruntime.so." >&2
+  exit 1
+fi
+
+if [[ ! -f "$FRETNET_ORT_ANDROID_LIB" ]]; then
+  echo "FRETNET ONNX Runtime Android shared library not found at: $FRETNET_ORT_ANDROID_LIB" >&2
+  echo "Set FRETNET_ORT_ANDROID_LIB to a compatible libonnxruntime.so (>= 1.22) for FRETNET." >&2
+  exit 1
+fi
 
 mkdir -p "$(dirname "$FRETNET_MODEL_DEST")"
 if [[ -n "$FRETNET_MODEL_SOURCE" ]]; then
@@ -59,5 +76,7 @@ cargo build --target "$TARGET" --release
 OUTPUT_DIR="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$OUTPUT_DIR"
 cp "$CRATE_DIR/target/$TARGET/release/libnative_pitch_runtime.so" "$OUTPUT_DIR/"
+cp "$FRETNET_ORT_ANDROID_LIB" "$OUTPUT_DIR/libonnxruntime_fretnet.so"
 
 echo "Staged libnative_pitch_runtime.so to $OUTPUT_DIR"
+echo "Staged libonnxruntime_fretnet.so to $OUTPUT_DIR"

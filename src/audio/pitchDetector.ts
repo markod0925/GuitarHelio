@@ -9,6 +9,7 @@ import {
 } from './maspShared';
 import {
   ensureNativePitchInputPermission,
+  isNativePitchVerboseDiagnosticsEnabled,
   pollNativePitchResults,
   resetNativePitchDetector,
   shouldUseNativePitchInput,
@@ -18,6 +19,8 @@ import {
   type NativePitchDiagnostics,
   updateNativePitchGameplayContext
 } from '../platform/nativePitchInput';
+import { evaluateNativeProcessingProgress, type NativeProcessingProgress } from '../platform/nativePitchProcessing';
+import { runtimeLog, toRuntimeErrorMessage } from '../app/runtimeLog';
 import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
 import pitchWorkletUrl from './pitchWorklet.js?worker&url';
 
@@ -210,6 +213,14 @@ export class PitchDetectorService {
   private nativeDiagnostics: NativePitchDiagnostics | null = null;
   private nativePollTimerId: number | null = null;
   private nativePollInFlight = false;
+  private nativeStopInFlight: Promise<void> | null = null;
+  private nativeStartRequestId = 0;
+  private nativeBackendRunning = false;
+  private nativePollCount = 0;
+  private nativeResultCount = 0;
+  private nativeLastSummaryAtMs = 0;
+  private nativeLastProcessingProgressState: NativeProcessingProgress['state'] | null = null;
+  private readonly nativeVerboseDiagnostics = isNativePitchVerboseDiagnosticsEnabled();
 
   constructor(private readonly ctx: AudioContext, options: PitchDetectorOptions = {}) {
     this.roundMidi = options.roundMidi ?? true;
@@ -229,6 +240,16 @@ export class PitchDetectorService {
 
   async init(): Promise<void> {
     if (this.useNativePitchInput) {
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'INFO',
+        'Initializing native pitch backend.',
+        {
+          detectorPreset: this.detectorPreset,
+          sampleRate: this.ctx.sampleRate,
+          audioInputMode: this.audioInputMode
+        }
+      );
       this.workletReady = false;
       this.legacyFallback = false;
       this.legacyFallbackReason = null;
@@ -245,7 +266,12 @@ export class PitchDetectorService {
       } catch (error) {
         // Some Android WebView builds fail to load worklet modules.
         // Continue with the analyser fallback instead of failing mic setup.
-        console.warn('Pitch worklet unavailable, using analyser fallback.', error);
+        runtimeLog(
+          { scene: 'shared', subsystem: 'pitch-detector' },
+          'WARN',
+          'Pitch worklet unavailable, using analyser fallback.',
+          { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) }
+        );
         if (this.enableDspCore) {
           this.legacyFallback = true;
           this.legacyFallbackReason = toErrorMessage(error);
@@ -270,7 +296,12 @@ export class PitchDetectorService {
     this.maspValidationContext = sanitizeMaspValidationContext(context);
     if (this.useNativePitchInput) {
       void updateNativePitchGameplayContext(this.maspValidationContext).catch((error) => {
-        console.warn('Failed to update native MASP gameplay context.', error);
+        runtimeLog(
+          { scene: 'shared', subsystem: 'pitch-detector' },
+          'WARN',
+          'Failed to update native MASP gameplay context.',
+          { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) }
+        );
       });
       return;
     }
@@ -279,12 +310,28 @@ export class PitchDetectorService {
 
   async start(source?: AudioNode, referenceSource?: AudioNode): Promise<void> {
     if (!this.initialized) throw new Error('PitchDetectorService not initialized');
-    this.stop();
+    const nativeStartRequestId = this.useNativePitchInput
+      ? this.nativeStartRequestId + 1
+      : 0;
+    if (this.useNativePitchInput) {
+      this.nativeStartRequestId = nativeStartRequestId;
+    }
+    this.stopInternal({ invalidatePendingNativeStart: false });
     this.smoothedMidiEstimate = null;
     this.analyserDecayGraceFrames = 0;
 
     if (this.useNativePitchInput) {
-      await this.startNativeBackend();
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'INFO',
+        'Starting native pitch backend.',
+        {
+          detectorPreset: this.detectorPreset,
+          sampleRate: this.ctx.sampleRate,
+          audioInputMode: this.audioInputMode
+        }
+      );
+      await this.startNativeBackend(nativeStartRequestId);
       return;
     }
 
@@ -346,7 +393,12 @@ export class PitchDetectorService {
             this.legacyFallbackReason = this.legacyFallback ? sanitizeReason(payload.reason) : null;
             this.resolveBackendStatus();
             if (this.legacyFallback && payload.reason) {
-              console.warn('Pitch worklet running in legacy fallback mode.', payload.reason);
+              runtimeLog(
+                { scene: 'shared', subsystem: 'pitch-detector' },
+                'WARN',
+                'Pitch worklet running in legacy fallback mode.',
+                { detectorPreset: this.detectorPreset, reason: payload.reason }
+              );
             }
             return;
           }
@@ -415,7 +467,12 @@ export class PitchDetectorService {
         await backendReady;
         return;
       } catch (error) {
-        console.warn('Pitch worklet node failed, using analyser fallback.', error);
+        runtimeLog(
+          { scene: 'shared', subsystem: 'pitch-detector' },
+          'WARN',
+          'Pitch worklet node failed, using analyser fallback.',
+          { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) }
+        );
         this.workletReady = false;
         this.legacyFallback = true;
         this.legacyFallbackReason = toErrorMessage(error);
@@ -438,16 +495,26 @@ export class PitchDetectorService {
   }
 
   stop(): void {
+    this.stopInternal({ invalidatePendingNativeStart: true });
+  }
+
+  private stopInternal(options: { invalidatePendingNativeStart: boolean }): void {
+    if (this.useNativePitchInput && options.invalidatePendingNativeStart) {
+      this.nativeStartRequestId += 1;
+    }
     if (this.nativePollTimerId !== null) {
       window.clearInterval(this.nativePollTimerId);
       this.nativePollTimerId = null;
     }
     this.nativePollInFlight = false;
     if (this.useNativePitchInput) {
-      void stopNativePitchCapture().catch((error) => {
-        console.warn('Failed to stop native pitch capture.', error);
-      });
-      void resetNativePitchDetector().catch(() => undefined);
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'INFO',
+        'Stopping native pitch backend.',
+        { detectorPreset: this.detectorPreset }
+      );
+      this.queueNativeStopIfNeeded();
     }
     this.workletNode?.disconnect();
     this.workletNode = null;
@@ -529,21 +596,63 @@ export class PitchDetectorService {
     this.backendStatusResolver?.();
   }
 
-  private async startNativeBackend(): Promise<void> {
+  private async startNativeBackend(startRequestId: number): Promise<void> {
+    let captureStarted = false;
+    await this.waitForPendingNativeStop();
+    if (!this.isCurrentNativeStartRequest(startRequestId)) {
+      return;
+    }
+
+    runtimeLog(
+      { scene: 'shared', subsystem: 'pitch-detector' },
+      'INFO',
+      'Requesting microphone permission for native backend.',
+      { detectorPreset: this.detectorPreset }
+    );
     const granted = await ensureNativePitchInputPermission();
+    if (!this.isCurrentNativeStartRequest(startRequestId)) {
+      return;
+    }
     if (!granted) {
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'WARN',
+        'Microphone permission denied for native backend.',
+        { detectorPreset: this.detectorPreset }
+      );
       throw new Error('Microphone permission denied.');
     }
 
+    runtimeLog(
+      { scene: 'shared', subsystem: 'pitch-detector' },
+      'INFO',
+      'Starting native capture.',
+      {
+        detectorPreset: this.detectorPreset,
+        requestedSampleRate: this.ctx.sampleRate,
+        audioInputMode: this.audioInputMode
+      }
+    );
     const start = await startNativePitchCapture({
       detectorPreset: this.detectorPreset,
       requestedSampleRate: this.ctx.sampleRate,
       blockSize: 2048,
       audioInputMode: this.audioInputMode,
-      spectralModel: this.spectralModel
+      spectralModel: this.spectralModel,
+      debugOptions: {
+        debugLoggingEnabled: this.nativeVerboseDiagnostics,
+        verboseNativePitchDiagnostics: this.nativeVerboseDiagnostics
+      }
     });
 
+    captureStarted = true;
+    this.nativeBackendRunning = Boolean(start.running ?? true);
     this.nativeDiagnostics = start.diagnostics ?? null;
+    this.nativePollCount = 0;
+    this.nativeResultCount = 0;
+    this.nativeLastSummaryAtMs = 0;
+    this.nativeLastProcessingProgressState = null;
+    const processingProgress = evaluateNativeProcessingProgress(this.nativeDiagnostics);
     const fallbackReason = this.nativeDiagnostics?.fallback_reason;
     const presetMismatch =
       this.nativeDiagnostics?.requested_input_preset &&
@@ -553,9 +662,50 @@ export class PitchDetectorService {
         : null;
     this.legacyFallbackReason = fallbackReason ?? presetMismatch;
     this.legacyFallback = this.legacyFallbackReason !== null;
+    runtimeLog(
+      { scene: 'shared', subsystem: 'pitch-detector' },
+      this.legacyFallback ? 'WARN' : 'INFO',
+      'Native capture started.',
+      {
+        detectorPreset: this.detectorPreset,
+        streamState: this.nativeDiagnostics?.stream_state ?? null,
+        backendName: this.nativeDiagnostics?.backend_name ?? null,
+        sampleRate: this.nativeDiagnostics?.sample_rate ?? null,
+        runtimeSampleRate: this.nativeDiagnostics?.runtime_sample_rate ?? null,
+        callbackFrames: this.nativeDiagnostics?.frames_per_callback ?? null,
+        callbackCount: this.nativeDiagnostics?.callback_count ?? null,
+        stagedSamples: this.nativeDiagnostics?.staged_sample_count ?? null,
+        targetBlockSize: this.nativeDiagnostics?.target_block_size ?? null,
+        processChecks: this.nativeDiagnostics?.process_condition_check_count ?? null,
+        processPasses: this.nativeDiagnostics?.process_condition_pass_count ?? null,
+        signalCallbacks: this.nativeDiagnostics?.signal_callback_count ?? null,
+        zeroCallbacks: this.nativeDiagnostics?.all_zero_callback_count ?? null,
+        processedBlocks: this.nativeDiagnostics?.processed_block_count ?? null,
+        emittedResults: this.nativeDiagnostics?.emitted_result_count ?? null,
+        processingProgressState: processingProgress.state,
+        processingProgressReason: processingProgress.reason,
+        lastProcessingState: this.nativeDiagnostics?.last_processing_state ?? null,
+        audioApi: this.nativeDiagnostics?.audio_api ?? null,
+        actualPreset: this.nativeDiagnostics?.actual_input_preset ?? null,
+        fallbackReason: this.legacyFallbackReason ?? null
+      }
+    );
+
+    if (!this.isCurrentNativeStartRequest(startRequestId)) {
+      if (captureStarted) {
+        this.queueNativeStopIfNeeded();
+        await this.waitForPendingNativeStop();
+      }
+      return;
+    }
 
     if (this.maspValidationContext) {
       await updateNativePitchGameplayContext(this.maspValidationContext);
+      if (!this.isCurrentNativeStartRequest(startRequestId)) {
+        this.queueNativeStopIfNeeded();
+        await this.waitForPendingNativeStop();
+        return;
+      }
     }
 
     this.nativePollTimerId = window.setInterval(() => {
@@ -567,17 +717,138 @@ export class PitchDetectorService {
     if (this.nativePollInFlight) return;
     this.nativePollInFlight = true;
     try {
-      const response = await pollNativePitchResults(6);
+      const nextPollCount = this.nativePollCount + 1;
+      const includeDiagnostics =
+        this.nativeVerboseDiagnostics ||
+        nextPollCount === 1 ||
+        nextPollCount % 15 === 0;
+      const response = await pollNativePitchResults(6, { includeDiagnostics });
       this.nativeDiagnostics = response.diagnostics ?? this.nativeDiagnostics;
+      this.nativeBackendRunning = Boolean(response.running ?? this.nativeBackendRunning);
+      this.nativePollCount = nextPollCount;
+      const resultCount = response.results?.length ?? 0;
+      this.nativeResultCount += resultCount;
       for (const payload of response.results ?? []) {
         const frame = sanitizeNativeDetectionPayload(payload, this.ctx.currentTime);
         if (!frame) continue;
         for (const listener of this.listeners) listener(frame);
       }
+      const now = performance.now();
+      const processingProgress = evaluateNativeProcessingProgress(this.nativeDiagnostics);
+      const progressStateChanged = this.nativeLastProcessingProgressState !== processingProgress.state;
+      this.nativeLastProcessingProgressState = processingProgress.state;
+      const summaryIntervalMs = this.nativeVerboseDiagnostics ? 2000 : 8000;
+      const shouldLogPeriodic =
+        this.nativeLastSummaryAtMs === 0 ||
+        now - this.nativeLastSummaryAtMs >= summaryIntervalMs;
+      const shouldLogOnState = processingProgress.state === 'runtime_error'
+        || processingProgress.state === 'ready_but_not_processing';
+      if (
+        shouldLogPeriodic ||
+        shouldLogOnState ||
+        progressStateChanged ||
+        (this.nativeVerboseDiagnostics && resultCount > 0)
+      ) {
+        this.nativeLastSummaryAtMs = now;
+        runtimeLog(
+          { scene: 'shared', subsystem: 'pitch-detector' },
+          processingProgress.state === 'ready_but_not_processing' || processingProgress.state === 'runtime_error'
+            ? 'WARN'
+            : 'INFO',
+          'Native poll summary.',
+          {
+            detectorPreset: this.detectorPreset,
+            running: response.running ?? true,
+            pollCount: this.nativePollCount,
+            resultCount,
+            totalResults: this.nativeResultCount,
+            callbackCount: this.nativeDiagnostics?.callback_count ?? null,
+            stagedSamples: this.nativeDiagnostics?.staged_sample_count ?? null,
+            targetBlockSize: this.nativeDiagnostics?.target_block_size ?? null,
+            processChecks: this.nativeDiagnostics?.process_condition_check_count ?? null,
+            processPasses: this.nativeDiagnostics?.process_condition_pass_count ?? null,
+            signalCallbacks: this.nativeDiagnostics?.signal_callback_count ?? null,
+            silentCallbacks: this.nativeDiagnostics?.silent_callback_count ?? null,
+            zeroCallbacks: this.nativeDiagnostics?.all_zero_callback_count ?? null,
+            processedBlocks: this.nativeDiagnostics?.processed_block_count ?? null,
+            emittedResults: this.nativeDiagnostics?.emitted_result_count ?? null,
+            runtimeNoResultCount: this.nativeDiagnostics?.runtime_process_null_result_count ?? null,
+            runtimeErrorCount: this.nativeDiagnostics?.runtime_process_error_count ?? null,
+            processingProgressState: processingProgress.state,
+            processingProgressReason: processingProgress.reason,
+            processingProgressDetail: this.describeNativeProcessingProgress(processingProgress),
+            queueDepth: this.nativeDiagnostics?.detector_queue_depth ?? null,
+            lastProcessingState: this.nativeDiagnostics?.last_processing_state ?? null,
+            lastDiscardReason: this.nativeDiagnostics?.last_discard_reason ?? null,
+            rms: this.nativeDiagnostics?.rms ?? null,
+            peak: this.nativeDiagnostics?.peak ?? null,
+            lastError: this.nativeDiagnostics?.last_error ?? null
+          }
+        );
+      }
     } catch (error) {
-      console.warn('Native pitch polling failed.', error);
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'WARN',
+        'Native pitch polling failed.',
+        { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) }
+      );
     } finally {
       this.nativePollInFlight = false;
+    }
+  }
+
+  private queueNativeStopIfNeeded(): void {
+    if (this.nativeStopInFlight !== null || !this.nativeBackendRunning) {
+      return;
+    }
+    const next = Promise.resolve().then(async () => {
+      await stopNativePitchCapture().catch((error) => {
+        runtimeLog(
+          { scene: 'shared', subsystem: 'pitch-detector' },
+          'WARN',
+          'Failed to stop native pitch capture.',
+          { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) }
+        );
+      });
+      await resetNativePitchDetector().catch(() => undefined);
+      this.nativeBackendRunning = false;
+    });
+    this.nativeStopInFlight = next;
+    void next.finally(() => {
+      if (this.nativeStopInFlight === next) {
+        this.nativeStopInFlight = null;
+      }
+    });
+  }
+
+  private async waitForPendingNativeStop(): Promise<void> {
+    const pending = this.nativeStopInFlight;
+    if (!pending) {
+      return;
+    }
+    await pending.catch(() => undefined);
+  }
+
+  private isCurrentNativeStartRequest(startRequestId: number): boolean {
+    return this.nativeStartRequestId === startRequestId;
+  }
+
+  private describeNativeProcessingProgress(progress: NativeProcessingProgress): string | null {
+    switch (progress.state) {
+      case 'waiting_for_callbacks':
+      case 'waiting_for_signal':
+        return null;
+      case 'waiting_for_full_block':
+        return `staged=${progress.stagedSampleCount}/${progress.targetBlockSize} missing=${progress.missingSampleCount}`;
+      case 'ready_but_not_processing':
+        return `staged=${progress.stagedSampleCount}/${progress.targetBlockSize} callbacks=${progress.callbackCount} signalCallbacks=${progress.signalCallbackCount}`;
+      case 'processing_active':
+        return `processed=${progress.processedBlockCount} emitted=${progress.emittedResultCount}`;
+      case 'runtime_returned_no_result':
+        return `processed=${progress.processedBlockCount} nullResults=${progress.runtimeProcessNullResultCount}`;
+      case 'runtime_error':
+        return `processed=${progress.processedBlockCount} runtimeErrors=${progress.runtimeProcessErrorCount} lastError=${progress.lastError}`;
     }
   }
 
@@ -610,7 +881,12 @@ export class PitchDetectorService {
     try {
       return new AudioWorkletNode(this.ctx, 'gh-pitch-processor', primaryOptions);
     } catch (primaryError) {
-      console.warn('Pitch worklet node creation failed with explicit channel config, retrying with minimal config.', primaryError);
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'WARN',
+        'Pitch worklet node creation failed with explicit channel config, retrying with minimal config.',
+        { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(primaryError) }
+      );
     }
 
     try {
@@ -621,7 +897,12 @@ export class PitchDetectorService {
         processorOptions
       });
     } catch (secondaryError) {
-      console.warn('Pitch worklet node creation failed with minimal config, retrying with defaults.', secondaryError);
+      runtimeLog(
+        { scene: 'shared', subsystem: 'pitch-detector' },
+        'WARN',
+        'Pitch worklet node creation failed with minimal config, retrying with defaults.',
+        { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(secondaryError) }
+      );
     }
 
     return new AudioWorkletNode(this.ctx, 'gh-pitch-processor', {

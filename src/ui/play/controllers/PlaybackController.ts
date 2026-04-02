@@ -28,6 +28,7 @@ import {
 import { isBackingTrackAudioUrl } from '../../playSceneDebug';
 import { PlayState, type SourceNote } from '../../../types/models';
 import type { PlaySceneContext } from './PlaySceneContext';
+import { runtimeLog, toRuntimeErrorMessage } from '../../../app/runtimeLog';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class PlaybackController {
@@ -127,6 +128,12 @@ export class PlaybackController {
 }
 
 async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNote[]): Promise<void> {
+  runtimeLog(
+    { scene: 'PlayScene', subsystem: 'scene' },
+    'INFO',
+    'Setting up play-scene audio stack.',
+    { targetCount: sourceNotes.length, audioInputMode: this.audioInputMode }
+  );
   const audioCtx = new AudioContext();
   this.audioCtx = audioCtx;
   let synth: JzzTinySynth;
@@ -217,6 +224,16 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       micSource ?? undefined,
       PLAY_SCENE_ENABLE_ECHO_SUPPRESSION ? this.referenceInputGain ?? undefined : undefined
     );
+    runtimeLog(
+      { scene: 'PlayScene', subsystem: 'mic' },
+      detector.isLegacyFallback() ? 'WARN' : 'INFO',
+      'Play-scene microphone pipeline active.',
+      {
+        detectorPreset: MASP_GAME_SCENE_PRESET,
+        legacyFallback: detector.isLegacyFallback(),
+        fallbackReason: detector.getLegacyFallbackReason()
+      }
+    );
     this.detectorLegacyFallback = detector.isLegacyFallback();
     if (this.detectorLegacyFallback) {
       const reason = detector.getLegacyFallbackReason();
@@ -228,6 +245,12 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
     this.detector = detector;
   } catch (error) {
     console.error('Microphone setup failed', error);
+    runtimeLog(
+      { scene: 'PlayScene', subsystem: 'mic' },
+      'ERROR',
+      'Play-scene microphone setup failed.',
+      { error: toRuntimeErrorMessage(error) }
+    );
     this.detectorLegacyFallback = false;
     this.gameplayPitchStabilizer = undefined;
     this.audioProfilingSnapshot = undefined;

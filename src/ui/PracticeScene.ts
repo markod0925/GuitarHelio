@@ -23,6 +23,7 @@ import {
   resolvePracticePipelineSwitch,
   type PracticePipeline
 } from './practicePipeline';
+import { runtimeLog, toRuntimeErrorMessage } from '../app/runtimeLog';
 
 type FretCell = {
   midi: number;
@@ -102,6 +103,12 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   create(data?: { audioInputMode?: AudioInputMode }): void {
+    runtimeLog(
+      { scene: 'PracticeScene', subsystem: 'scene' },
+      'INFO',
+      'Entering scene.',
+      { audioInputMode: data?.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE }
+    );
     this.isShuttingDown = false;
     this.audioInputMode = data?.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
     this.pipelineToggleEnabled = shouldEnablePracticePipelineToggle();
@@ -190,6 +197,7 @@ export class PracticeScene extends Phaser.Scene {
     this.bindNativeBackHandler();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      runtimeLog({ scene: 'PracticeScene', subsystem: 'scene' }, 'INFO', 'Leaving scene.');
       this.isShuttingDown = true;
       this.input.keyboard?.off('keydown-ESC', onEsc);
       this.input.off('pointerup', this.handleMetronomePointerRelease, this);
@@ -458,6 +466,12 @@ export class PracticeScene extends Phaser.Scene {
       return;
     }
     try {
+      runtimeLog(
+        { scene: 'PracticeScene', subsystem: 'mic' },
+        'INFO',
+        'Starting microphone pipeline.',
+        { detectorPreset, audioInputMode: this.audioInputMode, pipeline: this.practicePipeline }
+      );
       this.micStatusMessage = 'Requesting microphone and loading detector...';
       this.updateStatusLabel();
       const ctx = new AudioContext();
@@ -508,8 +522,24 @@ export class PracticeScene extends Phaser.Scene {
         : '';
       this.micStatusMessage = `Mic active • ${calibrationBadge}${fallbackBadge}`;
       this.updateStatusLabel();
+      runtimeLog(
+        { scene: 'PracticeScene', subsystem: 'mic' },
+        detector.isLegacyFallback() ? 'WARN' : 'INFO',
+        'Microphone pipeline active.',
+        {
+          detectorPreset,
+          legacyFallback: detector.isLegacyFallback(),
+          fallbackReason: detector.getLegacyFallbackReason()
+        }
+      );
     } catch (error) {
       console.error('Failed to start practice microphone', error);
+      runtimeLog(
+        { scene: 'PracticeScene', subsystem: 'mic' },
+        'ERROR',
+        'Failed to start microphone pipeline.',
+        { detectorPreset, error: toRuntimeErrorMessage(error) }
+      );
       const reason = describeMicFailure(error);
       await this.stopListening();
       this.micStatusMessage = reason ? `Mic unavailable (${truncateLabel(reason, 36)})` : 'Mic unavailable';
@@ -518,6 +548,12 @@ export class PracticeScene extends Phaser.Scene {
   }
 
   private async stopListening(): Promise<void> {
+    runtimeLog(
+      { scene: 'PracticeScene', subsystem: 'mic' },
+      'INFO',
+      'Stopping microphone pipeline.',
+      { active: this.active, pipeline: this.practicePipeline }
+    );
     this.detector?.stop();
     this.detector = undefined;
     this.offPitch?.();

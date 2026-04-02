@@ -16,10 +16,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
-fretnet_runtime = { path = "../../../GHPitchDetection/tools/FretNetRust/fretnet_runtime", default-features = false, features = ["ort-android"] }
+fretnet_runtime = { path = "../fretnet_runtime_vendor", default-features = false, features = ["ort-android"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-fretnet_runtime = { path = "../../../GHPitchDetection/tools/FretNetRust/fretnet_runtime", default-features = false, features = ["ort-desktop"] }
+fretnet_runtime = { path = "../fretnet_runtime_vendor", default-features = false, features = ["ort-desktop"] }
 
 [profile.release]
 lto = true

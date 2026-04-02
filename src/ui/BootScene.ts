@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { toPublicAssetUrl } from '../app/publicAssetUrl';
+import { runtimeLog } from '../app/runtimeLog';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -25,6 +26,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    runtimeLog({ scene: 'BootScene', subsystem: 'scene' }, 'INFO', 'Entering scene.');
     [
       'handReminder',
       'defaultSongCover',
@@ -39,6 +41,7 @@ export class BootScene extends Phaser.Scene {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
+    runtimeLog({ scene: 'BootScene', subsystem: 'scene' }, 'INFO', 'Boot assets ready. Transitioning to SongSelectScene.');
     this.scene.start('SongSelectScene');
   }
 }

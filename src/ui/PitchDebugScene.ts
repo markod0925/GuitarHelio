@@ -20,6 +20,7 @@ import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel
 import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
 import {
   ensureNativePitchInputPermission,
+  getNativePitchDebugLogInfo,
   pollNativePitchResults,
   resetNativePitchDetector,
   shouldUseNativePitchInput,
@@ -48,6 +49,7 @@ import type {
 } from '../pitch/types';
 import { midiToHz, midiToNoteName } from './song-select/utils/songSelectUtils';
 import { PitchDebugUIController } from './debug/PitchDebugUIController';
+import { runtimeLog, toRuntimeErrorMessage } from '../app/runtimeLog';
 
 type DetectorToggleName = 'ac14' | 'MASP' | 'FRETNET' | 'spectral_game_runtime_unified_v3';
 type WindowType = 'hann' | 'hamming' | 'blackman' | 'rect';
@@ -129,18 +131,26 @@ export class PitchDebugScene extends Phaser.Scene {
   private nativePollInFlight = false;
   private nativeLiveMicRunning = false;
   private nativeDiagnostics: NativePitchDiagnostics | null = null;
+  private nativeDebugLogAnnounced = false;
 
   constructor() {
     super('PitchDebugScene');
   }
 
   create(): void {
+    runtimeLog(
+      { scene: 'PitchDebugScene', subsystem: 'scene' },
+      'INFO',
+      'Entering scene.',
+      { nativePitchInput: this.useNativePitchInput }
+    );
     this.ui = new PitchDebugUIController(this);
     this.bindUiButtons();
     this.configureServices();
     this.installSceneHandlers();
     this.updateUi();
     void enableAndroidKeepScreenOn();
+    void this.announceNativeDebugLogInfo();
     void this.refreshDetectors();
     void this.startLiveMic();
   }
@@ -185,6 +195,7 @@ export class PitchDebugScene extends Phaser.Scene {
         .catch(() => undefined);
     }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      runtimeLog({ scene: 'PitchDebugScene', subsystem: 'scene' }, 'INFO', 'Leaving scene.');
       this.input.keyboard?.off('keydown-ESC', onEsc);
       void this.nativeBackButtonListener?.remove();
       this.nativeBackButtonListener = undefined;
@@ -269,6 +280,12 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async startLiveMic(): Promise<void> {
+    runtimeLog(
+      { scene: 'PitchDebugScene', subsystem: 'mic' },
+      'INFO',
+      'Starting live mic diagnostics.',
+      { nativePitchInput: this.useNativePitchInput }
+    );
     if (this.useNativePitchInput) {
       await this.startNativeLiveMic();
       return;
@@ -330,6 +347,7 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async stopCapture(): Promise<void> {
+    runtimeLog({ scene: 'PitchDebugScene', subsystem: 'mic' }, 'INFO', 'Stopping capture.');
     await this.stopNativeLiveMic(false);
     await this.captureService?.stop();
     this.addLog('Capture stopped.');
@@ -798,12 +816,25 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async startNativeLiveMic(): Promise<void> {
+    runtimeLog(
+      { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+      'INFO',
+      'Preparing Android native live mic start.',
+      { detector: this.resolveNativeDetectorSelection() }
+    );
     const granted = await ensureNativePitchInputPermission().catch((error) => {
       this.addLog(`Native mic permission failed: ${error instanceof Error ? error.message : String(error)}`);
+      runtimeLog(
+        { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+        'WARN',
+        'Native mic permission request failed.',
+        { error: toRuntimeErrorMessage(error) }
+      );
       return false;
     });
     if (!granted) {
       this.addLog('Native mic permission denied.');
+      runtimeLog({ scene: 'PitchDebugScene', subsystem: 'native-mic' }, 'WARN', 'Native mic permission denied.');
       return;
     }
 
@@ -822,6 +853,12 @@ export class PitchDebugScene extends Phaser.Scene {
     this.captureMetadata = buildNativeCaptureMetadata(null, detectorName, this.analysisConfig.frameSize);
     this.updateUi();
     this.addLog(`Starting Android native live mic (${detectorName})...`);
+    runtimeLog(
+      { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+      'INFO',
+      'Starting Android native live mic.',
+      { detector: detectorName, frameSize: this.analysisConfig.frameSize }
+    );
 
     const detectorPreset = this.resolveNativeDetectorPreset(detectorName);
     try {
@@ -838,6 +875,12 @@ export class PitchDebugScene extends Phaser.Scene {
       if (!this.nativeLiveMicRunning) {
         const reason = this.nativeDiagnostics?.fallback_reason ?? 'unknown native start failure';
         this.addLog(`Android native live mic failed: ${reason}`);
+        runtimeLog(
+          { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+          'WARN',
+          'Android native live mic reported unsuccessful start.',
+          { detector: detectorName, reason }
+        );
         this.updateUi();
         return;
       }
@@ -850,7 +893,36 @@ export class PitchDebugScene extends Phaser.Scene {
       this.nativeLiveMicRunning = false;
       this.captureMetadata = buildNativeCaptureMetadata(this.nativeDiagnostics, detectorName, this.analysisConfig.frameSize);
       this.addLog(`Android native live mic start failed: ${error instanceof Error ? error.message : String(error)}`);
+      runtimeLog(
+        { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+        'ERROR',
+        'Android native live mic start failed.',
+        { detector: detectorName, error: toRuntimeErrorMessage(error) }
+      );
       this.updateUi();
+    }
+  }
+
+  private async announceNativeDebugLogInfo(): Promise<void> {
+    if (this.nativeDebugLogAnnounced) {
+      return;
+    }
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      this.nativeDebugLogAnnounced = true;
+      return;
+    }
+
+    try {
+      const info = await getNativePitchDebugLogInfo();
+      if (info.enabled && info.logPath) {
+        this.addLog(`Android native debug log: ${info.logPath}`);
+      } else if (!info.enabled) {
+        this.addLog('Android native debug file log is disabled in this build.');
+      }
+      this.nativeDebugLogAnnounced = true;
+    } catch (error) {
+      this.addLog(`Native debug log info unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      this.nativeDebugLogAnnounced = true;
     }
   }
 
@@ -866,6 +938,12 @@ export class PitchDebugScene extends Phaser.Scene {
     if (!this.useNativePitchInput) {
       return;
     }
+    runtimeLog(
+      { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+      'INFO',
+      'Stopping Android native live mic.',
+      { wasRunning }
+    );
     await stopNativePitchCapture().catch(() => undefined);
     if (wasRunning && logStop) {
       this.addLog('Android native live mic stopped.');
@@ -921,6 +999,12 @@ export class PitchDebugScene extends Phaser.Scene {
       }
     } catch (error) {
       this.addLog(`Android native poll failed: ${error instanceof Error ? error.message : String(error)}`);
+      runtimeLog(
+        { scene: 'PitchDebugScene', subsystem: 'native-mic' },
+        'WARN',
+        'Android native poll failed.',
+        { error: toRuntimeErrorMessage(error) }
+      );
     } finally {
       this.nativePollInFlight = false;
     }
@@ -1009,13 +1093,18 @@ export class PitchDebugScene extends Phaser.Scene {
     const preset = diagnostics.actual_input_preset ?? 'unknown';
     const audioApi = diagnostics.audio_api ?? 'unknown_api';
     const sampleRate = diagnostics.sample_rate ?? 0;
+    const callbackCount = diagnostics.callback_count ?? 0;
+    const signalCallbacks = diagnostics.signal_callback_count ?? 0;
+    const zeroCallbacks = diagnostics.all_zero_callback_count ?? 0;
     const fallbackReason = diagnostics.fallback_reason ? ` | fallback ${diagnostics.fallback_reason}` : '';
-    this.addLog(`Android native live mic active: ${detectorName} | ${audioApi} | ${sampleRate} Hz | preset ${preset}${fallbackReason}`);
+    this.addLog(
+      `Android native live mic active: ${detectorName} | ${audioApi} | ${sampleRate} Hz | preset ${preset} | callbacks ${callbackCount} | signal ${signalCallbacks} | zero ${zeroCallbacks}${fallbackReason}`
+    );
   }
 
   private async resetDetectors(): Promise<void> {
     if (this.nativeLiveMicRunning) {
-      await resetNativePitchDetector().catch((error) => {
+      await resetNativePitchDetector({ allowWhileRunning: true }).catch((error) => {
         this.addLog(`Native detector reset failed: ${error instanceof Error ? error.message : String(error)}`);
       });
       this.addLog('Android native detector reset.');

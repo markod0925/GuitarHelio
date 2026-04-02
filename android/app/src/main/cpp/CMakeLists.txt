@@ -17,6 +17,12 @@ find_package(oboe REQUIRED CONFIG)
 add_library(neuralnote_converter_jni SHARED neuralnote_converter_jni.cpp)
 add_library(native_pitch_input_jni SHARED native_pitch_input_jni.cpp)
 
+if(ANDROID)
+    # Android 15+ devices may require 16 KB page-size compatible native binaries.
+    target_link_options(neuralnote_converter_jni PRIVATE "-Wl,-z,max-page-size=16384")
+    target_link_options(native_pitch_input_jni PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+
 target_include_directories(neuralnote_converter_jni PRIVATE
     ${NEURALNOTE_CORE_ROOT}/src
     ${TEMPOCNN_CORE_ROOT}/src

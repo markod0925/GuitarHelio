@@ -22,6 +22,7 @@
     "dev:mobile": "vite --host 0.0.0.0 --port 5173",
     "preview:mobile": "vite preview --host 0.0.0.0 --port 4173",
     "build:android": "npm run build && npx cap sync android",
+    "verify:android:native-packaging": "node scripts/verify-android-native-packaging.mjs",
     "build:native-pitch:android": "bash ./scripts/build-native-pitch-android.sh",
     "build:native-pitch:windows": "cmd.exe /c \"scripts\\build-native-pitch-windows.cmd\"",
     "build:electron-native:addon": "cmd.exe /c \"scripts\\build-electron-native-addon-windows.cmd\"",
@@ -103,6 +104,7 @@
   "devDependencies": {
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.60.1",
     "cmake-js": "^8.0.0",
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1",

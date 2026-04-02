@@ -5,6 +5,7 @@ import { PlayScene } from '../ui/PlayScene';
 import { PitchDebugScene } from '../ui/PitchDebugScene';
 import { PracticeScene } from '../ui/PracticeScene';
 import { SongSelectScene } from '../ui/SongSelectScene';
+import { runtimeLog } from './runtimeLog';
 import '@fontsource/montserrat/400.css';
 import '@fontsource/montserrat/500.css';
 import '@fontsource/montserrat/600.css';
@@ -64,9 +65,24 @@ const game = new Phaser.Game({
 });
 
 const rendererName = game.renderer.type === Phaser.WEBGL ? 'WEBGL' : 'CANVAS';
-console.info(`[GuitarHelio] Phaser renderer: ${rendererName}`);
+runtimeLog(
+  { scene: 'Boot', subsystem: 'startup' },
+  'INFO',
+  'App startup complete.',
+  {
+    renderer: rendererName,
+    nativeRuntime: IS_NATIVE_RUNTIME,
+    capacitorPlatform: Capacitor.getPlatform(),
+    viewportWidth: typeof window !== 'undefined' ? window.innerWidth : null,
+    viewportHeight: typeof window !== 'undefined' ? window.innerHeight : null
+  }
+);
 if (rendererName !== 'WEBGL') {
-  console.warn('[GuitarHelio] Canvas renderer in use; performance may be reduced on mobile.');
+  runtimeLog(
+    { scene: 'Boot', subsystem: 'startup' },
+    'WARN',
+    'Canvas renderer in use; performance may be reduced on mobile.'
+  );
 }
 
 void game;

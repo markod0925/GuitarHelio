@@ -1,9 +1,10 @@
-use std::collections::VecDeque;
 use std::any::Any;
+use std::collections::VecDeque;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use fretnet_runtime::audio::{resample_kaiser_best, rms_normalize};
@@ -13,9 +14,11 @@ use gh_dsp_core::{
     SpectralSelectedNote,
 };
 use guitar_pitch::config::{AppConfig, MaspWeightsConfig};
-use guitar_pitch::masp::{load_pretrain_artifacts, validate_expected_segment, MaspPretrainArtifacts};
+use guitar_pitch::masp::{
+    load_pretrain_artifacts, validate_expected_segment, MaspPretrainArtifacts,
+};
 use guitar_pitch::types::{AudioBuffer, OPEN_MIDI};
-use ndarray::{Ix2, Ix3, Ix4};
+use ndarray::IxDyn;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_CAPTURE_BUFFER_SECONDS: f64 = 8.0;
@@ -32,6 +35,24 @@ const FRETNET_MAX_FRAMES: usize = 48;
 const FRETNET_STRING_COUNT: usize = 6;
 const FRETNET_RELATIVE_SILENCE_CLASS: usize = 0;
 
+fn init_stage_store() -> &'static Mutex<String> {
+    static STORE: OnceLock<Mutex<String>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new("idle".to_owned()))
+}
+
+fn set_init_stage(value: impl Into<String>) {
+    if let Ok(mut stage) = init_stage_store().lock() {
+        *stage = value.into();
+    }
+}
+
+fn current_init_stage() -> String {
+    init_stage_store()
+        .lock()
+        .map(|stage| stage.clone())
+        .unwrap_or_else(|_| "stage_lock_poisoned".to_owned())
+}
+
 #[derive(Debug, Deserialize)]
 struct RuntimeConfig {
     backend_name: String,
@@ -45,6 +66,8 @@ struct RuntimeConfig {
     masp_assets_dir: Option<String>,
     #[serde(default)]
     fretnet_model_path: Option<String>,
+    #[serde(default)]
+    fretnet_ort_library_path: Option<String>,
     #[serde(default)]
     max_capture_buffer_seconds: Option<f64>,
 }
@@ -184,7 +207,8 @@ impl CaptureBuffer {
         if !self.contains_window(start_sec, end_sec) {
             return None;
         }
-        let start_index = seconds_to_sample_index(start_sec - self.start_time_sec, self.sample_rate);
+        let start_index =
+            seconds_to_sample_index(start_sec - self.start_time_sec, self.sample_rate);
         let end_index = seconds_to_sample_index(end_sec - self.start_time_sec, self.sample_rate);
         if end_index <= start_index {
             return None;
@@ -210,8 +234,7 @@ impl CaptureBuffer {
         if !self.initialized || self.samples.is_empty() {
             return None;
         }
-        let desired_samples =
-            ((duration_sec.max(0.05)) * self.sample_rate as f64).round() as usize;
+        let desired_samples = ((duration_sec.max(0.05)) * self.sample_rate as f64).round() as usize;
         let take = desired_samples.min(self.samples.len());
         let start = self.samples.len().saturating_sub(take);
         let mut out = Vec::with_capacity(take);
@@ -247,12 +270,9 @@ impl DspDetector {
             preset,
             PitchDetectorPreset::SpectralGameRuntimeUnifiedV3 | PitchDetectorPreset::Fretnet
         ) {
-            core.set_spectral_model_json(
-                config
-                    .spectral_model_json
-                    .as_deref()
-                    .ok_or_else(|| "spectral_model_json is required for spectral backends".to_owned())?,
-            )?;
+            core.set_spectral_model_json(config.spectral_model_json.as_deref().ok_or_else(
+                || "spectral_model_json is required for spectral backends".to_owned(),
+            )?)?;
         }
         Ok(Self {
             backend_name: match preset {
@@ -267,7 +287,11 @@ impl DspDetector {
         })
     }
 
-    fn process(&mut self, samples: &[f32], capture_time_sec: f64) -> Result<Option<DetectionEvent>, String> {
+    fn process(
+        &mut self,
+        samples: &[f32],
+        capture_time_sec: f64,
+    ) -> Result<Option<DetectionEvent>, String> {
         let started = Instant::now();
         let frame = self.core.process_block_native(samples);
         Ok(Some(map_native_pitch_frame(
@@ -346,7 +370,11 @@ impl MaspDetector {
         Ok(())
     }
 
-    fn process(&mut self, samples: &[f32], capture_time_sec: f64) -> Result<Option<DetectionEvent>, String> {
+    fn process(
+        &mut self,
+        samples: &[f32],
+        capture_time_sec: f64,
+    ) -> Result<Option<DetectionEvent>, String> {
         self.last_capture_time_sec = capture_time_sec;
         self.capture_buffer.push_block(samples, capture_time_sec);
 
@@ -356,11 +384,7 @@ impl MaspDetector {
         if capture_time_sec + 1e-6 < context.capture_end_sec {
             return Ok(None);
         }
-        if self
-            .last_emitted_fingerprint
-            .as_deref()
-            == Some(context.fingerprint.as_str())
-        {
+        if self.last_emitted_fingerprint.as_deref() == Some(context.fingerprint.as_str()) {
             return Ok(None);
         }
         let Some((window_samples, base_start_sec)) = self
@@ -409,7 +433,11 @@ impl MaspDetector {
                 .first()
                 .map(|midi| midi_to_hz(*midi as f32)),
             midi_estimate: if result.pass {
-                context.expected_midis.first().copied().map(|midi| midi as f32)
+                context
+                    .expected_midis
+                    .first()
+                    .copied()
+                    .map(|midi| midi as f32)
             } else {
                 None
             },
@@ -452,17 +480,39 @@ struct FretNetDetector {
 
 impl FretNetDetector {
     fn new(config: &RuntimeConfig) -> Result<Self, String> {
+        set_init_stage("fretnet:new:resolve_model_path");
         let model_path = resolve_existing_path(
             config
                 .fretnet_model_path
                 .as_deref()
                 .ok_or_else(|| "fretnet_model_path is required for FRETNET".to_owned())?,
         )?;
+        set_init_stage("fretnet:new:create_feature_extractor");
         let frontend_config = FrontendConfig::default();
         let extractor = FeatureExtractor::new(frontend_config)
             .map_err(|error| format!("Failed to create FRETNET extractor: {error}"))?;
-        let runtime = FretNetRuntime::load(&model_path)
-            .map_err(|error| format!("Failed to load FRETNET model: {error}"))?;
+        set_init_stage("fretnet:new:load_onnx_runtime");
+        let fretnet_ort_library_path =
+            config
+                .fretnet_ort_library_path
+                .as_deref()
+                .and_then(|value| {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(trimmed))
+                    }
+                });
+        let runtime = FretNetRuntime::load_with_stage_callback(
+            &model_path,
+            fretnet_ort_library_path.as_deref(),
+            |stage| {
+                set_init_stage(format!("fretnet:new:{stage}"));
+            },
+        )
+        .map_err(|error| format!("Failed to load FRETNET model: {error}"))?;
+        set_init_stage("fretnet:new:ready");
         Ok(Self {
             runtime,
             extractor,
@@ -476,7 +526,12 @@ impl FretNetDetector {
         })
     }
 
-    fn process(&mut self, samples: &[f32], capture_time_sec: f64) -> Result<Option<DetectionEvent>, String> {
+    fn process(
+        &mut self,
+        samples: &[f32],
+        capture_time_sec: f64,
+    ) -> Result<Option<DetectionEvent>, String> {
+        let input_block_len = samples.len();
         self.capture_buffer.push_block(samples, capture_time_sec);
         if capture_time_sec - self.last_inference_time_sec < FRETNET_MIN_INFERENCE_INTERVAL_SECONDS
         {
@@ -489,11 +544,16 @@ impl FretNetDetector {
 
         let started = Instant::now();
         let frontend_sample_rate = self.extractor.config().sample_rate;
+        let input_window_len = window.len();
         let mut resampled = if self.capture_buffer.sample_rate == frontend_sample_rate {
             window
         } else {
-            resample_kaiser_best(&window, self.capture_buffer.sample_rate, frontend_sample_rate)
-                .map_err(|error| format!("Failed to resample FRETNET audio: {error}"))?
+            resample_kaiser_best(
+                &window,
+                self.capture_buffer.sample_rate,
+                frontend_sample_rate,
+            )
+            .map_err(|error| format!("Failed to resample FRETNET audio: {error}"))?
         };
         rms_normalize(&mut resampled)
             .map_err(|error| format!("Failed to normalize FRETNET audio: {error}"))?;
@@ -501,21 +561,43 @@ impl FretNetDetector {
             .extractor
             .extract_hcqt(&resampled, frontend_sample_rate)
             .map_err(|error| format!("Failed to extract FRETNET HCQT: {error}"))?;
+        let hcqt_shape = hcqt.shape();
         let batch = self
             .extractor
             .hcqt_to_batch(&hcqt, Some(FRETNET_MAX_FRAMES.min(hcqt.frame_count())))
             .map_err(|error| format!("Failed to build FRETNET batch: {error}"))?;
+        let batch_shape = batch.shape();
+        if batch_shape[1] == 0 {
+            return Err(format!(
+                "FRETNET preprocessing produced zero frames; diagnostics: input_block_len={input_block_len}, input_window_len={input_window_len}, resampled_len={}, frontend_sample_rate={}, hcqt_shape={:?}, batch_shape={:?}",
+                resampled.len(),
+                frontend_sample_rate,
+                hcqt_shape,
+                batch_shape
+            ));
+        }
         let output = self
             .runtime
             .infer_features(&batch)
             .map_err(|error| format!("FRETNET inference failed: {error}"))?;
+        let output_shapes = fretnet_output_shapes_summary(&output);
 
         self.last_inference_time_sec = capture_time_sec;
-        Ok(decode_fretnet_output(
+        decode_fretnet_output(
             &output,
             capture_time_sec,
             started.elapsed().as_secs_f64() * 1000.0,
-        ))
+        )
+        .map_err(|error| {
+            format!(
+                "FRETNET decode failed: {error}; diagnostics: input_block_len={input_block_len}, input_window_len={input_window_len}, resampled_len={}, frontend_sample_rate={}, hcqt_shape={:?}, onnx_input_shape={:?}, output_shapes=[{}]",
+                resampled.len(),
+                frontend_sample_rate,
+                hcqt_shape,
+                batch_shape,
+                output_shapes
+            )
+        })
     }
 
     fn reset(&mut self) {
@@ -533,6 +615,7 @@ enum DetectorKind {
 
 impl DetectorKind {
     fn new(config: RuntimeConfig) -> Result<Self, String> {
+        set_init_stage(format!("detector:new:backend={}", config.backend_name));
         match config.backend_name.as_str() {
             "ac14" => Ok(Self::Ac14(DspDetector::new(
                 &config,
@@ -609,11 +692,7 @@ fn map_native_pitch_frame(
         pitch_hz: frame.pitch_hz,
         midi_estimate: frame.midi_estimate,
         confidence: frame.confidence,
-        selected_notes: frame
-            .selected_notes
-            .iter()
-            .map(map_selected_note)
-            .collect(),
+        selected_notes: frame.selected_notes.iter().map(map_selected_note).collect(),
         chord_scores: frame.chord_scores.iter().map(map_chord_score).collect(),
         detected_string: frame.detected_string,
         detected_fret: frame.detected_fret,
@@ -652,7 +731,11 @@ fn map_chord_score(score: &SpectralChordScore) -> ResultChordScore {
 
 fn apply_masp_manifest_to_config(cfg: &mut AppConfig, artifacts: &MaspPretrainArtifacts) {
     cfg.masp.mode = "strict".to_owned();
-    cfg.masp.strict_sample_rate = artifacts.manifest.model_params.strict_sample_rate.max(22_050);
+    cfg.masp.strict_sample_rate = artifacts
+        .manifest
+        .model_params
+        .strict_sample_rate
+        .max(22_050);
     cfg.masp.bins_per_octave = artifacts
         .manifest
         .model_params
@@ -683,12 +766,12 @@ fn apply_masp_manifest_to_config(cfg: &mut AppConfig, artifacts: &MaspPretrainAr
     } else {
         MASP_RMS_H_RELAX
     };
-    cfg.masp.validation_score_threshold = if artifacts.manifest.validation_rule.score_threshold > 0.0
-    {
-        artifacts.manifest.validation_rule.score_threshold
-    } else {
-        MASP_SCORE_THRESHOLD
-    };
+    cfg.masp.validation_score_threshold =
+        if artifacts.manifest.validation_rule.score_threshold > 0.0 {
+            artifacts.manifest.validation_rule.score_threshold
+        } else {
+            MASP_SCORE_THRESHOLD
+        };
     cfg.masp.weights = if artifacts.manifest.validation_rule.score_weights.har > 0.0
         || artifacts.manifest.validation_rule.score_weights.mbw > 0.0
         || artifacts.manifest.validation_rule.score_weights.cent > 0.0
@@ -736,10 +819,14 @@ fn decode_fretnet_output(
     output: &ModelOutput,
     capture_time_sec: f64,
     processing_time_ms: f64,
-) -> Option<DetectionEvent> {
-    let decoded = fretnet_decode_notes(output)?;
-    let best = decoded.first()?;
-    Some(DetectionEvent {
+) -> Result<Option<DetectionEvent>, String> {
+    let Some(decoded) = fretnet_decode_notes(output)? else {
+        return Ok(None);
+    };
+    let Some(best) = decoded.first() else {
+        return Ok(None);
+    };
+    Ok(Some(DetectionEvent {
         backend_name: "fretnet".to_owned(),
         timestamp_sec: capture_time_sec,
         pitch_hz: Some(midi_to_hz(best.midi)),
@@ -762,20 +849,43 @@ fn decode_fretnet_output(
         score_threshold: None,
         processing_time_ms,
         callback_to_result_latency_ms: 0.0,
-    })
+    }))
 }
 
-fn fretnet_decode_notes(output: &ModelOutput) -> Option<Vec<ResultNote>> {
-    if let Some(decoded) = fretnet_decode_from_semantic_tablature(output) {
-        return Some(decoded);
+fn fretnet_decode_notes(output: &ModelOutput) -> Result<Option<Vec<ResultNote>>, String> {
+    if let Some(decoded) = fretnet_decode_from_semantic_tablature(output)? {
+        return Ok(Some(decoded));
     }
     fretnet_decode_from_relative_tensor(output)
 }
 
-fn fretnet_decode_from_semantic_tablature(output: &ModelOutput) -> Option<Vec<ResultNote>> {
-    let tablature = output.tensor("tablature")?;
-    let last_frame_classes = fretnet_tablature_last_frame(&tablature.data)?;
-    let onset_view = output.tensor("onsets").and_then(|tensor| fretnet_onsets_last_frame(&tensor.data));
+fn fretnet_decode_from_semantic_tablature(
+    output: &ModelOutput,
+) -> Result<Option<Vec<ResultNote>>, String> {
+    let Some(tablature) = output.tensor("tablature") else {
+        return Ok(None);
+    };
+    let last_frame_classes = fretnet_tablature_last_frame(&tablature.data).map_err(|error| {
+        format!(
+            "{error}; tensor=tablature shape={:?}; outputs={}",
+            tablature.data.shape(),
+            fretnet_output_shapes_summary(output)
+        )
+    })?;
+    let onset_view = output
+        .tensor("onsets")
+        .map(|tensor| fretnet_onsets_last_frame(&tensor.data))
+        .transpose()
+        .map_err(|error| {
+            format!(
+                "{error}; tensor=onsets shape={:?}; outputs={}",
+                output
+                    .tensor("onsets")
+                    .map(|tensor| tensor.data.shape().to_vec())
+                    .unwrap_or_default(),
+                fretnet_output_shapes_summary(output)
+            )
+        })?;
     let mut notes = Vec::new();
     for (string_index, fret_class) in last_frame_classes.iter().copied().enumerate() {
         if fret_class < 0 {
@@ -783,7 +893,10 @@ fn fretnet_decode_from_semantic_tablature(output: &ModelOutput) -> Option<Vec<Re
         }
         let string = (string_index + 1) as u32;
         let fret = fret_class as u32;
-        let midi = OPEN_MIDI.get(string_index).copied()? as f32 + fret as f32;
+        let Some(open_midi) = OPEN_MIDI.get(string_index).copied() else {
+            continue;
+        };
+        let midi = open_midi as f32 + fret as f32;
         let score = onset_view
             .as_ref()
             .and_then(|values| values.get(string_index))
@@ -799,7 +912,7 @@ fn fretnet_decode_from_semantic_tablature(output: &ModelOutput) -> Option<Vec<Re
         });
     }
     if notes.is_empty() {
-        None
+        Ok(None)
     } else {
         notes.sort_by(|a, b| {
             b.score
@@ -807,13 +920,28 @@ fn fretnet_decode_from_semantic_tablature(output: &ModelOutput) -> Option<Vec<Re
                 .total_cmp(&a.score.unwrap_or(0.0))
                 .then_with(|| a.string.unwrap_or(0).cmp(&b.string.unwrap_or(0)))
         });
-        Some(notes)
+        Ok(Some(notes))
     }
 }
 
-fn fretnet_decode_from_relative_tensor(output: &ModelOutput) -> Option<Vec<ResultNote>> {
-    let tablature = output.tensor("tablature_rel").or_else(|| output.tensor("tablature"))?;
-    let last_frame_scores = fretnet_relative_last_frame_scores(&tablature.data)?;
+fn fretnet_decode_from_relative_tensor(
+    output: &ModelOutput,
+) -> Result<Option<Vec<ResultNote>>, String> {
+    let Some(tablature) = output
+        .tensor("tablature_rel")
+        .or_else(|| output.tensor("tablature"))
+    else {
+        return Ok(None);
+    };
+    let last_frame_scores =
+        fretnet_relative_last_frame_scores(&tablature.data).map_err(|error| {
+            format!(
+                "{error}; tensor={} shape={:?}; outputs={}",
+                tablature.name,
+                tablature.data.shape(),
+                fretnet_output_shapes_summary(output)
+            )
+        })?;
     let mut notes = Vec::new();
 
     for (string_index, class_scores) in last_frame_scores.iter().enumerate() {
@@ -835,8 +963,19 @@ fn fretnet_decode_from_relative_tensor(output: &ModelOutput) -> Option<Vec<Resul
 
         let fret = (class_index - 1) as u32;
         let string = (string_index + 1) as u32;
-        let midi = OPEN_MIDI.get(string_index).copied()? as f32 + fret as f32;
-        let onset_score = fretnet_onset_score_for_note(output, string_index, fret);
+        let Some(open_midi) = OPEN_MIDI.get(string_index).copied() else {
+            continue;
+        };
+        let midi = open_midi as f32 + fret as f32;
+        let onset_score =
+            fretnet_onset_score_for_note(output, string_index, fret).map_err(|error| {
+                format!(
+                    "{error}; tablature_tensor={} shape={:?}; outputs={}",
+                    tablature.name,
+                    tablature.data.shape(),
+                    fretnet_output_shapes_summary(output)
+                )
+            })?;
         let confidence = onset_score
             .map(|value| 0.7 * raw_score.max(0.0) + 0.3 * value)
             .unwrap_or_else(|| raw_score.max(0.0))
@@ -852,7 +991,7 @@ fn fretnet_decode_from_relative_tensor(output: &ModelOutput) -> Option<Vec<Resul
     }
 
     if notes.is_empty() {
-        None
+        Ok(None)
     } else {
         notes.sort_by(|a, b| {
             b.score
@@ -860,83 +999,223 @@ fn fretnet_decode_from_relative_tensor(output: &ModelOutput) -> Option<Vec<Resul
                 .total_cmp(&a.score.unwrap_or(0.0))
                 .then_with(|| a.string.unwrap_or(0).cmp(&b.string.unwrap_or(0)))
         });
-        Some(notes)
+        Ok(Some(notes))
     }
 }
 
-fn fretnet_tablature_last_frame(data: &ndarray::ArrayD<f32>) -> Option<Vec<i32>> {
+fn fretnet_tablature_last_frame(data: &ndarray::ArrayD<f32>) -> Result<Vec<i32>, String> {
     match data.ndim() {
         3 => {
-            let view = data.view().into_dimensionality::<Ix3>().ok()?;
-            if view.shape().first().copied()? == 1 {
-                let last_frame = view.shape().get(2).copied()?.saturating_sub(1);
-                return Some(
-                    (0..view.shape().get(1).copied()?)
-                        .map(|string_index| view[[0, string_index, last_frame]].round() as i32)
-                        .collect(),
-                );
+            let shape = data.shape();
+            if shape[0] == 0 || shape[1] == 0 || shape[2] == 0 {
+                return Err(format!(
+                    "fretnet tablature tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
             }
-            let last_frame = view.shape().get(2).copied()?.saturating_sub(1);
-            Some(
-                (0..view.shape().get(0).copied()?)
-                    .map(|string_index| view[[string_index, 0, last_frame]].round() as i32)
-                    .collect(),
-            )
+            let batch_or_string = shape[0];
+            let frame_or_string = shape[1];
+            let class_or_frame = shape[2];
+            if batch_or_string == 1 && class_or_frame % FRETNET_STRING_COUNT == 0 {
+                let class_count = class_or_frame / FRETNET_STRING_COUNT;
+                if class_count == 0 {
+                    return Err(format!(
+                        "fretnet tablature tensor flattened class count is zero for shape {:?}",
+                        shape
+                    ));
+                }
+                let last_frame = frame_or_string.saturating_sub(1);
+                let mut out = Vec::with_capacity(FRETNET_STRING_COUNT);
+                for string_index in 0..FRETNET_STRING_COUNT {
+                    let class_offset = string_index * class_count;
+                    let value = data
+                        .get(IxDyn(&[0, last_frame, class_offset]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet semantic decode out-of-bounds at [0,{last_frame},{class_offset}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    out.push(value.round() as i32);
+                }
+                return Ok(out);
+            }
+            if batch_or_string == 1 {
+                let last_frame = class_or_frame.saturating_sub(1);
+                let mut out = Vec::with_capacity(frame_or_string);
+                for string_index in 0..frame_or_string {
+                    let value = data
+                        .get(IxDyn(&[0, string_index, last_frame]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet semantic decode out-of-bounds at [0,{string_index},{last_frame}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    out.push(value.round() as i32);
+                }
+                return Ok(out);
+            }
+            let last_frame = class_or_frame.saturating_sub(1);
+            let mut out = Vec::with_capacity(batch_or_string);
+            for string_index in 0..batch_or_string {
+                let value = data
+                    .get(IxDyn(&[string_index, 0, last_frame]))
+                    .copied()
+                    .ok_or_else(|| {
+                        format!(
+                            "fretnet semantic decode out-of-bounds at [{string_index},0,{last_frame}] for shape {:?}",
+                            shape
+                        )
+                    })?;
+                out.push(value.round() as i32);
+            }
+            Ok(out)
         }
         2 => {
-            let view = data.view().into_dimensionality::<Ix2>().ok()?;
-            let last_frame = view.shape().get(1).copied()?.saturating_sub(1);
-            Some(
-                (0..view.shape().get(0).copied()?)
-                    .map(|string_index| view[[string_index, last_frame]].round() as i32)
-                    .collect(),
-            )
+            let shape = data.shape();
+            if shape[0] == 0 || shape[1] == 0 {
+                return Err(format!(
+                    "fretnet tablature tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
+            }
+            let last_frame = shape[1].saturating_sub(1);
+            let mut out = Vec::with_capacity(shape[0]);
+            for string_index in 0..shape[0] {
+                let value = data
+                    .get(IxDyn(&[string_index, last_frame]))
+                    .copied()
+                    .ok_or_else(|| {
+                        format!(
+                            "fretnet semantic decode out-of-bounds at [{string_index},{last_frame}] for shape {:?}",
+                            shape
+                        )
+                    })?;
+                out.push(value.round() as i32);
+            }
+            Ok(out)
         }
-        _ => None,
+        _ => Err(format!(
+            "fretnet semantic tablature tensor rank {} unsupported (shape {:?})",
+            data.ndim(),
+            data.shape()
+        )),
     }
 }
 
-fn fretnet_relative_last_frame_scores(data: &ndarray::ArrayD<f32>) -> Option<Vec<Vec<f32>>> {
+fn fretnet_relative_last_frame_scores(
+    data: &ndarray::ArrayD<f32>,
+) -> Result<Vec<Vec<f32>>, String> {
     match data.ndim() {
         4 => {
-            let view = data.view().into_dimensionality::<Ix4>().ok()?;
-            let last_frame = view.shape().get(1).copied()?.saturating_sub(1);
-            let string_count = view.shape().get(2).copied()?;
-            let class_count = view.shape().get(3).copied()?;
+            let shape = data.shape();
+            if shape[1] == 0 || shape[2] == 0 || shape[3] == 0 {
+                return Err(format!(
+                    "fretnet relative tablature tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
+            }
+            let last_frame = shape[1].saturating_sub(1);
+            let string_count = shape[2];
+            let class_count = shape[3];
             let mut per_string = Vec::with_capacity(string_count);
             for string_index in 0..string_count {
                 let mut classes = Vec::with_capacity(class_count);
                 for class_index in 0..class_count {
-                    classes.push(view[[0, last_frame, string_index, class_index]]);
+                    let value = data
+                        .get(IxDyn(&[0, last_frame, string_index, class_index]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet relative decode out-of-bounds at [0,{last_frame},{string_index},{class_index}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    classes.push(value);
                 }
                 per_string.push(classes);
             }
-            Some(per_string)
+            Ok(per_string)
         }
         3 => {
-            let view = data.view().into_dimensionality::<Ix3>().ok()?;
-            let last_frame = view.shape().get(0).copied()?.saturating_sub(1);
-            let string_count = view.shape().get(1).copied()?;
-            let class_count = view.shape().get(2).copied()?;
+            let shape = data.shape();
+            if shape[0] == 0 || shape[1] == 0 || shape[2] == 0 {
+                return Err(format!(
+                    "fretnet relative tablature tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
+            }
+            if shape[0] == 1 && shape[2] % FRETNET_STRING_COUNT == 0 {
+                let frame_count = shape[1];
+                let flattened_positions = shape[2];
+                let class_count = flattened_positions / FRETNET_STRING_COUNT;
+                if class_count == 0 {
+                    return Err(format!(
+                        "fretnet relative decode flattened class count is zero for shape {:?}",
+                        shape
+                    ));
+                }
+                let last_frame = frame_count.saturating_sub(1);
+                let mut per_string = Vec::with_capacity(FRETNET_STRING_COUNT);
+                for string_index in 0..FRETNET_STRING_COUNT {
+                    let row_start = string_index * class_count;
+                    let mut classes = Vec::with_capacity(class_count);
+                    for class_index in 0..class_count {
+                        let flattened_index = row_start + class_index;
+                        let value = data
+                            .get(IxDyn(&[0, last_frame, flattened_index]))
+                            .copied()
+                            .ok_or_else(|| {
+                                format!(
+                                    "fretnet relative decode out-of-bounds at [0,{last_frame},{flattened_index}] for shape {:?}",
+                                    shape
+                                )
+                            })?;
+                        classes.push(value);
+                    }
+                    per_string.push(classes);
+                }
+                return Ok(per_string);
+            }
+
+            let last_frame = shape[0].saturating_sub(1);
+            let string_count = shape[1];
+            let class_count = shape[2];
             let mut per_string = Vec::with_capacity(string_count);
             for string_index in 0..string_count {
                 let mut classes = Vec::with_capacity(class_count);
                 for class_index in 0..class_count {
-                    classes.push(view[[last_frame, string_index, class_index]]);
+                    let value = data
+                        .get(IxDyn(&[last_frame, string_index, class_index]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet relative decode out-of-bounds at [{last_frame},{string_index},{class_index}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    classes.push(value);
                 }
                 per_string.push(classes);
             }
-            Some(per_string)
+            Ok(per_string)
         }
         2 => {
-            let view = data.view().into_dimensionality::<Ix2>().ok()?;
-            let flattened_positions = view.shape().get(0).copied()?;
-            let frame_count = view.shape().get(1).copied()?;
+            let shape = data.shape();
+            let flattened_positions = shape[0];
+            let frame_count = shape[1];
             if flattened_positions == 0
                 || frame_count == 0
                 || flattened_positions % FRETNET_STRING_COUNT != 0
             {
-                return None;
+                return Err(format!(
+                    "fretnet relative decode cannot reshape tensor with shape {:?} into (strings={}, classes, frames)",
+                    shape,
+                    FRETNET_STRING_COUNT
+                ));
             }
             let class_count = flattened_positions / FRETNET_STRING_COUNT;
             let last_frame = frame_count.saturating_sub(1);
@@ -945,75 +1224,211 @@ fn fretnet_relative_last_frame_scores(data: &ndarray::ArrayD<f32>) -> Option<Vec
                 let row_start = string_index * class_count;
                 let mut classes = Vec::with_capacity(class_count);
                 for class_index in 0..class_count {
-                    classes.push(view[[row_start + class_index, last_frame]]);
+                    let flattened_index = row_start + class_index;
+                    let value = data
+                        .get(IxDyn(&[flattened_index, last_frame]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet relative decode out-of-bounds at [{flattened_index},{last_frame}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    classes.push(value);
                 }
                 per_string.push(classes);
             }
-            Some(per_string)
+            Ok(per_string)
         }
-        _ => None,
+        _ => Err(format!(
+            "fretnet relative tablature tensor rank {} unsupported (shape {:?})",
+            data.ndim(),
+            data.shape()
+        )),
     }
 }
 
-fn fretnet_onsets_last_frame(data: &ndarray::ArrayD<f32>) -> Option<Vec<f32>> {
+fn fretnet_onsets_last_frame(data: &ndarray::ArrayD<f32>) -> Result<Vec<f32>, String> {
     match data.ndim() {
         4 => {
-            let view = data.view().into_dimensionality::<Ix4>().ok()?;
-            let last_frame = view.shape().get(3).copied()?.saturating_sub(1);
-            Some(
-                (0..view.shape().get(1).copied()?)
-                    .map(|string_index| {
-                        let mut best = 0.0_f32;
-                        for pitch_index in 0..view.shape().get(2).copied().unwrap_or(0) {
-                            best = best.max(view[[0, string_index, pitch_index, last_frame]]);
-                        }
-                        best
-                    })
-                    .collect(),
-            )
+            let shape = data.shape();
+            if shape[1] == 0 || shape[2] == 0 || shape[3] == 0 {
+                return Err(format!(
+                    "fretnet onsets tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
+            }
+            let last_frame = shape[3].saturating_sub(1);
+            let mut out = Vec::with_capacity(shape[1]);
+            for string_index in 0..shape[1] {
+                let mut best = 0.0_f32;
+                for pitch_index in 0..shape[2] {
+                    let value = data
+                        .get(IxDyn(&[0, string_index, pitch_index, last_frame]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet onsets decode out-of-bounds at [0,{string_index},{pitch_index},{last_frame}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    best = best.max(value);
+                }
+                out.push(best);
+            }
+            Ok(out)
         }
         3 => {
-            let view = data.view().into_dimensionality::<Ix3>().ok()?;
-            let last_frame = view.shape().get(2).copied()?.saturating_sub(1);
-            Some(
-                (0..view.shape().get(0).copied()?)
-                    .map(|string_index| {
-                        let mut best = 0.0_f32;
-                        for pitch_index in 0..view.shape().get(1).copied().unwrap_or(0) {
-                            best = best.max(view[[string_index, pitch_index, last_frame]]);
-                        }
-                        best
-                    })
-                    .collect(),
-            )
+            let shape = data.shape();
+            if shape[0] == 0 || shape[1] == 0 || shape[2] == 0 {
+                return Err(format!(
+                    "fretnet onsets tensor has zero-sized axis in shape {:?}",
+                    shape
+                ));
+            }
+            if shape[0] == 1 && shape[2] % FRETNET_STRING_COUNT == 0 {
+                let frame_count = shape[1];
+                let flattened = shape[2];
+                let pitch_count = flattened / FRETNET_STRING_COUNT;
+                if pitch_count == 0 {
+                    return Err(format!(
+                        "fretnet onsets flattened pitch count is zero for shape {:?}",
+                        shape
+                    ));
+                }
+                let last_frame = frame_count.saturating_sub(1);
+                let mut out = Vec::with_capacity(FRETNET_STRING_COUNT);
+                for string_index in 0..FRETNET_STRING_COUNT {
+                    let base = string_index * pitch_count;
+                    let mut best = 0.0_f32;
+                    for pitch_index in 0..pitch_count {
+                        let flattened_index = base + pitch_index;
+                        let value = data
+                            .get(IxDyn(&[0, last_frame, flattened_index]))
+                            .copied()
+                            .ok_or_else(|| {
+                                format!(
+                                    "fretnet onsets decode out-of-bounds at [0,{last_frame},{flattened_index}] for shape {:?}",
+                                    shape
+                                )
+                            })?;
+                        best = best.max(value);
+                    }
+                    out.push(best);
+                }
+                return Ok(out);
+            }
+            let last_frame = shape[2].saturating_sub(1);
+            let mut out = Vec::with_capacity(shape[0]);
+            for string_index in 0..shape[0] {
+                let mut best = 0.0_f32;
+                for pitch_index in 0..shape[1] {
+                    let value = data
+                        .get(IxDyn(&[string_index, pitch_index, last_frame]))
+                        .copied()
+                        .ok_or_else(|| {
+                            format!(
+                                "fretnet onsets decode out-of-bounds at [{string_index},{pitch_index},{last_frame}] for shape {:?}",
+                                shape
+                            )
+                        })?;
+                    best = best.max(value);
+                }
+                out.push(best);
+            }
+            Ok(out)
         }
-        _ => None,
+        _ => Err(format!(
+            "fretnet onsets tensor rank {} unsupported (shape {:?})",
+            data.ndim(),
+            data.shape()
+        )),
     }
 }
 
-fn fretnet_onset_score_for_note(output: &ModelOutput, string_index: usize, fret: u32) -> Option<f32> {
-    let onset_tensor = output.tensor("onsets")?;
-    let absolute_midi = OPEN_MIDI.get(string_index).copied()? as usize + fret as usize;
-    let base_midi = OPEN_MIDI.first().copied()? as usize;
+fn fretnet_onset_score_for_note(
+    output: &ModelOutput,
+    string_index: usize,
+    fret: u32,
+) -> Result<Option<f32>, String> {
+    let Some(onset_tensor) = output.tensor("onsets") else {
+        return Ok(None);
+    };
+    let Some(open_midi) = OPEN_MIDI.get(string_index).copied() else {
+        return Ok(None);
+    };
+    let Some(base_midi) = OPEN_MIDI.first().copied() else {
+        return Ok(None);
+    };
+    let absolute_midi = open_midi as usize + fret as usize;
+    let base_midi = base_midi as usize;
     let pitch_index = absolute_midi.saturating_sub(base_midi);
 
     match onset_tensor.data.ndim() {
         4 => {
-            let view = onset_tensor.data.view().into_dimensionality::<Ix4>().ok()?;
-            let last_frame = view.shape().get(3).copied()?.saturating_sub(1);
-            let pitch_limit = view.shape().get(2).copied()?;
+            let shape = onset_tensor.data.shape();
+            if shape[1] == 0 || shape[2] == 0 || shape[3] == 0 {
+                return Ok(None);
+            }
+            if string_index >= shape[1] {
+                return Ok(None);
+            }
+            let last_frame = shape[3].saturating_sub(1);
+            let pitch_limit = shape[2];
             let safe_pitch_index = pitch_index.min(pitch_limit.saturating_sub(1));
-            Some(view[[0, string_index, safe_pitch_index, last_frame]].clamp(0.0, 1.0))
+            Ok(onset_tensor
+                .data
+                .get(IxDyn(&[0, string_index, safe_pitch_index, last_frame]))
+                .copied()
+                .map(|value| value.clamp(0.0, 1.0)))
         }
         3 => {
-            let view = onset_tensor.data.view().into_dimensionality::<Ix3>().ok()?;
-            let last_frame = view.shape().get(2).copied()?.saturating_sub(1);
-            let pitch_limit = view.shape().get(1).copied()?;
+            let shape = onset_tensor.data.shape();
+            if shape[0] == 0 || shape[1] == 0 || shape[2] == 0 {
+                return Ok(None);
+            }
+            if shape[0] == 1 && shape[2] % FRETNET_STRING_COUNT == 0 {
+                if string_index >= FRETNET_STRING_COUNT {
+                    return Ok(None);
+                }
+                let frame_count = shape[1];
+                let flattened = shape[2];
+                let pitch_count = flattened / FRETNET_STRING_COUNT;
+                if pitch_count == 0 {
+                    return Ok(None);
+                }
+                let last_frame = frame_count.saturating_sub(1);
+                let safe_pitch_index = pitch_index.min(pitch_count.saturating_sub(1));
+                let flattened_index = string_index * pitch_count + safe_pitch_index;
+                return Ok(onset_tensor
+                    .data
+                    .get(IxDyn(&[0, last_frame, flattened_index]))
+                    .copied()
+                    .map(|value| value.clamp(0.0, 1.0)));
+            }
+            if string_index >= shape[0] {
+                return Ok(None);
+            }
+            let last_frame = shape[2].saturating_sub(1);
+            let pitch_limit = shape[1];
             let safe_pitch_index = pitch_index.min(pitch_limit.saturating_sub(1));
-            Some(view[[string_index, safe_pitch_index, last_frame]].clamp(0.0, 1.0))
+            Ok(onset_tensor
+                .data
+                .get(IxDyn(&[string_index, safe_pitch_index, last_frame]))
+                .copied()
+                .map(|value| value.clamp(0.0, 1.0)))
         }
-        _ => None,
+        _ => Ok(None),
     }
+}
+
+fn fretnet_output_shapes_summary(output: &ModelOutput) -> String {
+    output
+        .tensors
+        .iter()
+        .map(|tensor| format!("{}={:?}", tensor.name, tensor.data.shape()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn resolve_existing_path(path: &str) -> Result<PathBuf, String> {
@@ -1072,12 +1487,19 @@ pub extern "C" fn gh_native_pitch_runtime_new(
     config_json: *const c_char,
     error_out: *mut *mut c_char,
 ) -> *mut NativePitchRuntimeHandle {
+    set_init_stage("runtime_new:enter");
     write_optional_string(error_out, None);
     let guarded = catch_unwind(AssertUnwindSafe(|| unsafe {
+        set_init_stage("runtime_new:parse_config_json");
         parse_c_string(config_json, "config_json").and_then(|text| {
             let config: RuntimeConfig = serde_json::from_str(text)
                 .map_err(|error| format!("Invalid runtime config JSON: {error}"))?;
+            set_init_stage(format!(
+                "runtime_new:create_detector backend={}",
+                config.backend_name
+            ));
             let detector = DetectorKind::new(config)?;
+            set_init_stage("runtime_new:detector_created");
             Ok(NativePitchRuntimeHandle { detector })
         })
     }));
@@ -1085,6 +1507,7 @@ pub extern "C" fn gh_native_pitch_runtime_new(
     let result = match guarded {
         Ok(result) => result,
         Err(payload) => {
+            set_init_stage("runtime_new:panic");
             write_optional_string(
                 error_out,
                 Some(format!(
@@ -1097,12 +1520,21 @@ pub extern "C" fn gh_native_pitch_runtime_new(
     };
 
     match result {
-        Ok(handle) => Box::into_raw(Box::new(handle)),
+        Ok(handle) => {
+            set_init_stage("runtime_new:success");
+            Box::into_raw(Box::new(handle))
+        }
         Err(error) => {
+            set_init_stage(format!("runtime_new:error:{error}"));
             write_optional_string(error_out, Some(error));
             std::ptr::null_mut()
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn gh_native_pitch_runtime_get_last_init_stage() -> *mut c_char {
+    into_c_string(current_init_stage())
 }
 
 #[no_mangle]
@@ -1138,9 +1570,8 @@ pub extern "C" fn gh_native_pitch_runtime_update_gameplay_context(
         if handle.is_null() {
             return Err("runtime handle is null".to_owned());
         }
-        parse_c_string(context_json, "context_json").and_then(|text| {
-            (*handle).detector.update_gameplay_context(text)
-        })
+        parse_c_string(context_json, "context_json")
+            .and_then(|text| (*handle).detector.update_gameplay_context(text))
     }));
 
     let result = match guarded {
@@ -1184,8 +1615,9 @@ pub extern "C" fn gh_native_pitch_runtime_process_audio_block(
             .and_then(|event| {
                 event
                     .map(|payload| {
-                        serde_json::to_string(&payload)
-                            .map_err(|error| format!("Failed to serialize detector result: {error}"))
+                        serde_json::to_string(&payload).map_err(|error| {
+                            format!("Failed to serialize detector result: {error}")
+                        })
                     })
                     .transpose()
             })
@@ -1222,11 +1654,13 @@ pub extern "C" fn gh_native_pitch_runtime_free_string(value: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array2;
+    use ndarray::{Array2, Array3};
 
     #[test]
     fn fretnet_relative_decoder_reshapes_flattened_string_classes() {
-        let mut output = ModelOutput { tensors: Vec::new() };
+        let mut output = ModelOutput {
+            tensors: Vec::new(),
+        };
         let mut data = Array2::<f32>::zeros((120, 4));
         data[[41, 3]] = 0.92;
         output.tensors.push(fretnet_runtime::NamedTensorOutput {
@@ -1234,7 +1668,9 @@ mod tests {
             data: data.into_dyn(),
         });
 
-        let decoded = fretnet_decode_from_relative_tensor(&output).expect("decode");
+        let decoded = fretnet_decode_from_relative_tensor(&output)
+            .expect("decode")
+            .expect("notes");
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0].string, Some(3));
         assert_eq!(decoded[0].fret, Some(0));
@@ -1243,7 +1679,9 @@ mod tests {
 
     #[test]
     fn fretnet_semantic_decoder_skips_silence_class() {
-        let mut output = ModelOutput { tensors: Vec::new() };
+        let mut output = ModelOutput {
+            tensors: Vec::new(),
+        };
         let mut data = Array2::<f32>::from_elem((FRETNET_STRING_COUNT, 2), -1.0);
         data[[0, 1]] = -1.0;
         data[[1, 1]] = 0.0;
@@ -1252,9 +1690,63 @@ mod tests {
             data: data.into_dyn(),
         });
 
-        let decoded = fretnet_decode_from_semantic_tablature(&output).expect("decode");
+        let decoded = fretnet_decode_from_semantic_tablature(&output)
+            .expect("decode")
+            .expect("notes");
         assert_eq!(decoded.len(), 1);
         assert_eq!(decoded[0].string, Some(2));
+        assert_eq!(decoded[0].fret, Some(0));
+    }
+
+    #[test]
+    fn fretnet_relative_decoder_supports_rank3_flattened_layout() {
+        let mut output = ModelOutput {
+            tensors: Vec::new(),
+        };
+        let mut tablature_rel = Array3::<f32>::from_elem((1, 4, 120), -0.5);
+        tablature_rel[[0, 3, 41]] = 0.95;
+        let mut onsets = Array3::<f32>::zeros((1, 4, 120));
+        onsets[[0, 3, 41]] = 0.8;
+        output.tensors.push(fretnet_runtime::NamedTensorOutput {
+            name: "tablature_rel".to_owned(),
+            data: tablature_rel.into_dyn(),
+        });
+        output.tensors.push(fretnet_runtime::NamedTensorOutput {
+            name: "onsets".to_owned(),
+            data: onsets.into_dyn(),
+        });
+
+        let decoded = fretnet_decode_from_relative_tensor(&output)
+            .expect("decode")
+            .expect("notes");
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].string, Some(3));
+        assert_eq!(decoded[0].fret, Some(0));
+        assert!(decoded[0].score.unwrap_or_default() > 0.5);
+    }
+
+    #[test]
+    fn fretnet_relative_decoder_handles_onset_string_axis_mismatch_without_panic() {
+        let mut output = ModelOutput {
+            tensors: Vec::new(),
+        };
+        let mut tablature_rel = Array3::<f32>::from_elem((1, 4, 120), -0.5);
+        tablature_rel[[0, 3, 41]] = 0.9;
+        let onsets_mismatched = Array3::<f32>::zeros((1, 4, 60));
+        output.tensors.push(fretnet_runtime::NamedTensorOutput {
+            name: "tablature_rel".to_owned(),
+            data: tablature_rel.into_dyn(),
+        });
+        output.tensors.push(fretnet_runtime::NamedTensorOutput {
+            name: "onsets".to_owned(),
+            data: onsets_mismatched.into_dyn(),
+        });
+
+        let decoded = fretnet_decode_from_relative_tensor(&output)
+            .expect("decode")
+            .expect("notes");
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].string, Some(3));
         assert_eq!(decoded[0].fret, Some(0));
     }
 
