@@ -29,8 +29,8 @@ const MASP_RMS_H_RELAX: f32 = 0.25;
 const MASP_RMS_WINDOW_MS: u32 = 50;
 const MASP_BINS_PER_OCTAVE: usize = 36;
 const MASP_MAX_HARMONICS: usize = 8;
-const FRETNET_CONTEXT_SECONDS: f64 = 1.0;
-const FRETNET_MIN_INFERENCE_INTERVAL_SECONDS: f64 = 0.08;
+const FRETNET_CONTEXT_SECONDS: f64 = 0.5;
+const FRETNET_STREAM_TARGET_SAMPLE_RATE: u32 = 44_100;
 const FRETNET_MAX_FRAMES: usize = 48;
 const FRETNET_STRING_COUNT: usize = 6;
 const FRETNET_RELATIVE_SILENCE_CLASS: usize = 0;
@@ -475,6 +475,7 @@ struct FretNetDetector {
     runtime: FretNetRuntime,
     extractor: FeatureExtractor,
     capture_buffer: CaptureBuffer,
+    min_inference_interval_seconds: f64,
     last_inference_time_sec: f64,
 }
 
@@ -513,16 +514,20 @@ impl FretNetDetector {
         )
         .map_err(|error| format!("Failed to load FRETNET model: {error}"))?;
         set_init_stage("fretnet:new:ready");
+        let capture_sample_rate = config.sample_rate.max(8_000);
+        let min_inference_interval_seconds = config.block_size.max(256) as f64
+            / capture_sample_rate as f64;
         Ok(Self {
             runtime,
             extractor,
             capture_buffer: CaptureBuffer::new(
-                config.sample_rate,
+                capture_sample_rate,
                 config
                     .max_capture_buffer_seconds
                     .unwrap_or(DEFAULT_CAPTURE_BUFFER_SECONDS),
             ),
-            last_inference_time_sec: -FRETNET_MIN_INFERENCE_INTERVAL_SECONDS,
+            min_inference_interval_seconds,
+            last_inference_time_sec: -min_inference_interval_seconds,
         })
     }
 
@@ -533,7 +538,7 @@ impl FretNetDetector {
     ) -> Result<Option<DetectionEvent>, String> {
         let input_block_len = samples.len();
         self.capture_buffer.push_block(samples, capture_time_sec);
-        if capture_time_sec - self.last_inference_time_sec < FRETNET_MIN_INFERENCE_INTERVAL_SECONDS
+        if capture_time_sec - self.last_inference_time_sec < self.min_inference_interval_seconds
         {
             return Ok(None);
         }
@@ -545,12 +550,28 @@ impl FretNetDetector {
         let started = Instant::now();
         let frontend_sample_rate = self.extractor.config().sample_rate;
         let input_window_len = window.len();
-        let mut resampled = if self.capture_buffer.sample_rate == frontend_sample_rate {
-            window
+        let (stream_aligned, stream_sample_rate) =
+            if self.capture_buffer.sample_rate == 48_000 {
+                (
+                    resample_kaiser_best(
+                        &window,
+                        self.capture_buffer.sample_rate,
+                        FRETNET_STREAM_TARGET_SAMPLE_RATE,
+                    )
+                    .map_err(|error| {
+                        format!("Failed to resample FRETNET 48k stream to 44.1k: {error}")
+                    })?,
+                    FRETNET_STREAM_TARGET_SAMPLE_RATE,
+                )
+            } else {
+                (window, self.capture_buffer.sample_rate)
+            };
+        let mut resampled = if stream_sample_rate == frontend_sample_rate {
+            stream_aligned
         } else {
             resample_kaiser_best(
-                &window,
-                self.capture_buffer.sample_rate,
+                &stream_aligned,
+                stream_sample_rate,
                 frontend_sample_rate,
             )
             .map_err(|error| format!("Failed to resample FRETNET audio: {error}"))?
@@ -602,7 +623,7 @@ impl FretNetDetector {
 
     fn reset(&mut self) {
         self.capture_buffer.clear();
-        self.last_inference_time_sec = -FRETNET_MIN_INFERENCE_INTERVAL_SECONDS;
+        self.last_inference_time_sec = -self.min_inference_interval_seconds;
     }
 }
 
@@ -730,22 +751,26 @@ fn map_chord_score(score: &SpectralChordScore) -> ResultChordScore {
 }
 
 fn apply_masp_manifest_to_config(cfg: &mut AppConfig, artifacts: &MaspPretrainArtifacts) {
-    cfg.masp.mode = "strict".to_owned();
-    cfg.masp.strict_sample_rate = artifacts
-        .manifest
-        .model_params
-        .strict_sample_rate
-        .max(22_050);
-    cfg.masp.bins_per_octave = artifacts
-        .manifest
-        .model_params
-        .bins_per_octave
-        .max(MASP_BINS_PER_OCTAVE);
-    cfg.masp.max_harmonics = artifacts
-        .manifest
-        .model_params
-        .max_harmonics
-        .max(MASP_MAX_HARMONICS);
+    cfg.masp.mode = if artifacts.manifest.model_params.mode.trim().is_empty() {
+        "strict".to_owned()
+    } else {
+        artifacts.manifest.model_params.mode.clone()
+    };
+    cfg.masp.strict_sample_rate = if artifacts.manifest.model_params.strict_sample_rate > 0 {
+        artifacts.manifest.model_params.strict_sample_rate
+    } else {
+        22_050
+    };
+    cfg.masp.bins_per_octave = if artifacts.manifest.model_params.bins_per_octave > 0 {
+        artifacts.manifest.model_params.bins_per_octave
+    } else {
+        MASP_BINS_PER_OCTAVE
+    };
+    cfg.masp.max_harmonics = if artifacts.manifest.model_params.max_harmonics > 0 {
+        artifacts.manifest.model_params.max_harmonics
+    } else {
+        MASP_MAX_HARMONICS
+    };
     cfg.masp.b_exponent = if artifacts.manifest.model_params.b_exponent > 0.0 {
         artifacts.manifest.model_params.b_exponent
     } else {
@@ -756,11 +781,11 @@ fn apply_masp_manifest_to_config(cfg: &mut AppConfig, artifacts: &MaspPretrainAr
     } else {
         MASP_CENT_TOLERANCE
     };
-    cfg.masp.rms_window_ms = artifacts
-        .manifest
-        .model_params
-        .rms_window_ms
-        .max(MASP_RMS_WINDOW_MS);
+    cfg.masp.rms_window_ms = if artifacts.manifest.model_params.rms_window_ms > 0 {
+        artifacts.manifest.model_params.rms_window_ms
+    } else {
+        MASP_RMS_WINDOW_MS
+    };
     cfg.masp.rms_h_relax = if artifacts.manifest.model_params.rms_h_relax > 0.0 {
         artifacts.manifest.model_params.rms_h_relax
     } else {
@@ -1654,7 +1679,72 @@ pub extern "C" fn gh_native_pitch_runtime_free_string(value: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use ndarray::{Array2, Array3};
+
+    fn test_artifacts_with_manifest_overrides(
+        mode: &str,
+        strict_sample_rate: u32,
+        bins_per_octave: usize,
+        max_harmonics: usize,
+        rms_window_ms: u32,
+    ) -> MaspPretrainArtifacts {
+        serde_json::from_value(json!({
+            "manifest": {
+                "version": 1,
+                "config_hash": 123,
+                "model_params": {
+                    "mode": mode,
+                    "strict_sample_rate": strict_sample_rate,
+                    "bins_per_octave": bins_per_octave,
+                    "max_harmonics": max_harmonics,
+                    "b_exponent": 0.7726795,
+                    "cent_tolerance": 50.0,
+                    "rms_window_ms": rms_window_ms,
+                    "rms_h_relax": 0.25,
+                    "pretrain_trials": 64
+                },
+                "validation_rule": {
+                    "score_threshold": 0.4370982,
+                    "score_weights": {
+                        "har": 0.16453995,
+                        "mbw": 0.5508079,
+                        "cent": 0.038484424,
+                        "rms": 0.24616772
+                    },
+                    "target_mono_recall": 0.0,
+                    "target_comp_recall": 0.0,
+                    "calibrated_precision": null,
+                    "calibrated_mono_recall": null,
+                    "calibrated_comp_recall": null
+                },
+                "mode": mode,
+                "strict_sample_rate": strict_sample_rate,
+                "bins_per_octave": bins_per_octave,
+                "max_harmonics": max_harmonics,
+                "b_exponent": 0.7726795,
+                "cent_tolerance": 50.0,
+                "rms_window_ms": rms_window_ms,
+                "rms_h_relax": 0.25,
+                "validation_score_threshold": 0.4370982,
+                "pretrain_trials": 64,
+                "target_mono_recall": 0.0,
+                "target_comp_recall": 0.0,
+                "calibrated_precision": null,
+                "calibrated_mono_recall": null,
+                "calibrated_comp_recall": null,
+                "weights": {
+                    "har": 0.16453995,
+                    "mbw": 0.5508079,
+                    "cent": 0.038484424,
+                    "rms": 0.24616772
+                }
+            },
+            "note_signatures": [],
+            "joint_signatures": []
+        }))
+        .expect("valid MASP test artifacts")
+    }
 
     #[test]
     fn fretnet_relative_decoder_reshapes_flattened_string_classes() {
@@ -1758,5 +1848,34 @@ mod tests {
         let (window, _) = buffer.extract_window(1.0, 2.0).expect("window");
         assert_eq!(window.len(), 100);
         assert!(window.iter().all(|sample| (*sample - 1.0).abs() < 1e-6));
+    }
+
+    #[test]
+    fn apply_masp_manifest_honors_non_default_manifest_values() {
+        let artifacts =
+            test_artifacts_with_manifest_overrides("compat", 16_000, 24, 6, 25);
+        let mut cfg = AppConfig::default();
+
+        apply_masp_manifest_to_config(&mut cfg, &artifacts);
+
+        assert_eq!(cfg.masp.mode, "compat");
+        assert_eq!(cfg.masp.strict_sample_rate, 16_000);
+        assert_eq!(cfg.masp.bins_per_octave, 24);
+        assert_eq!(cfg.masp.max_harmonics, 6);
+        assert_eq!(cfg.masp.rms_window_ms, 25);
+    }
+
+    #[test]
+    fn apply_masp_manifest_uses_safe_defaults_when_manifest_values_are_zero() {
+        let artifacts = test_artifacts_with_manifest_overrides("", 0, 0, 0, 0);
+        let mut cfg = AppConfig::default();
+
+        apply_masp_manifest_to_config(&mut cfg, &artifacts);
+
+        assert_eq!(cfg.masp.mode, "strict");
+        assert_eq!(cfg.masp.strict_sample_rate, 22_050);
+        assert_eq!(cfg.masp.bins_per_octave, MASP_BINS_PER_OCTAVE);
+        assert_eq!(cfg.masp.max_harmonics, MASP_MAX_HARMONICS);
+        assert_eq!(cfg.masp.rms_window_ms, MASP_RMS_WINDOW_MS);
     }
 }

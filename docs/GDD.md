@@ -528,6 +528,14 @@ Sample-rate policy for this preset MUST be:
 - `48000Hz`: linear resampling to `22050`
 - other rates: fallback to the existing non-MASP detector path
 
+For Android native `FRETNET`, runtime MUST follow the production-safe incremental capture profile:
+- context window `0.5s`
+- inference cadence aligned to one callback worth of input (`incremental_inference_hops = 1` equivalent behavior)
+- callback block size policy based on effective input stream rate:
+  - `22050Hz` -> block size `512`
+  - `44100Hz` -> block size `1024`
+  - `48000Hz` -> pre-align stream to `44100Hz`, then use block size `1024`
+
 The DSP stage MUST use the shared Rust/WASM core (`gh_dsp_core`) as primary backend on runtime targets.
 Generated WASM artifacts MUST be synchronized to both:
 - `src/audio/dsp-core` (runtime import source)

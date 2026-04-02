@@ -57,6 +57,11 @@ public class NativePitchInputPlugin extends Plugin {
     private static final String FRETNET_ORT_LIBRARY_FALLBACK_NAME = "libonnxruntime.so";
     private static final String FRETNET_ORT_LIBRARY_BASENAME = "onnxruntime_fretnet";
     private static final String FRETNET_ORT_LIBRARY_FALLBACK_BASENAME = "onnxruntime";
+    private static final int FRETNET_STREAM_SR_22050 = 22_050;
+    private static final int FRETNET_STREAM_SR_44100 = 44_100;
+    private static final int FRETNET_STREAM_SR_48000 = 48_000;
+    private static final int FRETNET_BLOCK_SIZE_22050 = 512;
+    private static final int FRETNET_BLOCK_SIZE_44100 = 1024;
     private static final String SHARE_DEBUG_LOG_TITLE = "Share native pitch debug log";
     private static final String SHARE_DEBUG_LOG_SUBJECT = "GuitarHelio native pitch debug log";
     private static final String SHARE_DEBUG_LOG_TEXT = "GuitarHelio Android native pitch debug log";
@@ -455,12 +460,15 @@ public class NativePitchInputPlugin extends Plugin {
         payload.put("support_unprocessed_property", supportsUnprocessedInput(audioManager));
         payload.put("audio_manager_sample_rate", propertySampleRate);
         payload.put("audio_manager_frames_per_buffer", propertyFramesPerBuffer);
+        applyFretnetRuntimeTuning(payload);
         applyRuntimeDebugConfig(payload);
         logDebug(
             "Native config resolved"
                 + " | requestedSr=" + payload.optInt("requested_sample_rate", 48_000)
+                + " | effectiveFretnetSr=" + payload.optInt("fretnet_effective_input_sample_rate", 0)
                 + " | requestedChannels=" + payload.optInt("channel_count", 1)
                 + " | requestedCallbackFrames=" + payload.optInt("frames_per_callback", 0)
+                + " | requestedBlockSize=" + payload.optInt("block_size", 2048)
                 + " | requestedPreset=" + payload.optString("requested_input_preset", "unprocessed")
                 + " | perf=" + payload.optString("performance_mode", "low_latency")
                 + " | sharing=" + payload.optString("sharing_mode", "exclusive")
@@ -510,6 +518,41 @@ public class NativePitchInputPlugin extends Plugin {
         }
 
         return payload;
+    }
+
+    private void applyFretnetRuntimeTuning(JSObject payload) {
+        String backendName = firstNonEmpty(payload.getString("backend_name"), "ac14");
+        if (!"fretnet".equals(backendName)) {
+            return;
+        }
+
+        int requestedSampleRate = Math.max(8_000, payload.optInt("requested_sample_rate", FRETNET_STREAM_SR_48000));
+        int effectiveSampleRate;
+        int blockSize;
+        String policy;
+
+        if (isApproximatelySampleRate(requestedSampleRate, FRETNET_STREAM_SR_22050)) {
+            effectiveSampleRate = FRETNET_STREAM_SR_22050;
+            blockSize = FRETNET_BLOCK_SIZE_22050;
+            policy = "native_22050_block512";
+        } else if (isApproximatelySampleRate(requestedSampleRate, FRETNET_STREAM_SR_48000)) {
+            effectiveSampleRate = FRETNET_STREAM_SR_44100;
+            blockSize = FRETNET_BLOCK_SIZE_44100;
+            policy = "input_48000_resample_to_44100_block1024";
+        } else {
+            effectiveSampleRate = FRETNET_STREAM_SR_44100;
+            blockSize = FRETNET_BLOCK_SIZE_44100;
+            policy = "native_44100_block1024";
+        }
+
+        payload.put("requested_sample_rate", effectiveSampleRate);
+        payload.put("block_size", blockSize);
+        payload.put("fretnet_effective_input_sample_rate", effectiveSampleRate);
+        payload.put("fretnet_capture_tuning_policy", policy);
+    }
+
+    private boolean isApproximatelySampleRate(int sampleRate, int target) {
+        return Math.abs(sampleRate - target) <= 200;
     }
 
     @Nullable
