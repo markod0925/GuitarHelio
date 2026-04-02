@@ -9,6 +9,7 @@ description = "Native detector runtime for GuitarHelio realtime pitch input."
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+clap = { version = "4.5", features = ["derive"] }
 gh_dsp_core = { path = "../gh_dsp_core" }
 guitar_pitch = { path = "../../../GHPitchDetection" }
 ndarray = "0.17"

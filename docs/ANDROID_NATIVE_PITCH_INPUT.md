@@ -149,6 +149,16 @@ Current repository note:
 - a Windows-only NDK inside WSL is not enough, because Windows `clang.exe` cannot link WSL `/mnt/...` artifact paths
 - if the committed FRETNET model asset is deleted or missing, the Android plugin fails explicitly during `startCapture` instead of falling through to a generic runtime error
 
+## Host-side parity tooling
+
+For local host execution of the same Rust runtime path (without APK deployment), use:
+
+- `tools/native_pitch_runtime/src/host_harness.rs`
+- `tools/native_pitch_runtime/src/bin/fretnet_host_cli.rs`
+- `docs/FRETNET_HOST_RUNTIME.md`
+
+This keeps Android JNI/Oboe glue separate while enabling host debugging, deterministic regression checks, and reproducible benchmark runs on WAV inputs.
+
 ## Fallback behavior
 
 - Non-Android platforms continue to use the existing web/runtime path.

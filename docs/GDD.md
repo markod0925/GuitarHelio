@@ -535,6 +535,7 @@ For Android native `FRETNET`, runtime MUST follow the production-safe incrementa
   - `22050Hz` -> block size `512`
   - `44100Hz` -> block size `1024`
   - `48000Hz` -> pre-align stream to `44100Hz`, then use block size `1024`
+- silence-only capture windows (for example startup silence or gaps between phrases) MUST be treated as `no-result` ticks, not runtime errors
 
 The DSP stage MUST use the shared Rust/WASM core (`gh_dsp_core`) as primary backend on runtime targets.
 Generated WASM artifacts MUST be synchronized to both:

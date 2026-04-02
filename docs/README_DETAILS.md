@@ -38,6 +38,15 @@ npm run pitch:offline:bench # run offline pitch benchmark (pass --manifest/--wav
 
 - Workflow and scripts are documented in `tools/pitch-offline-bench/README.md`.
 
+## FretNet Host Runtime (Rust)
+
+- Host-side Rust runtime workflow (architecture split, build/run/test/benchmark):
+  - `docs/FRETNET_HOST_RUNTIME.md`
+- Convenience npm scripts:
+  - `npm run fretnet:host:run -- --help`
+  - `npm run fretnet:host:test`
+  - `npm run fretnet:host:bench -- --help`
+
 ## Custom Spectral Harmonics Implementation
 
 GuitarHelio uses a custom candidate-guided spectral harmonic detector for gameplay:

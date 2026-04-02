@@ -14,3 +14,9 @@ electron/native/build/
 /tools/fretnet_runtime_vendor/target
 /tools/fretnet_runtime_vendor/assets
 /tools/fretnet_runtime_vendor/tools/__pycache__
+/target/native_pitch_runtime_wsl/debug
+/target/native_pitch_runtime_host/debug
+target/native_pitch_runtime_host/.rustc_info.json
+target/native_pitch_runtime_wsl/.rustc_info.json
+target/native_pitch_runtime_host/CACHEDIR.TAG
+target/native_pitch_runtime_wsl/CACHEDIR.TAG

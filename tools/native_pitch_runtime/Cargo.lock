@@ -481,6 +481,7 @@ dependencies = [
 name = "native_pitch_runtime"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "fretnet_runtime",
  "gh_dsp_core",
  "guitar_pitch",

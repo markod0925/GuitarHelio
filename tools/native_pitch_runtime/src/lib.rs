@@ -21,6 +21,8 @@ use guitar_pitch::types::{AudioBuffer, OPEN_MIDI};
 use ndarray::IxDyn;
 use serde::{Deserialize, Serialize};
 
+pub mod host_harness;
+
 const DEFAULT_CAPTURE_BUFFER_SECONDS: f64 = 8.0;
 const MASP_SCORE_THRESHOLD: f32 = 0.437_098_2;
 const MASP_B_EXPONENT: f32 = 0.772_679_5;
@@ -53,23 +55,44 @@ fn current_init_stage() -> String {
         .unwrap_or_else(|_| "stage_lock_poisoned".to_owned())
 }
 
-#[derive(Debug, Deserialize)]
-struct RuntimeConfig {
-    backend_name: String,
-    sample_rate: u32,
-    block_size: usize,
+pub fn current_runtime_init_stage() -> String {
+    current_init_stage()
+}
+
+pub fn default_fretnet_model_candidates() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../fretnet_runtime_vendor/../model/model.onnx"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../android/app/src/main/assets/native-pitch/fretnet/model.onnx"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../release/win-unpacked/resources/app.asar.unpacked/android/app/src/main/assets/native-pitch/fretnet/model.onnx"),
+    ]
+}
+
+pub fn resolve_default_fretnet_model_path() -> Option<PathBuf> {
+    default_fretnet_model_candidates()
+        .into_iter()
+        .find(|candidate| candidate.exists())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    pub backend_name: String,
+    pub sample_rate: u32,
+    pub block_size: usize,
     #[serde(default)]
-    spectral_model_json: Option<String>,
+    pub spectral_model_json: Option<String>,
     #[serde(default)]
-    audio_input_mode: Option<String>,
+    pub audio_input_mode: Option<String>,
     #[serde(default)]
-    masp_assets_dir: Option<String>,
+    pub masp_assets_dir: Option<String>,
     #[serde(default)]
-    fretnet_model_path: Option<String>,
+    pub fretnet_model_path: Option<String>,
     #[serde(default)]
-    fretnet_ort_library_path: Option<String>,
+    pub fretnet_ort_library_path: Option<String>,
     #[serde(default)]
-    max_capture_buffer_seconds: Option<f64>,
+    pub max_capture_buffer_seconds: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,45 +125,45 @@ struct MappedGameplayContext {
     expected_notes: Vec<GameplayContextNote>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct ResultNote {
-    note_id: Option<String>,
-    midi: f32,
-    string: Option<u32>,
-    fret: Option<u32>,
-    score: Option<f32>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ResultNote {
+    pub note_id: Option<String>,
+    pub midi: f32,
+    pub string: Option<u32>,
+    pub fret: Option<u32>,
+    pub score: Option<f32>,
 }
 
-#[derive(Debug, Serialize)]
-struct ResultChordScore {
-    chord_id: String,
-    score: f32,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResultChordScore {
+    pub chord_id: String,
+    pub score: f32,
 }
 
-#[derive(Debug, Serialize)]
-struct DetectionEvent {
-    backend_name: String,
-    timestamp_sec: f64,
-    pitch_hz: Option<f32>,
-    midi_estimate: Option<f32>,
-    confidence: f32,
-    selected_notes: Vec<ResultNote>,
-    chord_scores: Vec<ResultChordScore>,
-    detected_string: Option<u32>,
-    detected_fret: Option<u32>,
-    best_note_id: Option<String>,
-    rejected_as_reference_bleed: Option<bool>,
-    reference_midi: Option<f32>,
-    reference_correlation: Option<f32>,
-    energy_ratio_db: Option<f32>,
-    onset_strength: Option<f32>,
-    contamination_score: Option<f32>,
-    validation_passed: Option<bool>,
-    reason: Option<String>,
-    weighted_score: Option<f32>,
-    score_threshold: Option<f32>,
-    processing_time_ms: f64,
-    callback_to_result_latency_ms: f64,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionEvent {
+    pub backend_name: String,
+    pub timestamp_sec: f64,
+    pub pitch_hz: Option<f32>,
+    pub midi_estimate: Option<f32>,
+    pub confidence: f32,
+    pub selected_notes: Vec<ResultNote>,
+    pub chord_scores: Vec<ResultChordScore>,
+    pub detected_string: Option<u32>,
+    pub detected_fret: Option<u32>,
+    pub best_note_id: Option<String>,
+    pub rejected_as_reference_bleed: Option<bool>,
+    pub reference_midi: Option<f32>,
+    pub reference_correlation: Option<f32>,
+    pub energy_ratio_db: Option<f32>,
+    pub onset_strength: Option<f32>,
+    pub contamination_score: Option<f32>,
+    pub validation_passed: Option<bool>,
+    pub reason: Option<String>,
+    pub weighted_score: Option<f32>,
+    pub score_threshold: Option<f32>,
+    pub processing_time_ms: f64,
+    pub callback_to_result_latency_ms: f64,
 }
 
 struct CaptureBuffer {
@@ -515,8 +538,8 @@ impl FretNetDetector {
         .map_err(|error| format!("Failed to load FRETNET model: {error}"))?;
         set_init_stage("fretnet:new:ready");
         let capture_sample_rate = config.sample_rate.max(8_000);
-        let min_inference_interval_seconds = config.block_size.max(256) as f64
-            / capture_sample_rate as f64;
+        let min_inference_interval_seconds =
+            config.block_size.max(256) as f64 / capture_sample_rate as f64;
         Ok(Self {
             runtime,
             extractor,
@@ -538,8 +561,7 @@ impl FretNetDetector {
     ) -> Result<Option<DetectionEvent>, String> {
         let input_block_len = samples.len();
         self.capture_buffer.push_block(samples, capture_time_sec);
-        if capture_time_sec - self.last_inference_time_sec < self.min_inference_interval_seconds
-        {
+        if capture_time_sec - self.last_inference_time_sec < self.min_inference_interval_seconds {
             return Ok(None);
         }
 
@@ -550,34 +572,39 @@ impl FretNetDetector {
         let started = Instant::now();
         let frontend_sample_rate = self.extractor.config().sample_rate;
         let input_window_len = window.len();
-        let (stream_aligned, stream_sample_rate) =
-            if self.capture_buffer.sample_rate == 48_000 {
-                (
-                    resample_kaiser_best(
-                        &window,
-                        self.capture_buffer.sample_rate,
-                        FRETNET_STREAM_TARGET_SAMPLE_RATE,
-                    )
-                    .map_err(|error| {
-                        format!("Failed to resample FRETNET 48k stream to 44.1k: {error}")
-                    })?,
+        let (stream_aligned, stream_sample_rate) = if self.capture_buffer.sample_rate == 48_000 {
+            (
+                resample_kaiser_best(
+                    &window,
+                    self.capture_buffer.sample_rate,
                     FRETNET_STREAM_TARGET_SAMPLE_RATE,
                 )
-            } else {
-                (window, self.capture_buffer.sample_rate)
-            };
+                .map_err(|error| {
+                    format!("Failed to resample FRETNET 48k stream to 44.1k: {error}")
+                })?,
+                FRETNET_STREAM_TARGET_SAMPLE_RATE,
+            )
+        } else {
+            (window, self.capture_buffer.sample_rate)
+        };
         let mut resampled = if stream_sample_rate == frontend_sample_rate {
             stream_aligned
         } else {
-            resample_kaiser_best(
-                &stream_aligned,
-                stream_sample_rate,
-                frontend_sample_rate,
-            )
-            .map_err(|error| format!("Failed to resample FRETNET audio: {error}"))?
+            resample_kaiser_best(&stream_aligned, stream_sample_rate, frontend_sample_rate)
+                .map_err(|error| format!("Failed to resample FRETNET audio: {error}"))?
         };
-        rms_normalize(&mut resampled)
-            .map_err(|error| format!("Failed to normalize FRETNET audio: {error}"))?;
+        match rms_normalize(&mut resampled) {
+            Ok(()) => {}
+            Err(fretnet_runtime::FrontendError::InvalidAudio(_)) => {
+                // Silence-only windows are expected at startup and between phrases.
+                // Match Android runtime resilience by skipping this inference tick.
+                self.last_inference_time_sec = capture_time_sec;
+                return Ok(None);
+            }
+            Err(error) => {
+                return Err(format!("Failed to normalize FRETNET audio: {error}"));
+            }
+        }
         let hcqt = self
             .extractor
             .extract_hcqt(&resampled, frontend_sample_rate)
@@ -689,8 +716,41 @@ impl DetectorKind {
     }
 }
 
-pub struct NativePitchRuntimeHandle {
+pub struct NativePitchRuntime {
     detector: DetectorKind,
+}
+
+impl NativePitchRuntime {
+    pub fn new(config: RuntimeConfig) -> Result<Self, String> {
+        let detector = DetectorKind::new(config)?;
+        Ok(Self { detector })
+    }
+
+    pub fn from_config_json(config_json: &str) -> Result<Self, String> {
+        let config: RuntimeConfig = serde_json::from_str(config_json)
+            .map_err(|error| format!("Invalid runtime config JSON: {error}"))?;
+        Self::new(config)
+    }
+
+    pub fn update_gameplay_context_json(&mut self, context_json: &str) -> Result<(), String> {
+        self.detector.update_gameplay_context(context_json)
+    }
+
+    pub fn process_audio_block(
+        &mut self,
+        samples: &[f32],
+        capture_time_sec: f64,
+    ) -> Result<Option<DetectionEvent>, String> {
+        self.detector.process_audio_block(samples, capture_time_sec)
+    }
+
+    pub fn reset(&mut self) {
+        self.detector.reset();
+    }
+}
+
+pub struct NativePitchRuntimeHandle {
+    runtime: NativePitchRuntime,
 }
 
 fn map_dsp_mode(audio_input_mode: Option<&str>) -> DspMode {
@@ -1523,9 +1583,9 @@ pub extern "C" fn gh_native_pitch_runtime_new(
                 "runtime_new:create_detector backend={}",
                 config.backend_name
             ));
-            let detector = DetectorKind::new(config)?;
+            let runtime = NativePitchRuntime::new(config)?;
             set_init_stage("runtime_new:detector_created");
-            Ok(NativePitchRuntimeHandle { detector })
+            Ok(NativePitchRuntimeHandle { runtime })
         })
     }));
 
@@ -1581,7 +1641,7 @@ pub extern "C" fn gh_native_pitch_runtime_reset(handle: *mut NativePitchRuntimeH
             return;
         }
         unsafe {
-            (*handle).detector.reset();
+            (*handle).runtime.reset();
         }
     }));
 }
@@ -1596,7 +1656,7 @@ pub extern "C" fn gh_native_pitch_runtime_update_gameplay_context(
             return Err("runtime handle is null".to_owned());
         }
         parse_c_string(context_json, "context_json")
-            .and_then(|text| (*handle).detector.update_gameplay_context(text))
+            .and_then(|text| (*handle).runtime.update_gameplay_context_json(text))
     }));
 
     let result = match guarded {
@@ -1635,7 +1695,7 @@ pub extern "C" fn gh_native_pitch_runtime_process_audio_block(
             std::slice::from_raw_parts(samples, sample_count)
         };
         (*handle)
-            .detector
+            .runtime
             .process_audio_block(slice, capture_time_sec)
             .and_then(|event| {
                 event
@@ -1679,8 +1739,10 @@ pub extern "C" fn gh_native_pitch_runtime_free_string(value: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use std::ffi::{CStr, CString};
+
     use ndarray::{Array2, Array3};
+    use serde_json::json;
 
     fn test_artifacts_with_manifest_overrides(
         mode: &str,
@@ -1852,8 +1914,7 @@ mod tests {
 
     #[test]
     fn apply_masp_manifest_honors_non_default_manifest_values() {
-        let artifacts =
-            test_artifacts_with_manifest_overrides("compat", 16_000, 24, 6, 25);
+        let artifacts = test_artifacts_with_manifest_overrides("compat", 16_000, 24, 6, 25);
         let mut cfg = AppConfig::default();
 
         apply_masp_manifest_to_config(&mut cfg, &artifacts);
@@ -1877,5 +1938,74 @@ mod tests {
         assert_eq!(cfg.masp.bins_per_octave, MASP_BINS_PER_OCTAVE);
         assert_eq!(cfg.masp.max_harmonics, MASP_MAX_HARMONICS);
         assert_eq!(cfg.masp.rms_window_ms, MASP_RMS_WINDOW_MS);
+    }
+
+    #[test]
+    fn ffi_wrapper_matches_direct_runtime_path_for_ac14() {
+        let config = RuntimeConfig {
+            backend_name: "ac14".to_owned(),
+            sample_rate: 44_100,
+            block_size: 1024,
+            spectral_model_json: None,
+            audio_input_mode: Some("speaker".to_owned()),
+            masp_assets_dir: None,
+            fretnet_model_path: None,
+            fretnet_ort_library_path: None,
+            max_capture_buffer_seconds: None,
+        };
+        let mut runtime = NativePitchRuntime::new(config.clone()).expect("direct runtime init");
+        let samples = vec![0.0_f32; 1024];
+        let capture_time_sec = samples.len() as f64 / config.sample_rate as f64;
+        let direct = runtime
+            .process_audio_block(&samples, capture_time_sec)
+            .expect("direct process");
+
+        let config_json = serde_json::to_string(&config).expect("serialize config");
+        let config_cstr = CString::new(config_json).expect("config cstring");
+        let mut error_ptr: *mut c_char = std::ptr::null_mut();
+        let handle = gh_native_pitch_runtime_new(config_cstr.as_ptr(), &mut error_ptr);
+        assert!(
+            error_ptr.is_null(),
+            "ffi init returned error: {}",
+            unsafe { CStr::from_ptr(error_ptr) }.to_string_lossy()
+        );
+        assert!(!handle.is_null(), "ffi runtime handle must not be null");
+
+        let mut result_json_ptr: *mut c_char = std::ptr::null_mut();
+        let ffi_error = gh_native_pitch_runtime_process_audio_block(
+            handle,
+            samples.as_ptr(),
+            samples.len(),
+            capture_time_sec,
+            &mut result_json_ptr,
+        );
+        assert!(
+            ffi_error.is_null(),
+            "ffi process returned error: {}",
+            unsafe { CStr::from_ptr(ffi_error) }.to_string_lossy()
+        );
+        let ffi_result = if result_json_ptr.is_null() {
+            None
+        } else {
+            let json_text = unsafe { CStr::from_ptr(result_json_ptr) }
+                .to_str()
+                .expect("ffi result utf8");
+            let parsed: DetectionEvent = serde_json::from_str(json_text).expect("ffi event json");
+            gh_native_pitch_runtime_free_string(result_json_ptr);
+            Some(parsed)
+        };
+        gh_native_pitch_runtime_destroy(handle);
+
+        assert_eq!(direct.is_some(), ffi_result.is_some());
+        if let (Some(direct_event), Some(ffi_event)) = (direct, ffi_result) {
+            assert_eq!(direct_event.backend_name, ffi_event.backend_name);
+            assert_eq!(direct_event.detected_string, ffi_event.detected_string);
+            assert_eq!(direct_event.detected_fret, ffi_event.detected_fret);
+            assert_eq!(direct_event.best_note_id, ffi_event.best_note_id);
+            assert_eq!(
+                direct_event.selected_notes.len(),
+                ffi_event.selected_notes.len()
+            );
+        }
     }
 }
