@@ -1145,9 +1145,17 @@ The app MUST expose a standalone `PitchDebugScene` developer workbench from `Son
   * `Replay 3s`
   * `Freeze`
   * `Record`
+  * `Record Dataset`
   * export actions (`Raw WAV`, `Proc WAV`, `JSONL`, `CSV`)
 * it MUST keep a rolling in-memory buffer of recent live audio for replay and visual inspection
 * on Capacitor Android native live microphone mode, `Raw WAV`, `Proc WAV`, and replay MUST remain unavailable unless PCM capture is explicitly mirrored into JS; the scene MUST surface that limitation in diagnostics instead of exporting synthetic audio
+* it MUST include a guided dataset-capture workflow for local Android recording sessions:
+  * traversal order MUST be deterministic and cover strings `6 -> 1`, frets `0..12`, and takes `1..3` (234 takes total)
+  * each take MUST be stored as an app-local WAV file under `pitch_debug_recordings/session_YYYYMMDD_HHMMSS/audio/`
+  * each take filename MUST be deterministic (`string_{S}_fret_{F}_take_{T}.wav`, zero-padded)
+  * capture format on disk MUST match the native runtime input stream fed into detector dispatch (mono float32 WAV, sample rate from active native stream)
+  * the workflow MUST expose current target (`string/fret/take`), global progress (`completed/234`), stop/cancel, retry, and skip-target controls
+  * each session MUST persist manifest/progress metadata so incomplete sessions can resume from the next pending take
 * it MUST export:
   * raw WAV
   * processed WAV

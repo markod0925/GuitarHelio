@@ -130,6 +130,10 @@ public class NativePitchInputPlugin extends Plugin {
 
     private static native String nativeStopCapture();
 
+    private static native String nativeDatasetStartTake(String outputPath);
+
+    private static native String nativeDatasetStopTake(boolean discardCurrent);
+
     private static native String nativePollResults(int maxResults, boolean includeDiagnostics);
 
     private static native String nativeUpdateGameplayContext(String contextJson);
@@ -360,6 +364,35 @@ public class NativePitchInputPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getDatasetStorageInfo(PluginCall call) {
+        Context context = getContext();
+        File filesDir = context != null ? context.getFilesDir() : null;
+        JSObject result = new JSObject();
+        result.put("basePath", filesDir != null ? filesDir.getAbsolutePath() : null);
+        result.put("rootRelativePath", "pitch_debug_recordings");
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void datasetStartTake(PluginCall call) {
+        String relativePath = firstNonEmpty(call.getString("relative_path"), "");
+        String absolutePath = resolveDatasetAbsolutePath(relativePath);
+        if (absolutePath == null) {
+            call.reject("Invalid dataset relative path. Use a path under pitch_debug_recordings/ without '..'.");
+            return;
+        }
+        logDebug("IPC datasetStartTake begin | path=" + absolutePath);
+        executeNativeJson(call, "datasetStartTake", () -> nativeDatasetStartTake(absolutePath));
+    }
+
+    @PluginMethod
+    public void datasetStopTake(PluginCall call) {
+        boolean discardCurrent = call.getBoolean("discard_current", false);
+        logDebug("IPC datasetStopTake begin | discardCurrent=" + discardCurrent);
+        executeNativeJson(call, "datasetStopTake", () -> nativeDatasetStopTake(discardCurrent));
+    }
+
+    @PluginMethod
     public void pollResults(PluginCall call) {
         int maxResults = Math.max(1, call.getInt("maxResults", 4));
         int includeDiagnosticsEvery = verboseNativePitchDiagnostics ? 1 : DEFAULT_INCLUDE_DIAGNOSTICS_EVERY_POLL;
@@ -587,6 +620,25 @@ public class NativePitchInputPlugin extends Plugin {
         return null;
     }
 
+    @Nullable
+    private String resolveDatasetAbsolutePath(String relativePath) {
+        Context context = getContext();
+        if (context == null) {
+            return null;
+        }
+        String normalized = firstNonEmpty(relativePath, "").trim().replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.isEmpty() || normalized.contains("..")) {
+            return null;
+        }
+        if (!normalized.startsWith("pitch_debug_recordings/")) {
+            return null;
+        }
+        return new File(context.getFilesDir(), normalized).getAbsolutePath();
+    }
+
     private void executeNativeJson(PluginCall call, String methodName, NativeCall nativeCall) {
         executor.execute(() -> {
             try {
@@ -650,6 +702,21 @@ public class NativePitchInputPlugin extends Plugin {
 
         if ("updateGameplayContext".equals(methodName)) {
             return "";
+        }
+
+        if ("datasetStartTake".equals(methodName)) {
+            return "started=" + payload.optBoolean("started", false)
+                + " | sampleRate=" + payload.optInt("sample_rate", 0)
+                + " | path=" + payload.optString("output_path", "<none>");
+        }
+
+        if ("datasetStopTake".equals(methodName)) {
+            return "recorded=" + payload.optBoolean("recorded", false)
+                + " | discarded=" + payload.optBoolean("discarded", false)
+                + " | sampleCount=" + payload.optLong("sample_count", 0L)
+                + " | durationSec=" + payload.optDouble("duration_sec", 0.0)
+                + " | bytes=" + payload.optLong("bytes_written", 0L)
+                + " | headerValid=" + payload.optBoolean("header_valid", false);
         }
 
         if ("getDiagnostics".equals(methodName) || "startCapture".equals(methodName) || "stopCapture".equals(methodName)) {

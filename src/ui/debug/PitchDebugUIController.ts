@@ -30,6 +30,7 @@ type UpdateState = {
   currentFftSize: number;
   currentWindowType: string;
   smoothingEnabled: boolean;
+  datasetStatusLabel: string;
 };
 
 export class PitchDebugUIController {
@@ -137,6 +138,20 @@ export class PitchDebugUIController {
     entry.background.setFillStyle(active ? (emphasized ? 0x7c2d12 : 0x1d4ed8) : 0x162447, active ? 1 : 0.92);
     entry.background.setStrokeStyle(1, active ? (emphasized ? 0xfdba74 : 0x93c5fd) : 0x475569, 0.72);
     entry.label.setColor(active ? '#fff7ed' : '#e2e8f0');
+  }
+
+  setButtonVisible(key: string, visible: boolean): void {
+    const entry = this.buttons.get(key);
+    if (!entry) return;
+    entry.background.setVisible(visible);
+    entry.label.setVisible(visible);
+    if (!visible) {
+      entry.background.disableInteractive();
+      entry.label.disableInteractive();
+      return;
+    }
+    entry.background.setInteractive({ useHandCursor: true });
+    entry.label.setInteractive({ useHandCursor: true });
   }
 
   destroy(): void {

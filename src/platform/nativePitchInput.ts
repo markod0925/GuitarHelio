@@ -108,6 +108,32 @@ export type NativePitchDetectionResult = {
   overrun?: boolean;
 };
 
+export type NativePitchDatasetStorageInfo = {
+  basePath: string | null;
+  rootRelativePath: string;
+};
+
+export type NativePitchDatasetTakeResult = {
+  recorded: boolean;
+  discarded: boolean;
+  output_path?: string | null;
+  sample_rate?: number;
+  channel_count?: number;
+  encoding?: string;
+  bits_per_sample?: number;
+  sample_count?: number;
+  duration_sec?: number;
+  bytes_written?: number;
+  file_exists?: boolean;
+  header_valid?: boolean;
+  wav_audio_format?: number;
+  wav_channels?: number;
+  wav_sample_rate?: number;
+  wav_bits_per_sample?: number;
+  wav_data_bytes?: number;
+  validation_error?: string | null;
+};
+
 type NativePitchStartResponse = {
   running?: boolean;
   diagnostics?: NativePitchDiagnostics;
@@ -172,6 +198,16 @@ type NativePitchInputPlugin = {
     native_pitch_file_logging_enabled?: boolean;
   }) => Promise<NativePitchStartResponse>;
   stopCapture: () => Promise<NativePitchStartResponse>;
+  getDatasetStorageInfo: () => Promise<{
+    basePath?: string | null;
+    rootRelativePath?: string | null;
+  }>;
+  datasetStartTake: (options: {
+    relative_path: string;
+  }) => Promise<NativePitchDatasetTakeResult>;
+  datasetStopTake: (options: {
+    discard_current?: boolean;
+  }) => Promise<NativePitchDatasetTakeResult>;
   pollResults: (options: {
     maxResults?: number;
     includeDiagnostics?: boolean;
@@ -394,6 +430,35 @@ export async function stopNativePitchCapture(): Promise<void> {
       electronNativeCaptureRunning = false;
     }
   }
+}
+
+export async function getNativePitchDatasetStorageInfo(): Promise<NativePitchDatasetStorageInfo | null> {
+  if (shouldUseAndroidNativePitchInput()) {
+    const result = await NativePitchInput.getDatasetStorageInfo();
+    return {
+      basePath: typeof result?.basePath === 'string' && result.basePath.trim().length > 0
+        ? result.basePath
+        : null,
+      rootRelativePath: typeof result?.rootRelativePath === 'string' && result.rootRelativePath.trim().length > 0
+        ? result.rootRelativePath
+        : 'pitch_debug_recordings'
+    };
+  }
+  return null;
+}
+
+export async function startNativePitchDatasetTake(relativePath: string): Promise<NativePitchDatasetTakeResult> {
+  if (shouldUseAndroidNativePitchInput()) {
+    return await NativePitchInput.datasetStartTake({ relative_path: relativePath });
+  }
+  throw new Error('Native dataset take recording is available only on Android native runtime.');
+}
+
+export async function stopNativePitchDatasetTake(discardCurrent = false): Promise<NativePitchDatasetTakeResult> {
+  if (shouldUseAndroidNativePitchInput()) {
+    return await NativePitchInput.datasetStopTake({ discard_current: discardCurrent });
+  }
+  throw new Error('Native dataset take recording is available only on Android native runtime.');
 }
 
 export async function pollNativePitchResults(

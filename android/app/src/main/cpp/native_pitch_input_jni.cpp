@@ -5,7 +5,9 @@
 #include <oboe/Oboe.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -13,12 +15,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -310,6 +315,14 @@ struct QueuedDetectionResult {
     bool overrun = false;
 };
 
+struct DatasetTakeState {
+    bool active = false;
+    std::string outputPath;
+    int32_t sampleRate = 0;
+    uint64_t startCapturedSamples = 0;
+    std::vector<float> samples;
+};
+
 static std::string jsonEscape(const std::string& value)
 {
     std::ostringstream out;
@@ -346,6 +359,164 @@ static std::string quote(const std::string& value)
 static const char* boolString(bool value)
 {
     return value ? "true" : "false";
+}
+
+static std::string parentDirectory(const std::string& path)
+{
+    const size_t slashIndex = path.find_last_of('/');
+    if (slashIndex == std::string::npos) {
+        return ".";
+    }
+    if (slashIndex == 0) {
+        return "/";
+    }
+    return path.substr(0, slashIndex);
+}
+
+static bool ensureDirectoryRecursive(const std::string& dirPath, std::string* errorOut)
+{
+    if (dirPath.empty()) {
+        if (errorOut != nullptr) {
+            *errorOut = "dataset output directory is empty";
+        }
+        return false;
+    }
+    std::string current;
+    size_t start = 0;
+    if (dirPath[0] == '/') {
+        current = "/";
+        start = 1;
+    }
+    while (start <= dirPath.size()) {
+        size_t next = dirPath.find('/', start);
+        std::string part = next == std::string::npos
+            ? dirPath.substr(start)
+            : dirPath.substr(start, next - start);
+        if (!part.empty()) {
+            if (!current.empty() && current.back() != '/') {
+                current.push_back('/');
+            }
+            current.append(part);
+            if (::mkdir(current.c_str(), 0755) != 0 && errno != EEXIST) {
+                if (errorOut != nullptr) {
+                    *errorOut = "mkdir failed for " + current + " errno=" + std::to_string(errno);
+                }
+                return false;
+            }
+        }
+        if (next == std::string::npos) {
+            break;
+        }
+        start = next + 1;
+    }
+    return true;
+}
+
+static void pushLe16(std::vector<uint8_t>& out, uint16_t value)
+{
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+static void pushLe32(std::vector<uint8_t>& out, uint32_t value)
+{
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+}
+
+static std::vector<uint8_t> encodeMonoFloatWav(const std::vector<float>& samples, int32_t sampleRate)
+{
+    const uint32_t safeSampleRate = static_cast<uint32_t>(std::max(8000, sampleRate));
+    const uint32_t sampleCount = static_cast<uint32_t>(
+        std::min<size_t>(samples.size(), static_cast<size_t>(std::numeric_limits<uint32_t>::max() / 4)));
+    const uint32_t dataBytes = sampleCount * 4;
+    const uint32_t riffSize = 36u + dataBytes;
+    std::vector<uint8_t> out;
+    out.reserve(static_cast<size_t>(44u + dataBytes));
+    out.insert(out.end(), {'R', 'I', 'F', 'F'});
+    pushLe32(out, riffSize);
+    out.insert(out.end(), {'W', 'A', 'V', 'E'});
+    out.insert(out.end(), {'f', 'm', 't', ' '});
+    pushLe32(out, 16);
+    pushLe16(out, 3);
+    pushLe16(out, 1);
+    pushLe32(out, safeSampleRate);
+    pushLe32(out, safeSampleRate * 4);
+    pushLe16(out, 4);
+    pushLe16(out, 32);
+    out.insert(out.end(), {'d', 'a', 't', 'a'});
+    pushLe32(out, dataBytes);
+    for (uint32_t index = 0; index < sampleCount; ++index) {
+        uint32_t bits = 0;
+        static_assert(sizeof(float) == sizeof(uint32_t), "float size mismatch");
+        std::memcpy(&bits, &samples[static_cast<size_t>(index)], sizeof(uint32_t));
+        pushLe32(out, bits);
+    }
+    return out;
+}
+
+struct WavHeaderValidation {
+    bool valid = false;
+    uint16_t audioFormat = 0;
+    uint16_t channels = 0;
+    uint32_t sampleRate = 0;
+    uint16_t bitsPerSample = 0;
+    uint32_t dataBytes = 0;
+    std::string error;
+};
+
+static uint16_t readLe16(const uint8_t* bytes)
+{
+    return static_cast<uint16_t>(bytes[0] | (bytes[1] << 8));
+}
+
+static uint32_t readLe32(const uint8_t* bytes)
+{
+    return static_cast<uint32_t>(
+        bytes[0]
+        | (static_cast<uint32_t>(bytes[1]) << 8)
+        | (static_cast<uint32_t>(bytes[2]) << 16)
+        | (static_cast<uint32_t>(bytes[3]) << 24));
+}
+
+static WavHeaderValidation inspectWavHeader(const std::string& filePath)
+{
+    WavHeaderValidation result;
+    std::array<uint8_t, 44> header{};
+    std::ifstream input(filePath, std::ios::binary);
+    if (!input) {
+        result.error = "failed to open saved WAV for validation";
+        return result;
+    }
+    input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (input.gcount() < static_cast<std::streamsize>(header.size())) {
+        result.error = "saved WAV shorter than header";
+        return result;
+    }
+    if (std::memcmp(header.data(), "RIFF", 4) != 0 || std::memcmp(header.data() + 8, "WAVE", 4) != 0) {
+        result.error = "missing RIFF/WAVE signature";
+        return result;
+    }
+    if (std::memcmp(header.data() + 12, "fmt ", 4) != 0) {
+        result.error = "missing fmt chunk";
+        return result;
+    }
+    if (std::memcmp(header.data() + 36, "data", 4) != 0) {
+        result.error = "missing data chunk";
+        return result;
+    }
+    result.audioFormat = readLe16(header.data() + 20);
+    result.channels = readLe16(header.data() + 22);
+    result.sampleRate = readLe32(header.data() + 24);
+    result.bitsPerSample = readLe16(header.data() + 34);
+    result.dataBytes = readLe32(header.data() + 40);
+    result.valid = result.audioFormat == 3 && result.channels == 1 && result.bitsPerSample == 32;
+    if (!result.valid) {
+        result.error = "unexpected WAV format header";
+    }
+    return result;
 }
 
 static std::string mergeDetectorJson(const QueuedDetectionResult& item)
@@ -762,6 +933,111 @@ public:
             "\"running\":false,\"diagnostics\":" + diagnosticsToJson(lastDiagnostics_));
     }
 
+    std::string datasetStartTake(const std::string& outputPath)
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (outputPath.empty()) {
+            return errorEnvelope("Dataset output path is empty.", &lastDiagnostics_);
+        }
+        if (running_.load(std::memory_order_relaxed) == false || rustRuntime_ == nullptr || ringBuffer_ == nullptr) {
+            return errorEnvelope(
+                "Native capture must be running before starting a dataset take.",
+                &lastDiagnostics_);
+        }
+        {
+            std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+            if (datasetTake_.active) {
+                return errorEnvelope("A dataset take is already active.", &lastDiagnostics_);
+            }
+            datasetTake_.active = true;
+            datasetTake_.outputPath = outputPath;
+            datasetTake_.sampleRate = std::max(8'000, lastDiagnostics_.sampleRate);
+            datasetTake_.startCapturedSamples = totalCapturedSamples_.load(std::memory_order_relaxed);
+            datasetTake_.samples.clear();
+            datasetTake_.samples.reserve(
+                static_cast<size_t>(std::max(4 * blockSize_, datasetTake_.sampleRate * 4)));
+        }
+        return okEnvelope(
+            "\"started\":true,\"running\":true,\"output_path\":" + quote(outputPath)
+                + ",\"sample_rate\":" + std::to_string(std::max(8'000, lastDiagnostics_.sampleRate))
+                + ",\"channel_count\":1,\"encoding\":\"float32le\",\"bits_per_sample\":32");
+    }
+
+    std::string datasetStopTake(bool discardCurrent)
+    {
+        DatasetTakeState take;
+        {
+            std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+            if (!datasetTake_.active) {
+                return errorEnvelope("No active dataset take to stop.", &lastDiagnostics_);
+            }
+            take = std::move(datasetTake_);
+            datasetTake_ = DatasetTakeState{};
+        }
+        if (discardCurrent) {
+            return okEnvelope(
+                "\"recorded\":false,\"discarded\":true,\"sample_count\":0,\"duration_sec\":0"
+                ",\"bytes_written\":0,\"file_exists\":false,\"header_valid\":false");
+        }
+        if (take.samples.empty()) {
+            return errorEnvelope("Dataset take contains no samples.", &lastDiagnostics_);
+        }
+        std::string directoryError;
+        const std::string outputDir = parentDirectory(take.outputPath);
+        if (!ensureDirectoryRecursive(outputDir, &directoryError)) {
+            return errorEnvelope(
+                "Failed to create dataset output directory: " + directoryError,
+                &lastDiagnostics_);
+        }
+        const std::vector<uint8_t> wavBytes = encodeMonoFloatWav(
+            take.samples,
+            std::max(8'000, take.sampleRate));
+        std::ofstream outputFile(take.outputPath, std::ios::binary | std::ios::trunc);
+        if (!outputFile) {
+            return errorEnvelope(
+                "Failed to open dataset output file: " + take.outputPath,
+                &lastDiagnostics_);
+        }
+        outputFile.write(
+            reinterpret_cast<const char*>(wavBytes.data()),
+            static_cast<std::streamsize>(wavBytes.size()));
+        outputFile.flush();
+        const bool writeOk = outputFile.good();
+        outputFile.close();
+        if (!writeOk) {
+            return errorEnvelope("Failed while writing dataset WAV file.", &lastDiagnostics_);
+        }
+
+        std::ifstream verifyInput(take.outputPath, std::ios::binary | std::ios::ate);
+        const bool fileExists = verifyInput.good();
+        const int64_t fileBytes = fileExists ? static_cast<int64_t>(verifyInput.tellg()) : 0;
+        verifyInput.close();
+        const WavHeaderValidation header = inspectWavHeader(take.outputPath);
+        const double durationSec = static_cast<double>(take.samples.size())
+            / static_cast<double>(std::max(1, take.sampleRate));
+        std::ostringstream payload;
+        payload << "\"recorded\":true"
+                << ",\"discarded\":false"
+                << ",\"output_path\":" << quote(take.outputPath)
+                << ",\"sample_rate\":" << take.sampleRate
+                << ",\"channel_count\":1"
+                << ",\"encoding\":\"float32le\""
+                << ",\"bits_per_sample\":32"
+                << ",\"sample_count\":" << take.samples.size()
+                << ",\"duration_sec\":" << durationSec
+                << ",\"bytes_written\":" << fileBytes
+                << ",\"file_exists\":" << boolString(fileExists)
+                << ",\"header_valid\":" << boolString(header.valid)
+                << ",\"wav_audio_format\":" << header.audioFormat
+                << ",\"wav_channels\":" << header.channels
+                << ",\"wav_sample_rate\":" << header.sampleRate
+                << ",\"wav_bits_per_sample\":" << header.bitsPerSample
+                << ",\"wav_data_bytes\":" << header.dataBytes
+                << ",\"validation_error\":"
+                << (header.error.empty() ? "null" : quote(header.error));
+        return okEnvelope(payload.str());
+    }
+
     std::string pollResults(int32_t maxResults, bool includeDiagnostics)
     {
         DiagnosticsSnapshot diagnostics;
@@ -1046,6 +1322,10 @@ private:
         writeThreadSafeString(errorMutex_, lastError_, "");
         writeThreadSafeString(workerStateMutex_, lastProcessingState_, "idle");
         writeThreadSafeString(discardReasonMutex_, lastDiscardReason_, "");
+        {
+            std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+            datasetTake_ = DatasetTakeState{};
+        }
     }
 
     bool waitForFirstCallbackLocked(int32_t timeoutMs)
@@ -1267,6 +1547,30 @@ private:
                 continue;
             }
 
+            {
+                std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+                if (datasetTake_.active) {
+                    datasetTake_.samples.insert(
+                        datasetTake_.samples.end(),
+                        workerScratch_.begin(),
+                        workerScratch_.end());
+                }
+            }
+
+            bool datasetCaptureOnly = false;
+            {
+                std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+                datasetCaptureOnly = datasetTake_.active;
+            }
+            if (datasetCaptureOnly) {
+                lastProcessedSamples_ += samplesRead;
+                writeThreadSafeString(
+                    workerStateMutex_,
+                    lastProcessingState_,
+                    "dataset_capture_only samples=" + std::to_string(samplesRead));
+                continue;
+            }
+
             lastProcessedSamples_ += samplesRead;
             submittedSampleCount_.fetch_add(samplesRead, std::memory_order_relaxed);
             const uint64_t processedBlockCount =
@@ -1422,6 +1726,10 @@ private:
         if (ringBuffer_ != nullptr) {
             ringBuffer_->reset();
         }
+        {
+            std::lock_guard<std::mutex> datasetLock(datasetMutex_);
+            datasetTake_ = DatasetTakeState{};
+        }
         writeThreadSafeString(
             workerStateMutex_,
             lastProcessingState_,
@@ -1432,6 +1740,7 @@ private:
 
     std::mutex stateMutex_;
     std::mutex resultsMutex_;
+    std::mutex datasetMutex_;
     StartConfig lastConfig_;
     DiagnosticsSnapshot lastDiagnostics_;
     std::shared_ptr<oboe::AudioStream> stream_;
@@ -1483,6 +1792,7 @@ private:
     std::string lastDiscardReason_;
     int32_t blockSize_{kDefaultBlockSize};
     std::vector<float> callbackMonoScratch_;
+    DatasetTakeState datasetTake_;
     RustRuntimeBindings rustBindings_;
     NativePitchRuntimeHandle* rustRuntime_{nullptr};
 
@@ -1617,6 +1927,26 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_guitarhelio_app_pitch_NativePitchInputPlugin_nativeStopCapture(JNIEnv* env, jclass)
 {
     const std::string result = engine().stopCapture();
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_guitarhelio_app_pitch_NativePitchInputPlugin_nativeDatasetStartTake(
+    JNIEnv* env,
+    jclass,
+    jstring outputPath)
+{
+    const std::string result = engine().datasetStartTake(fromJString(env, outputPath));
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_guitarhelio_app_pitch_NativePitchInputPlugin_nativeDatasetStopTake(
+    JNIEnv* env,
+    jclass,
+    jboolean discardCurrent)
+{
+    const std::string result = engine().datasetStopTake(discardCurrent);
     return env->NewStringUTF(result.c_str());
 }
 

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Capacitor } from '@capacitor/core';
+import { RoundedBox } from './RoundedBox';
 import { AudioCaptureService } from '../audio/AudioCaptureService';
 import { AudioPreprocessService } from '../audio/AudioPreprocessService';
 import { DebugRecorder } from '../audio/DebugRecorder';
@@ -20,13 +21,17 @@ import { buildPracticeSpectralRuntimeModel } from '../audio/spectralRuntimeModel
 import { disableAndroidKeepScreenOn, enableAndroidKeepScreenOn } from '../platform/nativeKeepScreenOn';
 import {
   ensureNativePitchInputPermission,
+  getNativePitchDatasetStorageInfo,
   getNativePitchDebugLogInfo,
   pollNativePitchResults,
   resetNativePitchDetector,
   shouldUseNativePitchInput,
+  startNativePitchDatasetTake,
   startNativePitchCapture,
+  stopNativePitchDatasetTake,
   stopNativePitchCapture,
   type NativePitchDetectionResult,
+  type NativePitchDatasetTakeResult,
   type NativePitchDiagnostics
 } from '../platform/nativePitchInput';
 import { AC14Adapter } from '../pitch/adapters/AC14Adapter';
@@ -49,6 +54,11 @@ import type {
 } from '../pitch/types';
 import { midiToHz, midiToNoteName } from './song-select/utils/songSelectUtils';
 import { PitchDebugUIController } from './debug/PitchDebugUIController';
+import {
+  PitchDebugDatasetSessionController,
+  type NativeDatasetTakeFinalizeResult,
+  type PitchDebugDatasetManifest
+} from './debug/PitchDebugDatasetSessionController';
 import { runtimeLog, toRuntimeErrorMessage } from '../app/runtimeLog';
 
 type DetectorToggleName = 'ac14' | 'MASP' | 'FRETNET' | 'spectral_game_runtime_unified_v3';
@@ -67,6 +77,9 @@ type AnalysisConfig = {
   noiseGate: boolean;
   temporalSmoothing: boolean;
 };
+
+const DATASET_TAKE_DURATION_MS = 3200;
+const DATASET_INTER_TAKE_PAUSE_MS = 3000;
 
 export class PitchDebugScene extends Phaser.Scene {
   private readonly spectralModel = buildPracticeSpectralRuntimeModel(12);
@@ -132,6 +145,24 @@ export class PitchDebugScene extends Phaser.Scene {
   private nativeLiveMicRunning = false;
   private nativeDiagnostics: NativePitchDiagnostics | null = null;
   private nativeDebugLogAnnounced = false;
+  private datasetController: PitchDebugDatasetSessionController | null = null;
+  private datasetSession: PitchDebugDatasetManifest | null = null;
+  private datasetCountdownTimerId: number | null = null;
+  private datasetAutoStopTimerId: number | null = null;
+  private datasetCountdownEndsAtMs = 0;
+  private datasetRecordingTakeId: string | null = null;
+  private datasetTakeStartedAtMs = 0;
+  private datasetBusy = false;
+  private datasetStatusMessage = 'idle';
+  private datasetMenuOpen = false;
+  private datasetMenuBackdrop: Phaser.GameObjects.Rectangle | null = null;
+  private datasetMenuPanel: RoundedBox | null = null;
+  private datasetMenuTitleLabel: Phaser.GameObjects.Text | null = null;
+  private datasetMenuPhaseLabel: Phaser.GameObjects.Text | null = null;
+  private datasetMenuInstructionLabel: Phaser.GameObjects.Text | null = null;
+  private datasetMenuStatusLabel: Phaser.GameObjects.Text | null = null;
+  private datasetMenuButtons = new Map<string, { background: RoundedBox; label: Phaser.GameObjects.Text }>();
+  private datasetAutoRunActive = false;
 
   constructor() {
     super('PitchDebugScene');
@@ -151,6 +182,7 @@ export class PitchDebugScene extends Phaser.Scene {
     this.updateUi();
     void enableAndroidKeepScreenOn();
     void this.announceNativeDebugLogInfo();
+    void this.initializeDatasetRecorder();
     void this.refreshDetectors();
     void this.startLiveMic();
   }
@@ -207,6 +239,8 @@ export class PitchDebugScene extends Phaser.Scene {
         window.clearInterval(this.nativePollTimerId);
         this.nativePollTimerId = null;
       }
+      this.clearDatasetTimers();
+      this.destroyDatasetMenuOverlay();
       this.nativeLiveMicRunning = false;
       this.nativePollInFlight = false;
       this.nativeDiagnostics = null;
@@ -251,7 +285,8 @@ export class PitchDebugScene extends Phaser.Scene {
       { key: 'strings', label: 'Open Strings', x: 742, y: 192, width: 92, height: 22, onClick: () => this.toggleOpenStringsTest() },
       { key: 'resetDet', label: 'Reset Det', x: 840, y: 192, width: 76, height: 22, onClick: () => void this.resetDetectors() },
       { key: 'harmonics', label: 'Harm+', x: 922, y: 192, width: 56, height: 22, onClick: () => this.cycleHarmonicOverlays() },
-      { key: 'tolerance', label: 'Tol+', x: 984, y: 192, width: 44, height: 22, onClick: () => this.cycleReferenceTolerance() }
+      { key: 'tolerance', label: 'Tol+', x: 984, y: 192, width: 44, height: 22, onClick: () => this.cycleReferenceTolerance() },
+      { key: 'datasetMenu', label: 'Dataset', x: 760, y: 214, width: 104, height: 22, onClick: () => this.toggleDatasetMenu() }
     ];
     this.ui?.addButtons(buttons);
   }
@@ -347,6 +382,10 @@ export class PitchDebugScene extends Phaser.Scene {
   }
 
   private async stopCapture(): Promise<void> {
+    if (this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null) {
+      await this.handleDatasetStopAction();
+      return;
+    }
     runtimeLog({ scene: 'PitchDebugScene', subsystem: 'mic' }, 'INFO', 'Stopping capture.');
     await this.stopNativeLiveMic(false);
     await this.captureService?.stop();
@@ -674,7 +713,8 @@ export class PitchDebugScene extends Phaser.Scene {
       currentHopSize: this.analysisConfig.hopSize,
       currentFftSize: this.analysisConfig.fftSize,
       currentWindowType: this.analysisConfig.windowType,
-      smoothingEnabled: this.analysisConfig.temporalSmoothing
+      smoothingEnabled: this.analysisConfig.temporalSmoothing,
+      datasetStatusLabel: this.buildDatasetStatusLabel()
     });
 
     this.ui?.setButtonActive('freeze', this.freezeFrame, true);
@@ -691,6 +731,490 @@ export class PitchDebugScene extends Phaser.Scene {
     this.ui?.setButtonActive('lp', this.analysisConfig.lowPass);
     this.ui?.setButtonActive('gate', this.analysisConfig.noiseGate);
     this.ui?.setButtonActive('smooth', this.analysisConfig.temporalSmoothing);
+    this.ui?.setButtonActive('datasetMenu', this.datasetMenuOpen, true);
+    this.updateDatasetMenuOverlay();
+  }
+
+  private async initializeDatasetRecorder(): Promise<void> {
+    if (!this.useNativePitchInput || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      this.datasetStatusMessage = 'unavailable (Android native mic only)';
+      this.updateUi();
+      return;
+    }
+    this.datasetController = new PitchDebugDatasetSessionController();
+    try {
+      const storageInfo = await getNativePitchDatasetStorageInfo();
+      if (!storageInfo?.basePath) {
+        this.datasetStatusMessage = 'storage unavailable';
+        this.addLog('Dataset recorder unavailable: Android app-local storage path not reported by plugin.');
+        this.updateUi();
+        return;
+      }
+      this.datasetSession = await this.datasetController.loadLatestIncompleteSession();
+      if (this.datasetSession) {
+        this.datasetStatusMessage = `resume ${this.datasetSession.sessionId}`;
+        this.addLog(`Dataset resume available: ${this.datasetSession.sessionId} (${this.datasetSession.summary.completed}/${this.datasetSession.summary.total}).`);
+      } else {
+        this.datasetStatusMessage = 'ready';
+        this.addLog('Dataset recorder ready. Press Record Dataset to start a 234-take session.');
+      }
+      this.updateUi();
+    } catch (error) {
+      this.datasetStatusMessage = 'init failed';
+      this.addLog(`Dataset recorder init failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.updateUi();
+    }
+  }
+
+  private toggleDatasetMenu(): void {
+    if (
+      this.datasetMenuOpen &&
+      (this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null)
+    ) {
+      this.addLog('Dataset menu cannot be closed while a take is running.');
+      return;
+    }
+    this.datasetMenuOpen = !this.datasetMenuOpen;
+    this.addLog(this.datasetMenuOpen ? 'Dataset menu opened.' : 'Dataset menu closed.');
+    this.updateUi();
+  }
+
+  private updateDatasetMenuOverlay(): void {
+    if (!this.datasetMenuOpen) {
+      this.destroyDatasetMenuOverlay();
+      return;
+    }
+    if (!this.datasetMenuBackdrop || !this.datasetMenuPanel || !this.datasetMenuTitleLabel || !this.datasetMenuPhaseLabel || !this.datasetMenuInstructionLabel || !this.datasetMenuStatusLabel) {
+      this.createDatasetMenuOverlay();
+    }
+    const phase = this.buildDatasetPhaseDisplay();
+    const instruction = this.buildDatasetInstructionLabel();
+    const status = this.buildDatasetStatusLabel();
+    this.datasetMenuPhaseLabel?.setText(phase.label);
+    this.datasetMenuPhaseLabel?.setColor(phase.color);
+    this.datasetMenuPanel?.setStrokeStyle(2, phase.accent, 0.92);
+    this.datasetMenuInstructionLabel?.setText(instruction);
+    this.datasetMenuStatusLabel?.setText(status);
+    this.setDatasetMenuButtonActive('dataset', !this.datasetAutoRunActive && (this.datasetSession !== null || this.datasetBusy || this.datasetController !== null), true);
+    this.setDatasetMenuButtonActive('datasetStop', this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null);
+    this.setDatasetMenuButtonActive('datasetRetry', this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null);
+    this.setDatasetMenuButtonActive('datasetSkip', this.datasetSession !== null && !this.datasetSession.summary.isComplete);
+  }
+
+  private createDatasetMenuOverlay(): void {
+    const centerX = this.scale.width * 0.5;
+    const centerY = this.scale.height * 0.5;
+    this.datasetMenuBackdrop = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x020617, 0.72)
+      .setDepth(500)
+      .setInteractive({ useHandCursor: false });
+    this.datasetMenuPanel = new RoundedBox(this, centerX, centerY, 640, 300, 0x0b1228, 0.98)
+      .setDepth(510)
+      .setStrokeStyle(2, 0x60a5fa, 0.85);
+    this.datasetMenuTitleLabel = this.add.text(centerX, centerY - 124, 'Dataset Recording Menu', {
+      color: '#e2e8f0',
+      fontFamily: 'Montserrat, sans-serif',
+      fontSize: '20px',
+      fontStyle: 'bold'
+    })
+      .setOrigin(0.5)
+      .setDepth(512);
+    this.datasetMenuPhaseLabel = this.add.text(centerX, centerY - 90, '', {
+      color: '#fbbf24',
+      fontFamily: 'Montserrat, sans-serif',
+      fontSize: '22px',
+      fontStyle: 'bold'
+    })
+      .setOrigin(0.5)
+      .setDepth(512);
+    this.datasetMenuInstructionLabel = this.add.text(centerX - 292, centerY - 62, '', {
+      color: '#fde68a',
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      wordWrap: { width: 584, useAdvancedWrap: true }
+    })
+      .setOrigin(0, 0)
+      .setDepth(512);
+    this.datasetMenuStatusLabel = this.add.text(centerX - 292, centerY - 8, '', {
+      color: '#cbd5e1',
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      wordWrap: { width: 584, useAdvancedWrap: true }
+    })
+      .setOrigin(0, 0)
+      .setDepth(512);
+    this.datasetMenuButtons.clear();
+    this.createDatasetMenuButton('dataset', 'Record Dataset', centerX - 220, centerY + 108, 152, 34, () => void this.handleDatasetPrimaryAction());
+    this.createDatasetMenuButton('datasetStop', 'Stop', centerX - 48, centerY + 108, 94, 34, () => void this.handleDatasetStopAction());
+    this.createDatasetMenuButton('datasetRetry', 'Retry', centerX + 62, centerY + 108, 94, 34, () => void this.handleDatasetRetryAction());
+    this.createDatasetMenuButton('datasetSkip', 'Skip Target', centerX + 172, centerY + 108, 128, 34, () => void this.handleDatasetSkipAction());
+    this.createDatasetMenuButton('datasetClose', 'Close', centerX + 260, centerY - 124, 72, 26, () => this.toggleDatasetMenu());
+  }
+
+  private createDatasetMenuButton(
+    key: string,
+    label: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onClick: () => void
+  ): void {
+    const background = new RoundedBox(this, x, y, width, height, 0x162447, 0.94)
+      .setDepth(513)
+      .setStrokeStyle(1, 0x93c5fd, 0.72)
+      .setInteractive({ useHandCursor: true });
+    const text = this.add.text(x, y, label, {
+      color: '#e2e8f0',
+      fontFamily: 'Montserrat, sans-serif',
+      fontSize: '12px',
+      fontStyle: 'bold'
+    })
+      .setOrigin(0.5)
+      .setDepth(514)
+      .setInteractive({ useHandCursor: true });
+    background.on('pointerdown', onClick);
+    text.on('pointerdown', onClick);
+    this.datasetMenuButtons.set(key, { background, label: text });
+  }
+
+  private setDatasetMenuButtonActive(key: string, active: boolean, emphasized = false): void {
+    const entry = this.datasetMenuButtons.get(key);
+    if (!entry) {
+      return;
+    }
+    entry.background.setFillStyle(active ? (emphasized ? 0x7c2d12 : 0x1d4ed8) : 0x162447, active ? 1 : 0.94);
+    entry.background.setStrokeStyle(1, active ? (emphasized ? 0xfdba74 : 0x93c5fd) : 0x475569, 0.72);
+    entry.label.setColor(active ? '#fff7ed' : '#e2e8f0');
+  }
+
+  private destroyDatasetMenuOverlay(): void {
+    for (const button of this.datasetMenuButtons.values()) {
+      button.background.destroy();
+      button.label.destroy();
+    }
+    this.datasetMenuButtons.clear();
+    this.datasetMenuBackdrop?.destroy();
+    this.datasetMenuBackdrop = null;
+    this.datasetMenuPanel?.destroy();
+    this.datasetMenuPanel = null;
+    this.datasetMenuTitleLabel?.destroy();
+    this.datasetMenuTitleLabel = null;
+    this.datasetMenuPhaseLabel?.destroy();
+    this.datasetMenuPhaseLabel = null;
+    this.datasetMenuInstructionLabel?.destroy();
+    this.datasetMenuInstructionLabel = null;
+    this.datasetMenuStatusLabel?.destroy();
+    this.datasetMenuStatusLabel = null;
+  }
+
+  private buildDatasetInstructionLabel(): string {
+    const current = this.resolveDatasetCurrentTake();
+    if (!current) {
+      return 'Nessuna take pending. Premi Record Dataset per iniziare o completare la sessione.';
+    }
+    const noteName = noteNameForStringFret(current.stringId, current.fret);
+    return [
+      `Suona: corda ${current.stringId}, tasto ${current.fret} (${noteName})`,
+      `Take ${current.take} / 3`,
+      `Auto: ${(DATASET_TAKE_DURATION_MS / 1000).toFixed(1)}s rec + ${(DATASET_INTER_TAKE_PAUSE_MS / 1000).toFixed(0)}s pausa`
+    ].join('\n');
+  }
+
+  private buildDatasetPhaseDisplay(): { label: string; color: string; accent: number } {
+    if (this.datasetRecordingTakeId !== null) {
+      const remaining = Math.max(0, (DATASET_TAKE_DURATION_MS - (performance.now() - this.datasetTakeStartedAtMs)) / 1000);
+      return { label: `REC ${remaining.toFixed(1)}s`, color: '#fb7185', accent: 0xfb7185 };
+    }
+    if (this.datasetBusy) {
+      return { label: 'SALVATAGGIO', color: '#fbbf24', accent: 0xfbbf24 };
+    }
+    if (this.datasetCountdownTimerId !== null) {
+      const remaining = Math.max(0, Math.ceil((this.datasetCountdownEndsAtMs - performance.now()) / 1000));
+      return { label: `PAUSA ${remaining}s`, color: '#22d3ee', accent: 0x22d3ee };
+    }
+    if (this.datasetSession?.summary.isComplete) {
+      return { label: 'COMPLETATO', color: '#4ade80', accent: 0x4ade80 };
+    }
+    if (this.datasetAutoRunActive) {
+      return { label: 'IN PREPARAZIONE', color: '#38bdf8', accent: 0x38bdf8 };
+    }
+    return { label: 'PRONTO', color: '#e2e8f0', accent: 0x60a5fa };
+  }
+
+  private resolveDatasetCurrentTake(): { stringId: number; fret: number; take: number } | null {
+    if (!this.datasetController || !this.datasetSession) {
+      return null;
+    }
+    if (this.datasetRecordingTakeId) {
+      const active = this.datasetSession.takes.find((take) => take.id === this.datasetRecordingTakeId);
+      if (active) {
+        return { stringId: active.stringId, fret: active.fret, take: active.take };
+      }
+    }
+    const next = this.datasetController.getNextPendingTake(this.datasetSession);
+    if (!next) {
+      return null;
+    }
+    return { stringId: next.stringId, fret: next.fret, take: next.take };
+  }
+
+  private queueNextDatasetTake(delayMs: number): void {
+    if (!this.datasetController || !this.datasetSession) {
+      this.datasetAutoRunActive = false;
+      this.updateUi();
+      return;
+    }
+    const next = this.datasetController.getNextPendingTake(this.datasetSession);
+    if (!next) {
+      this.datasetAutoRunActive = false;
+      this.datasetStatusMessage = 'completed';
+      this.addLog(`Dataset session completed: ${this.datasetSession.sessionId}.`);
+      this.updateUi();
+      return;
+    }
+    this.clearDatasetTimers();
+    if (delayMs <= 0) {
+      this.datasetStatusMessage = `starting s${next.stringId}/f${next.fret} take ${next.take}/3`;
+      this.updateUi();
+      void this.startDatasetTakeNow(next.id);
+      return;
+    }
+    this.datasetCountdownEndsAtMs = performance.now() + delayMs;
+    this.datasetStatusMessage = `pause before s${next.stringId}/f${next.fret} take ${next.take}/3`;
+    this.datasetCountdownTimerId = window.setTimeout(() => {
+      void this.startDatasetTakeNow(next.id);
+    }, delayMs);
+    this.updateUi();
+  }
+
+  private async handleDatasetPrimaryAction(): Promise<void> {
+    if (this.datasetBusy) {
+      return;
+    }
+    if (this.datasetAutoRunActive) {
+      this.addLog('Dataset auto recording already active.');
+      return;
+    }
+    if (!this.datasetController) {
+      this.addLog('Dataset recorder unavailable in current runtime.');
+      return;
+    }
+    if (this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null) {
+      this.addLog('Dataset take already in progress. Use DS Stop / Retry / Skip.');
+      return;
+    }
+    if (!this.nativeLiveMicRunning) {
+      await this.startNativeLiveMic();
+      if (!this.nativeLiveMicRunning) {
+        this.addLog('Dataset recording requires Android native live mic to be active.');
+        return;
+      }
+    }
+    if (!this.datasetSession || this.datasetSession.summary.isComplete) {
+      this.datasetSession = await this.datasetController.createNewSession({
+        stringOrder: [6, 5, 4, 3, 2, 1],
+        fretStart: 0,
+        fretEnd: 12,
+        takesPerTarget: 3,
+        blockSize: this.analysisConfig.frameSize,
+        callbackFrames: this.captureMetadata?.callbackBufferSize ?? null
+      });
+      this.datasetStatusMessage = `started ${this.datasetSession.sessionId}`;
+      this.addLog(`Dataset session created: ${this.datasetSession.sessionId} (234 takes, frets 0..12).`);
+    }
+    this.datasetAutoRunActive = true;
+    this.addLog('Dataset auto recording started.');
+    this.queueNextDatasetTake(0);
+  }
+
+  private async handleDatasetStopAction(): Promise<void> {
+    this.datasetAutoRunActive = false;
+    await this.stopDatasetTakeInternal(false, 'Dataset take stopped by user.');
+  }
+
+  private async handleDatasetRetryAction(): Promise<void> {
+    if (!this.datasetController || !this.datasetSession) {
+      this.addLog('Dataset retry unavailable: no active session.');
+      return;
+    }
+    this.datasetAutoRunActive = true;
+    await this.stopDatasetTakeInternal(true, 'Dataset take discarded for retry.');
+    this.queueNextDatasetTake(0);
+  }
+
+  private async handleDatasetSkipAction(): Promise<void> {
+    if (!this.datasetController || !this.datasetSession) {
+      this.addLog('Dataset skip unavailable: no active session.');
+      return;
+    }
+    await this.stopDatasetTakeInternal(true, 'Dataset take discarded before skip.');
+    const next = this.datasetController.getNextPendingTake(this.datasetSession);
+    if (!next) {
+      this.addLog(`Dataset session completed: ${this.datasetSession.sessionId}.`);
+      this.updateUi();
+      return;
+    }
+    const skipped = await this.datasetController.skipCurrentTarget(this.datasetSession, next.id);
+    if (skipped <= 0) {
+      this.addLog('Dataset skip ignored: current target already completed.');
+      this.updateUi();
+      return;
+    }
+    this.datasetStatusMessage = `skipped string ${next.stringId} fret ${next.fret}`;
+    this.addLog(`Skipped target string ${next.stringId}, fret ${next.fret} (${skipped} take${skipped === 1 ? '' : 's'}).`);
+    if (this.datasetAutoRunActive) {
+      this.queueNextDatasetTake(DATASET_INTER_TAKE_PAUSE_MS);
+      return;
+    }
+    this.updateUi();
+  }
+
+  private async startDatasetTakeNow(takeId: string): Promise<void> {
+    if (!this.datasetController || !this.datasetSession) {
+      return;
+    }
+    if (this.datasetBusy) {
+      return;
+    }
+    this.clearDatasetTimers();
+    const take = this.datasetController.getNextPendingTake(this.datasetSession);
+    if (!take || take.id !== takeId) {
+      this.addLog('Dataset take start canceled: session progress changed.');
+      this.updateUi();
+      return;
+    }
+    this.datasetBusy = true;
+    this.datasetStatusMessage = `starting s${take.stringId}/f${take.fret} take ${take.take}/3`;
+    this.updateUi();
+    try {
+      await startNativePitchDatasetTake(take.relativePath);
+      this.datasetRecordingTakeId = take.id;
+      this.datasetTakeStartedAtMs = performance.now();
+      this.datasetStatusMessage = `recording s${take.stringId}/f${take.fret} take ${take.take}/3`;
+      this.addLog(`Dataset recording started: string ${take.stringId}, fret ${take.fret}, take ${take.take}/3 (native detector paused during take).`);
+      this.datasetAutoStopTimerId = window.setTimeout(() => {
+        void this.stopDatasetTakeInternal(false, null);
+      }, DATASET_TAKE_DURATION_MS);
+    } catch (error) {
+      this.datasetRecordingTakeId = null;
+      this.datasetStatusMessage = 'start failed';
+      this.addLog(`Dataset take start failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.datasetBusy = false;
+      this.updateUi();
+    }
+  }
+
+  private async stopDatasetTakeInternal(discardCurrent: boolean, reason: string | null): Promise<void> {
+    if (this.datasetBusy) {
+      return;
+    }
+    if (this.datasetCountdownTimerId !== null && this.datasetRecordingTakeId === null) {
+      this.clearDatasetTimers();
+      this.datasetStatusMessage = discardCurrent ? 'countdown cancelled' : 'countdown stopped';
+      if (reason) {
+        this.addLog(reason);
+      }
+      this.updateUi();
+      return;
+    }
+    if (this.datasetRecordingTakeId === null) {
+      if (reason) {
+        this.addLog(reason);
+      }
+      this.updateUi();
+      return;
+    }
+
+    const takeId = this.datasetRecordingTakeId;
+    this.clearDatasetTimers();
+    this.datasetRecordingTakeId = null;
+    this.datasetBusy = true;
+    this.datasetStatusMessage = discardCurrent ? 'discarding take' : 'finalizing take';
+    this.updateUi();
+
+    try {
+      const rawResult = await stopNativePitchDatasetTake(discardCurrent);
+      const result = toDatasetFinalizeResult(rawResult);
+      if (discardCurrent) {
+        this.datasetStatusMessage = 'take discarded';
+        if (reason) {
+          this.addLog(reason);
+        } else {
+          this.addLog('Dataset take discarded.');
+        }
+        this.updateUi();
+        return;
+      }
+      if (!this.datasetController || !this.datasetSession) {
+        this.addLog('Dataset take finalize failed: session controller unavailable.');
+        this.updateUi();
+        return;
+      }
+      const saved = await this.datasetController.markCurrentTakeRecorded(this.datasetSession, takeId, result);
+      if (!saved.ok) {
+        this.datasetStatusMessage = 'save failed';
+        this.datasetAutoRunActive = false;
+        this.addLog(`Dataset save failed: ${saved.error ?? 'unknown error'}.`);
+        this.updateUi();
+        return;
+      }
+      const next = this.datasetController.getNextPendingTake(this.datasetSession);
+      this.datasetStatusMessage = next
+        ? `saved | next s${next.stringId}/f${next.fret} take ${next.take}/3`
+        : 'session complete';
+      const progress = `${this.datasetSession.summary.completed}/${this.datasetSession.summary.total}`;
+      this.addLog(`Dataset take saved (${progress}): ${takeId}.`);
+      if (this.datasetSession.summary.isComplete) {
+        this.addLog(`Dataset session completed: ${this.datasetSession.sessionId}.`);
+        this.datasetAutoRunActive = false;
+      } else if (this.datasetAutoRunActive) {
+        this.queueNextDatasetTake(DATASET_INTER_TAKE_PAUSE_MS);
+      }
+      this.updateUi();
+    } catch (error) {
+      this.datasetStatusMessage = 'finalize failed';
+      this.datasetAutoRunActive = false;
+      this.addLog(`Dataset take finalize failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.updateUi();
+    } finally {
+      this.datasetBusy = false;
+    }
+  }
+
+  private clearDatasetTimers(): void {
+    if (this.datasetCountdownTimerId !== null) {
+      window.clearTimeout(this.datasetCountdownTimerId);
+      this.datasetCountdownTimerId = null;
+    }
+    if (this.datasetAutoStopTimerId !== null) {
+      window.clearTimeout(this.datasetAutoStopTimerId);
+      this.datasetAutoStopTimerId = null;
+    }
+    this.datasetCountdownEndsAtMs = 0;
+  }
+
+  private buildDatasetStatusLabel(): string {
+    if (!this.useNativePitchInput || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return 'off (requires Android native mic)';
+    }
+    if (!this.datasetController) {
+      return this.datasetStatusMessage;
+    }
+    if (!this.datasetSession) {
+      return this.datasetStatusMessage === 'idle' ? 'ready' : this.datasetStatusMessage;
+    }
+    const next = this.datasetController.getNextPendingTake(this.datasetSession);
+    const progress = `${this.datasetSession.summary.completed}/${this.datasetSession.summary.total}`;
+    const phase = this.datasetRecordingTakeId !== null
+      ? `rec ${Math.max(0, ((DATASET_TAKE_DURATION_MS - (performance.now() - this.datasetTakeStartedAtMs)) / 1000)).toFixed(1)}s`
+      : this.datasetCountdownTimerId !== null
+        ? `countdown ${Math.max(0, Math.ceil((this.datasetCountdownEndsAtMs - performance.now()) / 1000))}s`
+        : this.datasetStatusMessage;
+    if (!next) {
+      return `${this.datasetSession.sessionId} | complete ${progress}`;
+    }
+    return `${this.datasetSession.sessionId} | s${next.stringId}/f${next.fret} t${next.take}/3 | ${progress} | rec ${this.datasetSession.summary.recorded} skip ${this.datasetSession.summary.skipped} | ${phase}`;
   }
 
   private async toggleDetector(detectorName: DetectorToggleName): Promise<void> {
@@ -944,6 +1468,10 @@ export class PitchDebugScene extends Phaser.Scene {
       'Stopping Android native live mic.',
       { wasRunning }
     );
+    if (this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null) {
+      this.datasetAutoRunActive = false;
+      await this.stopDatasetTakeInternal(true, 'Native microphone stopped; current dataset take cancelled.');
+    }
     await stopNativePitchCapture().catch(() => undefined);
     if (wasRunning && logStop) {
       this.addLog('Android native live mic stopped.');
@@ -970,6 +1498,13 @@ export class PitchDebugScene extends Phaser.Scene {
         if (this.nativePollTimerId !== null) {
           window.clearInterval(this.nativePollTimerId);
           this.nativePollTimerId = null;
+        }
+        if (this.datasetRecordingTakeId !== null || this.datasetCountdownTimerId !== null) {
+          this.clearDatasetTimers();
+          this.datasetRecordingTakeId = null;
+          this.datasetAutoRunActive = false;
+          this.datasetStatusMessage = 'capture stopped (take discarded)';
+          this.addLog('Native capture stopped while dataset take was active; take was discarded.');
         }
         this.addLog(`Android native live mic stopped by plugin${this.nativeDiagnostics?.fallback_reason ? `: ${this.nativeDiagnostics.fallback_reason}` : ''}`);
         this.updateUi();
@@ -1129,6 +1664,53 @@ export class PitchDebugScene extends Phaser.Scene {
     this.detectorLastMidi.clear();
     this.smoothingState.clear();
   }
+}
+
+function toDatasetFinalizeResult(result: NativePitchDatasetTakeResult): NativeDatasetTakeFinalizeResult {
+  return {
+    recorded: Boolean(result.recorded),
+    discarded: Boolean(result.discarded),
+    outputPath: typeof result.output_path === 'string' ? result.output_path : null,
+    sampleRate: numberOrNull(result.sample_rate),
+    channelCount: numberOrNull(result.channel_count),
+    encoding: typeof result.encoding === 'string' ? result.encoding : null,
+    bitsPerSample: numberOrNull(result.bits_per_sample),
+    sampleCount: numberOrNull(result.sample_count),
+    durationSec: numberOrNull(result.duration_sec),
+    bytesWritten: numberOrNull(result.bytes_written),
+    fileExists: Boolean(result.file_exists),
+    headerValid: Boolean(result.header_valid),
+    wavAudioFormat: numberOrNull(result.wav_audio_format),
+    wavChannels: numberOrNull(result.wav_channels),
+    wavSampleRate: numberOrNull(result.wav_sample_rate),
+    wavBitsPerSample: numberOrNull(result.wav_bits_per_sample),
+    wavDataBytes: numberOrNull(result.wav_data_bytes),
+    validationError: typeof result.validation_error === 'string' ? result.validation_error : null
+  };
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return value;
+}
+
+function noteNameForStringFret(stringId: number, fret: number): string {
+  const openMidiByString: Record<number, number> = {
+    6: 40,
+    5: 45,
+    4: 50,
+    3: 55,
+    2: 59,
+    1: 64
+  };
+  const openMidi = openMidiByString[stringId];
+  if (!Number.isFinite(openMidi)) {
+    return '-';
+  }
+  const midi = openMidi + Math.max(0, Math.round(fret));
+  return midiToNoteName(midi);
 }
 
 function cycleValue<T>(values: T[], current: T): T {
