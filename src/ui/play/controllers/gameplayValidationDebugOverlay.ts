@@ -1,5 +1,6 @@
 import { midiToNoteName } from '../../../ui/song-select/utils/songSelectUtils';
 import { resolveTargetGroup } from '../../../guitar/targetGrouping';
+import { resolveDifficultySemitoneTolerance } from '../../../gameplay/validation';
 import { PlayState, type PitchFrame, type TargetNote } from '../../../types/models';
 import type {
   GameplayValidationDebugCandidate,
@@ -29,6 +30,8 @@ export function buildGameplayValidationDebugSnapshot(
   const latestFrame = scene.latestFrames.latest();
   const targetKey = validationWindow?.targetKey ?? (activeGroup.length > 0 ? buildTargetKey(activeGroup) : null);
   const targetMode = validationWindow?.targetMode ?? (activeGroup.length > 1 ? 'poly' : activeGroup.length === 1 ? 'mono' : null);
+  const difficulty = validationWindow?.difficulty ?? scene.sceneData?.difficulty ?? null;
+  const semitoneTolerance = validationWindow?.semitoneTolerance ?? (difficulty !== null ? resolveDifficultySemitoneTolerance(difficulty) : null);
   const expectedMidis = activeGroup.map((item) => item.expected_midi);
   const expectedNames = expectedMidis.map((midi) => midiToNoteName(midi));
 
@@ -47,9 +50,9 @@ export function buildGameplayValidationDebugSnapshot(
   const runtimeOutput = scene.realtimeValidationOutput;
   const runtimeState = scene.realtimeValidationState;
   const noteEvidence = runtimeState?.noteDecisions?.[0]?.evidence;
-  const allCandidates = buildTopCandidates(latestFrame, expectedMidis, Number.POSITIVE_INFINITY);
+  const allCandidates = buildTopCandidates(latestFrame, expectedMidis, semitoneTolerance ?? Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
   const topCandidates = allCandidates.slice(0, TOP_CANDIDATE_LIMIT);
-  const bestCompetitor = resolveBestCompetitor(allCandidates, expectedMidis);
+  const bestCompetitor = resolveBestCompetitor(allCandidates, expectedMidis, semitoneTolerance);
   const octaveCompetitor = resolveOctaveCompetitor(allCandidates, expectedMidis);
   const expectedRanks = expectedMidis.length > 0
     ? expectedMidis
@@ -69,7 +72,7 @@ export function buildGameplayValidationDebugSnapshot(
 
   const snapshot: GameplayValidationDebugSnapshot = {
       capturedAtMs: nowMs,
-      severity: resolveSeverity(validationWindow, runtimeOutput, topCandidates, expectedMidis, playbackSongSeconds, targetSongSeconds),
+      severity: resolveSeverity(validationWindow, runtimeOutput, allCandidates, expectedMidis, playbackSongSeconds, targetSongSeconds, semitoneTolerance),
       playbackSongSeconds: playbackSongSeconds ?? null,
       targetSongSeconds,
       targetDeltaMs,
@@ -94,7 +97,9 @@ export function buildGameplayValidationDebugSnapshot(
       resetCount: validationWindow?.resetCount ?? 0,
       armCount: validationWindow?.armCount ?? 0
     },
-    target: {
+      target: {
+      difficulty,
+      semitoneTolerance,
       expectedMidis,
       expectedNames,
       targetKey,
@@ -111,16 +116,24 @@ export function buildGameplayValidationDebugSnapshot(
       octaveCompetitor: octaveCompetitor ?? { midi: null, noteName: null, score: null },
       rawDetectionMaxConfidence,
       rawDetectionFrameRatio,
-      expectedNotePresent: allCandidates.some((candidate) => expectedMidis.includes(candidate.midi)),
+      expectedNotePresent: allCandidates.some((candidate) => isAcceptableMidi(expectedMidis, candidate.midi, semitoneTolerance)),
       bestNoteId: latestFrame?.best_note_id ?? null,
       latestMidiEstimate: latestFrame?.midi_estimate ?? null,
       latestConfidence: latestFrame?.confidence ?? null
     },
-    runtime: {
+      runtime: {
       acceptedPreGate: runtimeOutput?.acceptedPreGate ?? false,
       acceptedPostGate: runtimeOutput?.acceptedPostGate ?? false,
       noteValidationRatio: runtimeOutput?.noteValidationRatio ?? 0,
       validatedNotes: runtimeOutput?.validatedNotes ?? [],
+      noteDecisions: runtimeState?.noteDecisions?.map((decision) => ({
+        midi: decision.midi,
+        accepted: decision.accepted,
+        decisionReason: decision.decisionReason,
+        matchedMidi: decision.evidence.matchedMidi,
+        matchedSemitoneDistance: decision.evidence.matchedSemitoneDistance,
+        targetSemitoneTolerance: decision.evidence.targetSemitoneTolerance
+      })) ?? [],
       missingNotes: runtimeOutput?.missingNotes ?? [],
       extraNotes: runtimeOutput?.extraNotes ?? [],
       rejectReasons: runtimeOutput?.rejectReasons ?? [],
@@ -138,6 +151,7 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
   const paletteLabel = snapshot.severity === 'good' ? 'GOOD' : snapshot.severity === 'warning' ? 'WARN' : 'DANGER';
   const targetLabel = snapshot.target.targetMode ?? '-';
   const activeWindowLabel = formatDebugBool(snapshot.inActiveToleranceWindow);
+  const toleranceLabel = snapshot.target.semitoneTolerance !== null ? `±${formatDebugNumber(snapshot.target.semitoneTolerance, snapshot.target.semitoneTolerance % 1 === 0 ? 0 : 1)}st` : '-';
   const lastSetTargetAge = snapshot.window.lastSetTargetAtMs !== null
     ? formatSignedMs(snapshot.capturedAtMs - snapshot.window.lastSetTargetAtMs)
     : '-';
@@ -146,17 +160,23 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
     : '-';
   const topCandidateSummary = snapshot.spectral.topCandidates.length > 0
     ? snapshot.spectral.topCandidates
-        .map((candidate) => `${candidate.rank}:${candidate.midi} ${candidate.noteName} ${formatDebugNumber(candidate.score, 2)}${candidate.expected ? '*' : ''}`)
+        .map((candidate) => `${candidate.rank}:${candidate.midi} ${candidate.noteName} ${formatDebugNumber(candidate.score, 2)}${candidate.expected ? '*' : candidate.acceptable ? '+' : ''}`)
+        .join(' | ')
+    : '-';
+  const noteDecisionSummary = snapshot.runtime.noteDecisions.length > 0
+    ? snapshot.runtime.noteDecisions
+        .map((decision) => formatNoteDecisionSummary(snapshot.target.expectedMidis, decision, snapshot.target.semitoneTolerance))
         .join(' | ')
     : '-';
 
   return [
     `Gameplay Validation Debug [${paletteLabel}]`,
-    `Timing: phase=${snapshot.window.phase} dead=${formatDebugBool(snapshot.window.deadTime)} activeWindow=${activeWindowLabel} song=${formatDebugNumber(snapshot.playbackSongSeconds, 3)}s target=${formatDebugNumber(snapshot.targetSongSeconds, 3)}s dt=${formatSignedMs(snapshot.targetDeltaMs ?? undefined)} early=${formatDebugNumber(snapshot.window.earlyToleranceSeconds, 3)}s late=${formatDebugNumber(snapshot.window.lateToleranceSeconds, 3)}s`,
-    `Target: mode=${targetLabel} armed=${snapshot.window.currentArmedTargetId ?? '-'} key=${snapshot.target.targetKey ?? '-'} expected=${snapshot.target.expectedMidis.map((midi, index) => `${midi} ${snapshot.target.expectedNames[index]}`).join(', ') || '-'} ranks=${snapshot.spectral.expectedRanks} agg=${snapshot.target.aggregationPolicyId ?? '-'} gate=${snapshot.target.activationGatePolicyId ?? '-'} noteCfg=${snapshot.target.noteDecisionConfigId ?? '-'}`,
+    `Timing: phase=${snapshot.window.phase} dead=${formatDebugBool(snapshot.window.deadTime)} activeWindow=${activeWindowLabel} difficulty=${snapshot.target.difficulty ?? '-'} tol=${toleranceLabel} song=${formatDebugNumber(snapshot.playbackSongSeconds, 3)}s target=${formatDebugNumber(snapshot.targetSongSeconds, 3)}s dt=${formatSignedMs(snapshot.targetDeltaMs ?? undefined)} early=${formatDebugNumber(snapshot.window.earlyToleranceSeconds, 3)}s late=${formatDebugNumber(snapshot.window.lateToleranceSeconds, 3)}s`,
+    `Target: mode=${targetLabel} armed=${snapshot.window.currentArmedTargetId ?? '-'} key=${snapshot.target.targetKey ?? '-'} expected=${formatCanonicalTargets(snapshot.target.expectedMidis, snapshot.target.expectedNames, snapshot.target.semitoneTolerance)} ranks=${snapshot.spectral.expectedRanks} agg=${snapshot.target.aggregationPolicyId ?? '-'} gate=${snapshot.target.activationGatePolicyId ?? '-'} noteCfg=${snapshot.target.noteDecisionConfigId ?? '-'}`,
     `Spectral: top5=${topCandidateSummary}`,
     `Spectral: bestComp=${formatCandidatePeer(snapshot.spectral.bestCompetitor)} octave=${formatCandidatePeer(snapshot.spectral.octaveCompetitor)} rawMax=${formatDebugNumber(snapshot.spectral.rawDetectionMaxConfidence, 2)} frameRatio=${formatDebugNumber(snapshot.spectral.rawDetectionFrameRatio, 2)} expectedPresent=${formatDebugBool(snapshot.spectral.expectedNotePresent)} bestNote=${snapshot.spectral.bestNoteId ?? '-'}`,
     `Runtime: pre=${formatDebugBool(snapshot.runtime.acceptedPreGate)} post=${formatDebugBool(snapshot.runtime.acceptedPostGate)} ratio=${formatDebugNumber(snapshot.runtime.noteValidationRatio, 2)} conf=${formatDebugNumber(snapshot.runtime.confidence, 2)} validated=${formatMidiList(snapshot.runtime.validatedNotes)} missing=${formatMidiList(snapshot.runtime.missingNotes)} extra=${formatMidiList(snapshot.runtime.extraNotes)} stage=${snapshot.runtime.rejectStage}`,
+    `Runtime: notes=${noteDecisionSummary}`,
     `Runtime: gate=${snapshot.runtime.gateRejectReason ?? '-'} reasons=${snapshot.runtime.rejectReasons.length > 0 ? snapshot.runtime.rejectReasons.join('|') : '-'} summary=${snapshot.runtime.summary}`,
     `Reset: changed=${formatDebugBool(snapshot.window.targetChangedThisFrame)} setTarget=${snapshot.window.setTargetCount} reset=${snapshot.window.resetCount} arm=${snapshot.window.armCount} lastSet=${lastSetTargetAge} lastReset=${lastResetAge} changeAt=${snapshot.window.lastTargetChangeAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.window.lastTargetChangeAtMs) : '-'}`,
   ];
@@ -187,6 +207,7 @@ export function resolveGameplayValidationDebugPalette(severity: GameplayValidati
 function buildTopCandidates(
   frame: PitchFrame | undefined,
   expectedMidis: number[],
+  tolerance: number = Number.POSITIVE_INFINITY,
   limit: number = TOP_CANDIDATE_LIMIT
 ): GameplayValidationDebugCandidate[] {
   const notes = Array.isArray(frame?.selected_notes) ? frame.selected_notes : [];
@@ -206,7 +227,8 @@ function buildTopCandidates(
       noteName: midiToNoteName(midi),
       score: sanitizeCandidateScore(note.score, frame?.confidence ?? 0),
       rank: deduped.size + 1,
-      expected: expectedMidis.includes(midi)
+      expected: expectedMidis.includes(midi),
+      acceptable: isAcceptableMidi(expectedMidis, midi, tolerance)
     });
     if (deduped.size >= limit) break;
   }
@@ -218,7 +240,8 @@ function buildTopCandidates(
       noteName: midiToNoteName(midi),
       score: frame.confidence,
       rank: 1,
-      expected: expectedMidis.includes(midi)
+      expected: expectedMidis.includes(midi),
+      acceptable: isAcceptableMidi(expectedMidis, midi, tolerance)
     });
   }
 
@@ -227,10 +250,10 @@ function buildTopCandidates(
 
 function resolveBestCompetitor(
   candidates: GameplayValidationDebugCandidate[],
-  expectedMidis: number[]
+  expectedMidis: number[],
+  semitoneTolerance: number | null
 ): { midi: number | null; noteName: string | null; score: number | null } | null {
-  const expectedSet = new Set(expectedMidis);
-  const competitor = candidates.find((candidate) => !expectedSet.has(candidate.midi));
+  const competitor = candidates.find((candidate) => !isAcceptableMidi(expectedMidis, candidate.midi, semitoneTolerance));
   if (!competitor) return null;
   return {
     midi: competitor.midi,
@@ -299,13 +322,14 @@ function resolveSeverity(
   topCandidates: GameplayValidationDebugCandidate[],
   expectedMidis: number[],
   playbackSongSeconds: number | undefined,
-  targetSongSeconds: number | null
+  targetSongSeconds: number | null,
+  semitoneTolerance: number | null
 ): GameplayValidationDebugSeverity {
   if (runtimeOutput?.acceptedPostGate) {
     return 'good';
   }
 
-  const expectedCovered = expectedMidis.every((midi) => topCandidates.some((candidate) => candidate.midi === midi));
+  const expectedCovered = expectedMidis.every((midi) => topCandidates.some((candidate) => isAcceptableMidi([midi], candidate.midi, semitoneTolerance)));
   const inWindow =
     validationWindow?.phase === 'armed' &&
     playbackSongSeconds !== undefined &&
@@ -341,6 +365,42 @@ function resolveRawDetectionFrameRatio(frame: PitchFrame | undefined): number | 
 
 function buildTargetKey(targetGroup: TargetNote[]): string {
   return targetGroup.map((target) => target.id).join('|');
+}
+
+function formatCanonicalTargets(expectedMidis: number[], expectedNames: string[], semitoneTolerance: number | null): string {
+  if (expectedMidis.length === 0) return '-';
+  return expectedMidis
+    .map((midi, index) => `${midi} ${expectedNames[index]}${formatToleranceSuffix(midi, semitoneTolerance)}`)
+    .join(', ');
+}
+
+function formatToleranceSuffix(midi: number, semitoneTolerance: number | null): string {
+  if (semitoneTolerance === null) return '';
+  return ` [${formatDebugNumber(midi - semitoneTolerance, 1)}..${formatDebugNumber(midi + semitoneTolerance, 1)}]`;
+}
+
+function formatNoteDecisionSummary(
+  expectedMidis: number[],
+  decision: {
+    midi: number;
+    accepted: boolean;
+    decisionReason: string;
+    matchedMidi: number | null;
+    matchedSemitoneDistance: number | null;
+    targetSemitoneTolerance: number;
+  },
+  semitoneTolerance: number | null
+): string {
+  const canonical = expectedMidis.includes(decision.midi) ? `${decision.midi} ${midiToNoteName(Math.round(decision.midi))}` : `${decision.midi}`;
+  const matched = decision.matchedMidi !== null ? `${decision.matchedMidi} ${midiToNoteName(Math.round(decision.matchedMidi))}` : '-';
+  const distance = decision.matchedSemitoneDistance !== null ? `${formatDebugNumber(decision.matchedSemitoneDistance, 2)}st` : '-';
+  const tol = semitoneTolerance !== null ? ` tol=${formatDebugNumber(semitoneTolerance, semitoneTolerance % 1 === 0 ? 0 : 1)}st` : '';
+  return `${canonical}->${matched} ${distance}${tol} ${decision.accepted ? 'accepted' : 'rejected'} ${decision.decisionReason}`;
+}
+
+function isAcceptableMidi(expectedMidis: number[], midi: number, semitoneTolerance: number | null): boolean {
+  if (semitoneTolerance === null) return expectedMidis.includes(midi);
+  return expectedMidis.some((expectedMidi) => Math.abs(expectedMidi - midi) <= semitoneTolerance + 1e-9);
 }
 
 function sanitizeCandidateScore(value: number | undefined, fallback: number): number {

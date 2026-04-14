@@ -32,3 +32,10 @@ target/native_pitch_runtime_wsl/CACHEDIR.TAG
 /analysis/gameplay_validator_benchmark_poly
 /analysis/gameplay_validator_benchmark
 .cymbal/
+/analysis/pitchdebug_partial_eval/plots
+/analysis/pitchdebug_partial_eval_diagnostics
+/analysis/pitchdebug_partial_eval
+/analysis/pitchdebug_partial_eval_raw_only
+/analysis/practice_benchmark
+/analysis/tuner_benchmark
+/analysis/tuner_pyin_optimization

@@ -51,6 +51,8 @@ describe('play validation debug overlay', () => {
         ...createIdleValidationWindowState(),
         phase: 'armed',
         deadTime: false,
+        difficulty: 'Medium',
+        semitoneTolerance: 1,
         targetKey: target.id,
         targetIds: [target.id],
         targetMode: 'mono',
@@ -75,6 +77,7 @@ describe('play validation debug overlay', () => {
         acceptedPostGate: false,
         targetMode: 'mono',
         validatedNotes: [],
+        matchedNotes: [],
         missingNotes: [60],
         extraNotes: [64],
         noteValidationRatio: 0,
@@ -87,6 +90,7 @@ describe('play validation debug overlay', () => {
         target: {
           mode: 'mono',
           midiNotes: [60],
+          semitoneTolerance: 1,
           allowSuperset: true,
           metadata: { targetIds: [target.id] }
         },
@@ -102,6 +106,9 @@ describe('play validation debug overlay', () => {
             accepted: false,
             decisionReason: 'note_stage_passed',
             evidence: {
+              targetSemitoneTolerance: 1,
+              matchedMidi: 60,
+              matchedSemitoneDistance: 0,
               rawDetectionMaxConfidence: 0.91,
               rawDetectionFrameRatio: 1
             }

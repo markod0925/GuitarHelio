@@ -241,6 +241,7 @@ Runtime gameplay MUST use a single reusable validator core under `src/gameplay/v
 That runtime validator MUST be stateful, frame-driven, target-driven, and able to switch between mono and poly targets without duplicating note-level logic.
 Mono MUST be treated as note-set cardinality `1`; poly MUST be treated as note-set cardinality `> 1`.
 The benchmark tooling MUST reuse the same shared note-evidence and gate/finalization logic where practical, while keeping dataset parsing and window labeling benchmark-only.
+Benchmark harnesses MAY default to Medium pitch tolerance when difficulty is not explicitly provided, but they MUST keep the tolerance configurable so Easy/Hard runs remain reproducible.
 
 For polyphonic passages, validation MUST be note-set oriented:
 
@@ -319,9 +320,28 @@ Debug visibility MUST expose:
 
 - window phase (`idle`, `armed`, `accepted`, `expired`)
 - current target identity
+- active difficulty and pitch tolerance
 - armed/dead-time status
 - late/early bounds
 - runtime validator accept/reject reasons
+
+## 4.6 Difficulty-aware pitch tolerance
+
+Gameplay validation MUST resolve pitch tolerance centrally from difficulty and carry it on the active runtime target.
+
+Required mapping:
+
+- Easy -> `±3` semitones
+- Medium -> `±1` semitone
+- Hard -> `±0.5` semitone
+
+Runtime gameplay validation MUST distinguish:
+
+- canonical expected target note(s)
+- matched accepted note(s) inside the active tolerance band
+
+Poly targets MUST use one-to-one matching so one detected note cannot satisfy multiple expected notes in the same frame.
+Difficulty-aware tolerance MUST apply in both runtime gameplay validation and benchmark harnesses.
 
 ---
 
@@ -1133,14 +1153,14 @@ On Capacitor Android runtime, app lifecycle transitions MUST be battery-safe:
 In debug sessions, gameplay MUST also provide a central debug overlay (toggle key: `F3`) showing at least:
 
 * runtime state and last state transition
-* active target details (id/string/fret/expected midi)
+* active target details (id/string/fret/expected midi, semitone tolerance, matched note)
 * current tick vs target tick and current song time vs target time
 * detected pitch (`midi_estimate`) + confidence, held-hit progress vs required hold
 * hit-gating flags (`within window`, `can validate`, `valid hit`) and waiting timeout progress
 * live validation timing (`idle` / `armed` / `accepted` / `expired`), dead-time state, and tolerance window bounds
 * expected mono/poly target identity plus aggregation / gate / note-decision policy ids
 * live top-5 spectral candidates, expected-note rank, best competitor, and octave competitor
-* runtime validator pre-gate vs post-gate acceptance, validation ratio, validated/missing/extra notes, and reject reasons
+* runtime validator pre-gate vs post-gate acceptance, validation ratio, canonical validated/missing/extra notes, matched notes, and reject reasons
 * target reset / re-arm churn, last `setTarget()` time, and retained last accepted / expired / rejected snapshots
 * on-device toggle control for Android gameplay sessions so the overlay can be enabled without a keyboard
 

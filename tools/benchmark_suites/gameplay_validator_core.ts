@@ -659,10 +659,13 @@ export function evaluateNoteEvidence(
   const runtimeEvidence: RuntimeValidatorNoteEvidence = {
     noteMidi: evidence.expectedMidi,
     noteDecisionConfigId: evidence.noteDecisionConfigId,
+    targetSemitoneTolerance: 0,
     expectedTargetScore: evidence.expectedTargetScore,
     nearbyCompetitorScore: evidence.nearbyCompetitorScore,
     rawDetectionMaxConfidence: evidence.rawDetectionMaxConfidence,
     rawDetectionFrameRatio: evidence.rawDetectionFrameRatio,
+    matchedMidi: null,
+    matchedSemitoneDistance: null,
     supportFrames: evidence.supportFrames,
     minValidatedSupportFrames: evidence.minValidatedSupportFrames,
     positionSupportFrames: evidence.positionSupportFrames,

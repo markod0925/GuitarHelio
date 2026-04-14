@@ -20,6 +20,9 @@ function makeNoteEvidence(midi: number, timestampMs: number, overrides: Partial<
   return {
     timestampMs,
     midi,
+    targetSemitoneTolerance: overrides.targetSemitoneTolerance ?? 1,
+    matchedMidi: overrides.matchedMidi ?? midi,
+    matchedSemitoneDistance: overrides.matchedSemitoneDistance ?? 0,
     detectorAccepted: overrides.detectorAccepted ?? true,
     detectorConfidence: overrides.detectorConfidence ?? 0.96,
     detectedMidi: overrides.detectedMidi ?? midi,

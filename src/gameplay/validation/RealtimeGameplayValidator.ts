@@ -104,6 +104,7 @@ export class RealtimeGameplayValidator {
         acceptedPostGate: false,
         targetMode: 'mono',
         validatedNotes: [],
+        matchedNotes: [],
         missingNotes: [],
         extraNotes: uniqueSortedNumbers(input.frameEvidence.rawDetectedMidis ?? []),
         noteValidationRatio: 0,
@@ -136,7 +137,8 @@ export class RealtimeGameplayValidator {
         midi,
         history.frames,
         this.config.noteDecisionConfig,
-        this.targetState.startedAtMs
+        this.targetState.startedAtMs,
+        this.targetState.target.semitoneTolerance
       );
       history.decision = mapNoteDecision(
         noteSummary,
@@ -150,14 +152,16 @@ export class RealtimeGameplayValidator {
           history.midi,
           history.frames,
           this.config.noteDecisionConfig,
-          this.targetState?.startedAtMs ?? null
+          this.targetState?.startedAtMs ?? null,
+          this.targetState?.target.semitoneTolerance ?? 0
         ),
         evaluateNoteEvidence(
           buildValidatorNoteEvidence(
             history.midi,
             history.frames,
             this.config.noteDecisionConfig,
-            this.targetState?.startedAtMs ?? null
+            this.targetState?.startedAtMs ?? null,
+            this.targetState?.target.semitoneTolerance ?? 0
           ),
           this.config.noteDecisionConfig
         )
@@ -209,6 +213,7 @@ function normalizeTarget(target: ValidationTarget): ValidationTarget {
     ...target,
     mode,
     midiNotes,
+    semitoneTolerance: normalizeSemitoneTolerance(target.semitoneTolerance),
     allowSuperset: target.allowSuperset !== false
   };
 }
@@ -219,6 +224,7 @@ function targetsEqual(left: ValidationTarget, right: ValidationTarget): boolean 
   for (let index = 0; index < left.midiNotes.length; index += 1) {
     if (left.midiNotes[index] !== right.midiNotes[index]) return false;
   }
+  if (left.semitoneTolerance !== right.semitoneTolerance) return false;
   if ((left.minNoteRatio ?? null) !== (right.minNoteRatio ?? null)) return false;
   if ((left.allowSuperset ?? true) !== (right.allowSuperset ?? true)) return false;
   return true;
@@ -228,6 +234,9 @@ function buildFallbackNoteEvidence(midi: number, timestampMs: number): Validator
   return {
     timestampMs,
     midi,
+    targetSemitoneTolerance: 0,
+    matchedMidi: null,
+    matchedSemitoneDistance: null,
     detectorAccepted: false,
     detectorConfidence: 0,
     expectedCentsError: null,
@@ -271,4 +280,9 @@ function mapNoteDecision(
 
 function uniqueSortedNumbers(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isFinite(value)).map((value) => Math.round(value)))].sort((left, right) => left - right);
+}
+
+function normalizeSemitoneTolerance(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, value);
 }

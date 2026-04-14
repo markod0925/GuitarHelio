@@ -56,10 +56,13 @@ export type ValidatorPairwiseCompetitorOutcome = {
 export type ValidatorNoteEvidence = {
   noteMidi: number;
   noteDecisionConfigId: string;
+  targetSemitoneTolerance: number;
   expectedTargetScore: number;
   nearbyCompetitorScore: number;
   rawDetectionMaxConfidence: number | null;
   rawDetectionFrameRatio: number | null;
+  matchedMidi: number | null;
+  matchedSemitoneDistance: number | null;
   supportFrames: number;
   minValidatedSupportFrames: number;
   positionSupportFrames: number;
@@ -104,6 +107,7 @@ export type ValidationMode = 'mono' | 'poly';
 export type ValidationTarget = {
   mode: ValidationMode;
   midiNotes: number[];
+  semitoneTolerance: number;
   minNoteRatio?: number;
   allowSuperset?: boolean;
   metadata?: Record<string, unknown>;
@@ -115,6 +119,9 @@ export type ValidatorFrameCandidateEvidence = {
   detectedMidi?: number | null;
   detectedString?: number | null;
   detectedFret?: number | null;
+  targetSemitoneTolerance: number;
+  matchedMidi: number | null;
+  matchedSemitoneDistance: number | null;
   detectorAccepted: boolean;
   detectorConfidence: number;
   expectedCentsError: number | null;
@@ -261,6 +268,7 @@ export type RuntimeValidatorOutput = {
   acceptedPostGate: boolean;
   targetMode: ValidationMode;
   validatedNotes: number[];
+  matchedNotes: number[];
   missingNotes: number[];
   extraNotes: number[];
   noteValidationRatio: number;

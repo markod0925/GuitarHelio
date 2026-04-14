@@ -22,17 +22,20 @@ export function buildValidatorNoteEvidence(
   noteMidi: number,
   frames: ValidatorFrameCandidateEvidence[],
   config: ValidatorDecisionConfig,
-  targetStartedAtMs: number | null
+  targetStartedAtMs: number | null,
+  targetSemitoneTolerance: number
 ): ValidatorNoteEvidence {
   const normalizedConfig = normalizeNoteDecisionConfig(config);
+  const pitchToleranceCents = Math.max(0, Math.abs(targetSemitoneTolerance) * 100);
   const attackCutoffMs = targetStartedAtMs === null ? normalizedConfig.note.ignoreAttackMs : targetStartedAtMs + normalizedConfig.note.ignoreAttackMs;
   const eligibleFrames = frames.filter((frame) => frame.timestampMs >= attackCutoffMs);
   const usableFrames = eligibleFrames.length > 0 ? eligibleFrames : frames;
 
   const expectedDetectorHit = usableFrames.map((frame) => (
     frame.detectorAccepted &&
+    frame.matchedMidi !== null &&
     frame.expectedCentsError !== null &&
-    Math.abs(frame.expectedCentsError) <= normalizedConfig.note.maxExpectedCentsError
+    Math.abs(frame.expectedCentsError) <= pitchToleranceCents
   ));
 
   const expectedQualified = usableFrames.map((frame, index) => {
@@ -70,8 +73,9 @@ export function buildValidatorNoteEvidence(
 
   const legacyExpectedHit = usableFrames.map((frame) => (
     frame.detectorAccepted &&
+    frame.matchedMidi !== null &&
     frame.expectedCentsError !== null &&
-    Math.abs(frame.expectedCentsError) <= normalizedConfig.legacy.frameToleranceCents
+    Math.abs(frame.expectedCentsError) <= pitchToleranceCents
   ));
 
   const legacyExpectedCount = countTrue(legacyExpectedHit);
@@ -90,10 +94,13 @@ export function buildValidatorNoteEvidence(
   return {
     noteMidi,
     noteDecisionConfigId: normalizedConfig.id,
+    targetSemitoneTolerance: roundNumber(targetSemitoneTolerance, 6),
     expectedTargetScore: roundNumber(median(usableFrames.map((frame) => frame.expectedScore)) ?? 0, 6),
     nearbyCompetitorScore: roundNumber(median(usableFrames.map((frame) => frame.neighborScore)) ?? 0, 6),
     rawDetectionMaxConfidence: roundNullable(usableFrames.length > 0 ? Math.max(...usableFrames.map((frame) => frame.detectorConfidence)) : null, 6),
     rawDetectionFrameRatio: roundNullable(usableFrames.length > 0 ? anyAcceptedCount / usableFrames.length : null, 6),
+    matchedMidi: modeNumber(usableFrames.map((frame) => frame.matchedMidi)),
+    matchedSemitoneDistance: roundNullable(median(usableFrames.map((frame) => frame.matchedSemitoneDistance).filter((value): value is number => value !== null)), 6),
     supportFrames: expectedQualifiedCount,
     minValidatedSupportFrames: minExpectedFrames,
     positionSupportFrames: positionQualifiedCount,
@@ -242,6 +249,7 @@ export function evaluateRuntimeTargetDecision(input: {
   transitionOverlapRatio?: number;
 }): RuntimeValidatorOutput {
   const expectedMidis = uniqueSortedNumbers(input.target.midiNotes);
+  const semitoneTolerance = normalizeSemitoneTolerance(input.target.semitoneTolerance);
   const noteSetPolicy = normalizeRuntimeNoteSetPolicy(input.noteSetPolicy);
   const activationGatePolicy = normalizeActivationGatePolicy(input.activationGatePolicy ?? {
     id: 'runtime_gate_default',
@@ -262,13 +270,16 @@ export function evaluateRuntimeTargetDecision(input: {
   });
 
   const validatedNotes = uniqueSortedNumbers(input.noteDecisions.filter((note) => note.accepted).map((note) => note.midi));
-  const expectedSet = new Set(expectedMidis);
+  const matchedValidatedNotes = uniqueSortedNumbers(input.noteDecisions
+    .filter((note) => note.accepted)
+    .map((note) => note.evidence.matchedMidi)
+    .filter((value): value is number => value !== null));
   const validatedSet = new Set(validatedNotes);
   const rawDetectedMidis = uniqueSortedNumbers(input.rawDetectedMidis);
   const rawDetectedSet = new Set(rawDetectedMidis);
 
   const missingNotes = expectedMidis.filter((midi) => !validatedSet.has(midi));
-  const extraNotes = rawDetectedMidis.filter((midi) => !expectedSet.has(midi));
+  const extraNotes = rawDetectedMidis.filter((midi) => !isMidiAcceptableForAnyTarget(midi, expectedMidis, semitoneTolerance));
   const expectedNoteCount = expectedMidis.length;
   const validatedNoteCount = validatedNotes.length;
   const noteValidationRatio = expectedNoteCount > 0 ? validatedNoteCount / expectedNoteCount : 1;
@@ -348,6 +359,7 @@ export function evaluateRuntimeTargetDecision(input: {
     acceptedPostGate,
     targetMode: input.target.mode,
     validatedNotes,
+    matchedNotes: matchedValidatedNotes,
     missingNotes,
     extraNotes,
     noteValidationRatio,
@@ -608,6 +620,15 @@ function uniqueSortedStrings(values: string[]): string[] {
 
 function uniqueSortedNumbers(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isFinite(value)).map((value) => Math.round(value)))].sort((left, right) => left - right);
+}
+
+function normalizeSemitoneTolerance(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, value);
+}
+
+function isMidiAcceptableForAnyTarget(midi: number, expectedMidis: number[], semitoneTolerance: number): boolean {
+  return expectedMidis.some((expectedMidi) => Math.abs(midi - expectedMidi) <= semitoneTolerance + EPS);
 }
 
 function longestConsecutiveTrue(values: boolean[]): number {

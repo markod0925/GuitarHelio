@@ -225,7 +225,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       const songSecondsNow = this.playbackStarted ? this.getSongSecondsNow() : undefined;
       const validationWindow = syncGameplayValidationWindow(this, timestampMs, songSecondsNow);
       const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
-      const validationTarget = validationWindow.phase === 'armed' ? buildValidationTargetFromTargetGroup(activeGroup) : null;
+      const validationTarget = validationWindow.phase === 'armed' ? buildValidationTargetFromTargetGroup(activeGroup, this.sceneData?.difficulty) : null;
       const frameEvidence = buildValidatorFrameEvidenceFromPitchFrame(frame, timestampMs, validationTarget);
       const validationOutput = this.realtimeGameplayValidator.update({
         timestampMs,

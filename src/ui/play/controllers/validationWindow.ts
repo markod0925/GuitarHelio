@@ -1,5 +1,5 @@
 import { TARGET_HIT_GRACE_SECONDS } from '../../../app/config';
-import { buildValidationTargetFromTargetGroup } from '../../../gameplay/validation';
+import { buildValidationTargetFromTargetGroup, resolveDifficultySemitoneTolerance } from '../../../gameplay/validation';
 import type { RuntimeValidatorStateSnapshot, ValidationTarget } from '../../../gameplay/validation';
 import {
   DEFAULT_ACTIVATION_GATE_POLICY,
@@ -22,6 +22,8 @@ export function createIdleValidationWindowState(): ValidationWindowState {
   return {
     phase: 'idle',
     deadTime: true,
+    difficulty: null,
+    semitoneTolerance: null,
     targetKey: null,
     targetIds: [],
     targetMode: null,
@@ -86,7 +88,9 @@ export function syncGameplayValidationWindow(
   const activeTarget = activeGroup[0];
   const targetKey = activeGroup.length > 0 ? buildValidationWindowTargetKey(activeGroup) : null;
   const targetMode = activeGroup.length > 1 ? 'poly' : activeGroup.length === 1 ? 'mono' : null;
+  const difficulty = scene.sceneData?.difficulty ?? null;
   const tolerance = resolveGameplayValidationToleranceSeconds(scene.sceneData?.difficulty);
+  const semitoneTolerance = resolveDifficultySemitoneTolerance(scene.sceneData?.difficulty);
   const isWaitingForHit = scene.runtime.state === PlayState.WaitingForHit;
   const nowTargetChanged = state.targetKey !== targetKey;
   const targetSeconds = activeTarget && scene.tempoMap ? scene.tempoMap.tickToSeconds(activeTarget.tick) : null;
@@ -97,6 +101,8 @@ export function syncGameplayValidationWindow(
     state.targetKey = targetKey;
     state.targetIds = activeGroup.map((target) => target.id);
     state.targetMode = targetMode;
+    state.difficulty = difficulty;
+    state.semitoneTolerance = targetKey !== null ? semitoneTolerance : null;
     state.aggregationPolicyId = policyIds.aggregationPolicyId;
     state.activationGatePolicyId = policyIds.activationGatePolicyId;
     state.noteDecisionConfigId = policyIds.noteDecisionConfigId;
@@ -158,7 +164,7 @@ export function syncGameplayValidationWindow(
       validator?.reset();
       state.resetCount += 1;
       state.lastResetAtMs = nowMs;
-      validator?.setTarget(buildValidationTargetFromTargetGroup(activeGroup));
+      validator?.setTarget(buildValidationTargetFromTargetGroup(activeGroup, scene.sceneData?.difficulty));
       state.setTargetCount += 1;
       state.lastSetTargetAtMs = nowMs;
       state.armCount += 1;
@@ -208,7 +214,7 @@ export function syncGameplayValidationWindow(
       validator?.reset();
       state.resetCount += 1;
       state.lastResetAtMs = nowMs;
-      validator?.setTarget(buildValidationTargetFromTargetGroup(activeGroup));
+      validator?.setTarget(buildValidationTargetFromTargetGroup(activeGroup, scene.sceneData?.difficulty));
       state.setTargetCount += 1;
       state.lastSetTargetAtMs = nowMs;
       state.armCount += 1;

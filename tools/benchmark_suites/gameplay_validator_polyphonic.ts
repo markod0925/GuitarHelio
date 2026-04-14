@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   evaluateRuntimeTargetDecision,
+  resolveDifficultySemitoneTolerance,
   type RuntimeNoteDecision,
   type ValidatorNoteEvidence as RuntimeValidatorNoteEvidence
 } from '../../src/gameplay/validation';
@@ -364,14 +365,17 @@ const WAV_FILE_PATTERN = /_mic\.wav$/i;
 const SOLO_PATTERN = /_solo(?:_mic)?\.wav$/i;
 const COMP_PATTERN = /_comp(?:_mic)?\.wav$/i;
 
-function toRuntimeNoteDecision(row: ValidatorRow): RuntimeNoteDecision {
+function toRuntimeNoteDecision(row: ValidatorRow, semitoneTolerance: number): RuntimeNoteDecision {
   const evidence: RuntimeValidatorNoteEvidence = {
     noteMidi: row.expectedMidi,
     noteDecisionConfigId: row.noteDecisionConfigId,
+    targetSemitoneTolerance: semitoneTolerance,
     expectedTargetScore: row.expectedTargetScore,
     nearbyCompetitorScore: row.nearbyCompetitorScore,
     rawDetectionMaxConfidence: row.rawDetectionMaxConfidence,
     rawDetectionFrameRatio: row.rawDetectionFrameRatio,
+    matchedMidi: row.acceptedNote ? row.expectedMidi : null,
+    matchedSemitoneDistance: row.acceptedNote ? 0 : null,
     supportFrames: row.supportFrames,
     minValidatedSupportFrames: row.minValidatedSupportFrames,
     positionSupportFrames: row.positionSupportFrames,
@@ -914,14 +918,16 @@ export function evaluateNoteSetWindow(input: {
   }
 
   const activationGatePolicy = normalizeActivationGatePolicy(input.activationGatePolicy ?? DEFAULT_ACTIVATION_GATE_POLICY);
+  const semitoneTolerance = resolveBenchmarkSemitoneTolerance();
   const runtimeDecision = evaluateRuntimeTargetDecision({
     target: {
       mode: expectedNoteCount <= 1 ? 'mono' : 'poly',
       midiNotes: expectedMidis,
+      semitoneTolerance,
       minNoteRatio: input.policy.mode === 'min_ratio_required' ? input.policy.minNoteRatio : undefined,
       allowSuperset: input.policy.allowSupersetIfExpectedCovered
     },
-    noteDecisions: input.perNoteRows.map(toRuntimeNoteDecision),
+    noteDecisions: input.perNoteRows.map((row) => toRuntimeNoteDecision(row, semitoneTolerance)),
     rawDetectedMidis,
     rawDetectionMaxConfidence,
     rawDetectionFrameRatio,
@@ -1033,6 +1039,20 @@ export function evaluateNoteSetWindow(input: {
     averagePerNoteRuntimeMs: runtimeValues.length > 0 ? average(runtimeValues) : null,
     averageOctaveConfusionRatio: octaveValues.length > 0 ? average(octaveValues) : null
   };
+}
+
+function resolveBenchmarkSemitoneTolerance(): number {
+  const difficulty = process.env.GH_VALIDATION_DIFFICULTY;
+  if (difficulty === 'Easy' || difficulty === 'Medium' || difficulty === 'Hard') {
+    return resolveDifficultySemitoneTolerance(difficulty);
+  }
+
+  const envTolerance = Number(process.env.GH_VALIDATION_SEMITONE_TOLERANCE);
+  if (Number.isFinite(envTolerance)) {
+    return Math.max(0, envTolerance);
+  }
+
+  return resolveDifficultySemitoneTolerance('Medium');
 }
 
 export function aggregateNoteSetWindowResults(results: NoteSetWindowResult[]): NoteSetMetrics {

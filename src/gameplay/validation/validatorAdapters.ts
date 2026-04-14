@@ -2,12 +2,38 @@ import type { PitchDetectorResult } from '../../pitch/types';
 import type { PitchFrame, TargetNote } from '../../types/models';
 import type {
   ValidationTarget,
-  ValidatorFrameCandidateEvidence,
   ValidatorFrameEvidence
 } from './validatorTypes';
 
+type DetectorCandidate = {
+  midi: number;
+  score: number;
+  label: string | null;
+  stringId: number | null;
+  fret: number | null;
+};
+
+type CandidateAssignment = {
+  targetIndex: number;
+  candidateIndex: number;
+  distanceSemitones: number;
+};
+
+const DEFAULT_DIFFICULTY: 'Easy' | 'Medium' | 'Hard' = 'Medium';
+
+export function resolveDifficultySemitoneTolerance(difficulty: 'Easy' | 'Medium' | 'Hard' | undefined): number {
+  if (difficulty === 'Easy') {
+    return 3;
+  }
+  if (difficulty === 'Hard') {
+    return 0.5;
+  }
+  return 1;
+}
+
 export function buildValidationTargetFromTargetGroup(
-  targetGroup: TargetNote[] | undefined | null
+  targetGroup: TargetNote[] | undefined | null,
+  difficulty: 'Easy' | 'Medium' | 'Hard' | undefined = DEFAULT_DIFFICULTY
 ): ValidationTarget | null {
   if (!targetGroup || targetGroup.length === 0) {
     return null;
@@ -18,11 +44,13 @@ export function buildValidationTargetFromTargetGroup(
   return {
     mode,
     midiNotes,
+    semitoneTolerance: resolveDifficultySemitoneTolerance(difficulty),
     minNoteRatio: 1,
     allowSuperset: mode === 'poly',
     metadata: {
       chordId: targetGroup[0].chord_id ?? null,
-      targetIds: targetGroup.map((target) => target.id)
+      targetIds: targetGroup.map((target) => target.id),
+      difficulty: difficulty ?? DEFAULT_DIFFICULTY
     }
   };
 }
@@ -32,115 +60,26 @@ export function buildValidatorFrameEvidenceFromPitchResult(
   timestampMs: number,
   target?: ValidationTarget | null
 ): ValidatorFrameEvidence {
-  const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  const candidateByMidi = new Map<number, { confidence: number; label?: string }>();
-  for (const candidate of candidates) {
-    if (typeof candidate.midi !== 'number' || !Number.isFinite(candidate.midi)) continue;
-    candidateByMidi.set(Math.round(candidate.midi), {
-      confidence: candidate.confidence ?? 0,
-      label: candidate.label
-      });
-  }
-
-  const rawDetectedMidis = candidates
-    .map((candidate) => candidate.midi)
-    .filter((midi): midi is number => typeof midi === 'number' && Number.isFinite(midi))
-    .map((midi) => Math.round(midi));
-
-  if (!target || target.midiNotes.length === 0) {
-    return {
-      timestampMs,
-      notes: [],
-      rawDetectedMidis,
-      rawDetectionMaxConfidence: result.confidence ?? null,
-      rawDetectionFrameRatio: result.accepted ? 1 : 0,
-      metadata: {
-        detectorName: result.detectorName,
-        rejectReason: result.rejectReason ?? null
-      }
-    };
-  }
-
-  const noteEvidences: ValidatorFrameCandidateEvidence[] = target.midiNotes.map((midi) => {
-    const roundedMidi = Math.round(midi);
-    const matched = candidateByMidi.get(roundedMidi);
-    const bestCandidate = candidates[0];
-    const competitor = candidates.find((candidate) => midiOf(candidate) !== roundedMidi) ?? null;
-    const candidateIndex = candidates.findIndex((candidate) => midiOf(candidate) === roundedMidi);
-    const debug = (result.debug ?? {}) as Record<string, unknown>;
-    return {
-      timestampMs,
-      midi: roundedMidi,
-      detectorAccepted: result.accepted,
-      detectorConfidence: result.confidence ?? 0,
-      detectedMidi: result.midi ?? null,
-      detectedString: result.stringId ?? null,
-      detectedFret: result.fret ?? null,
-      expectedCentsError: result.cents ?? null,
-      expectedScore: matched?.confidence ?? (bestCandidate?.confidence ?? result.confidence ?? 0),
-      bestCompetitorScore: competitor?.confidence ?? 0,
-      bestCompetitorMidi: competitor?.midi ?? null,
-      bestOctaveScore: bestCandidate?.confidence ?? 0,
-      neighborScore: competitor?.confidence ?? 0,
-      samePitchAltScore: null,
-      expectedRank: candidateIndex >= 0
-        ? candidateIndex + 1
-        : null,
-      expectedTop1: midiOf(candidates[0]) === roundedMidi,
-      expectedTop3: candidates.slice(0, 3).some((candidate) => midiOf(candidate) === roundedMidi),
-      expectedPairwiseWinRate: null,
-      octaveCompetitorOutranked: false,
-      expectedVsSourceWon: matched ? true : null,
-      positionAmbiguous: false,
-      candidateScoreCount: candidates.length,
-      sharedEvidenceAvailability: Array.isArray(debug.sharedEvidenceAvailability) ? debug.sharedEvidenceAvailability.filter((value): value is string => typeof value === 'string') : [],
-      sharedEvidenceLimitations: Array.isArray(debug.sharedEvidenceLimitations) ? debug.sharedEvidenceLimitations.filter((value): value is string => typeof value === 'string') : [],
-      evidenceSource: 'spectral_probe',
-      spectralProbe: {
-        probeVersion: 'spectral_probe_v1',
-        expectedNoteId: matched?.label ?? `midi_${roundedMidi}`,
-        candidateCount: candidates.length,
-        availableCandidateScoreCount: candidates.length,
-        topCandidates: candidates.slice(0, 5).map((candidate, candidateIndex) => ({
-          noteId: candidate.label ?? `candidate_${candidateIndex}`,
-          midi: midiOf(candidate),
-          stringId: Number.isFinite((candidate as unknown as { stringId?: number }).stringId)
-            ? ((candidate as unknown as { stringId?: number }).stringId as number)
-            : 0,
-          fret: Number.isFinite((candidate as unknown as { fret?: number }).fret)
-            ? ((candidate as unknown as { fret?: number }).fret as number)
-            : 0,
-          rawScore: candidate.confidence ?? 0,
-          relativeScore: null,
-          rank: candidateIndex + 1,
-          competitorClass: 'other'
-        })),
-        pairwise: [],
-        expectedRank: null,
-        expectedTop1: midiOf(candidates[0]) === roundedMidi,
-        expectedTop3: candidates.slice(0, 3).some((candidate) => midiOf(candidate) === roundedMidi),
-        expectedPairwiseWinRate: null,
-        octaveCompetitorOutranked: false,
-        expectedVsSourceWon: matched ? true : null,
-        positionAmbiguous: false,
-        missingEvidence: []
-      },
-      samePitchAltDetected: false,
-      expectedPositionMatch: true
-    };
-  });
-
-  return {
+  const candidates = collectDetectorCandidatesFromPitchResult(result);
+  return buildValidatorFrameEvidenceFromCandidates({
+    candidates,
     timestampMs,
-    notes: noteEvidences,
-    rawDetectedMidis,
-    rawDetectionMaxConfidence: result.confidence ?? null,
-    rawDetectionFrameRatio: result.accepted ? 1 : 0,
+    target,
+    rawDetectedMidis: candidates.map((candidate) => candidate.midi)
+  }, {
+    detectorAccepted: result.accepted,
+    detectorConfidence: result.confidence ?? 0,
+    detectedMidi: result.midi ?? null,
+    detectedString: finiteNumberOrNull(result.stringId),
+    detectedFret: finiteNumberOrNull(result.fret),
+    sharedEvidenceAvailability: [],
+    sharedEvidenceLimitations: [],
     metadata: {
       detectorName: result.detectorName,
       rejectReason: result.rejectReason ?? null
-    }
-  };
+    },
+    evidenceSource: 'spectral_probe'
+  });
 }
 
 export function buildValidatorFrameEvidenceFromPitchFrame(
@@ -148,68 +87,110 @@ export function buildValidatorFrameEvidenceFromPitchFrame(
   timestampMs: number,
   target?: ValidationTarget | null
 ): ValidatorFrameEvidence {
-  const selectedNotes = Array.isArray(frame.selected_notes) ? frame.selected_notes : [];
-  const candidateNotes = selectedNotes.filter((note): note is NonNullable<typeof selectedNotes>[number] & { midi: number } => Number.isFinite(note.midi));
+  const candidates = collectDetectorCandidatesFromPitchFrame(frame);
   const rawDetectedMidis = uniqueSortedNumbers([
-    ...(candidateNotes.map((note) => Math.round(note.midi))),
-    ...(Number.isFinite(frame.midi_estimate ?? Number.NaN) ? [Math.round(frame.midi_estimate as number)] : [])
+    ...candidates.map((candidate) => candidate.midi),
+    ...(Number.isFinite(frame.midi_estimate ?? Number.NaN) ? [frame.midi_estimate as number] : [])
   ]);
+  return buildValidatorFrameEvidenceFromCandidates({
+    candidates,
+    timestampMs,
+    target,
+    rawDetectedMidis
+  }, {
+    detectorAccepted: frame.midi_estimate !== null || candidates.length > 0,
+    detectorConfidence: frame.confidence ?? 0,
+    detectedMidi: frame.midi_estimate ?? candidates[0]?.midi ?? null,
+    detectedString: finiteNumberOrNull(frame.detected_string),
+    detectedFret: finiteNumberOrNull(frame.detected_fret),
+    sharedEvidenceAvailability: [],
+    sharedEvidenceLimitations: ['live_pitch_frame'],
+    metadata: {
+      detectedString: frame.detected_string ?? null,
+      detectedFret: frame.detected_fret ?? null,
+      bestNoteId: frame.best_note_id ?? null
+    },
+    evidenceSource: 'masp_proxy'
+  });
+}
 
+function buildValidatorFrameEvidenceFromCandidates(
+  input: {
+    candidates: DetectorCandidate[];
+    timestampMs: number;
+    target?: ValidationTarget | null;
+    rawDetectedMidis: number[];
+  },
+  shared: {
+    detectorAccepted: boolean;
+    detectorConfidence: number;
+    detectedMidi: number | null;
+    detectedString: number | null;
+    detectedFret: number | null;
+    sharedEvidenceAvailability: string[];
+    sharedEvidenceLimitations: string[];
+    metadata: Record<string, unknown>;
+    evidenceSource: 'masp_proxy' | 'spectral_probe';
+  }
+): ValidatorFrameEvidence {
+  const target = input.target;
   if (!target || target.midiNotes.length === 0) {
     return {
-      timestampMs,
+      timestampMs: input.timestampMs,
       notes: [],
-      rawDetectedMidis,
-      rawDetectionMaxConfidence: frame.confidence ?? null,
-      rawDetectionFrameRatio: candidateNotes.length > 0 || frame.midi_estimate !== null ? 1 : 0,
-      metadata: {
-        detectedString: frame.detected_string ?? null,
-        detectedFret: frame.detected_fret ?? null
-      }
+      rawDetectedMidis: input.rawDetectedMidis,
+      rawDetectionMaxConfidence: shared.detectorConfidence,
+      rawDetectionFrameRatio: shared.detectorAccepted ? 1 : 0,
+      metadata: shared.metadata
     };
   }
 
-  const candidateByMidi = new Map<number, { score: number; label?: string }>();
-  for (const note of candidateNotes) {
-    candidateByMidi.set(Math.round(note.midi), {
-      score: note.score ?? frame.confidence ?? 0,
-      label: note.note_id ?? undefined
-    });
-  }
+  const assignments = matchCandidatesToTargets(target.midiNotes, input.candidates, target.semitoneTolerance);
+  const notes = target.midiNotes.map((midi, targetIndex) => {
+    const assignment = assignments.byTargetIndex.get(targetIndex) ?? null;
+    const assignedCandidate = assignment !== null ? input.candidates[assignment.candidateIndex] : null;
+    const bestCandidate = input.candidates[0] ?? null;
+    const competitor = resolveBestCompetitorForTarget(input.candidates, assignment?.candidateIndex ?? null);
+    const acceptedMidi = assignedCandidate?.midi ?? null;
+    const detectedMidi = shared.detectedMidi ?? bestCandidate?.midi ?? null;
+    const matchedDistance = acceptedMidi !== null ? acceptedMidi - midi : null;
+    const rawDistance = detectedMidi !== null ? detectedMidi - midi : null;
+    const acceptedScore = assignedCandidate?.score ?? 0;
+    const bestCompetitorScore = competitor?.score ?? 0;
+    const bestOctaveCandidate = resolveBestOctaveCompetitorForTarget(input.candidates, midi, assignment?.candidateIndex ?? null);
+    const expectedRank = assignment !== null ? assignment.candidateIndex + 1 : null;
+    const rawTop1 = bestCandidate?.midi ?? null;
+    const top1CandidateAccepted = assignedCandidate !== null && rawTop1 !== null && assignedCandidate.midi === rawTop1;
 
-  const noteEvidences: ValidatorFrameCandidateEvidence[] = target.midiNotes.map((midi) => {
-    const roundedMidi = Math.round(midi);
-    const matched = candidateByMidi.get(roundedMidi);
-    const bestCandidate = candidateNotes[0];
-    const competitor = candidateNotes.find((candidate) => Math.round(candidate.midi) !== roundedMidi) ?? null;
-    const candidateIndex = candidateNotes.findIndex((candidate) => Math.round(candidate.midi) === roundedMidi);
-    const detectedMidi = frame.midi_estimate !== null && Number.isFinite(frame.midi_estimate) ? frame.midi_estimate : null;
     return {
-      timestampMs,
-      midi: roundedMidi,
-      detectorAccepted: detectedMidi !== null || candidateNotes.length > 0,
-      detectorConfidence: frame.confidence ?? 0,
+      timestampMs: input.timestampMs,
+      midi: Math.round(midi),
       detectedMidi,
-      detectedString: frame.detected_string ?? null,
-      detectedFret: frame.detected_fret ?? null,
-      expectedCentsError: detectedMidi !== null ? (detectedMidi - roundedMidi) * 100 : null,
-      expectedScore: matched?.score ?? (bestCandidate?.score ?? frame.confidence ?? 0),
-      bestCompetitorScore: competitor?.score ?? 0,
+      detectedString: shared.detectedString,
+      detectedFret: shared.detectedFret,
+      targetSemitoneTolerance: target.semitoneTolerance,
+      matchedMidi: acceptedMidi,
+      matchedSemitoneDistance: matchedDistance,
+      detectorAccepted: shared.detectorAccepted,
+      detectorConfidence: shared.detectorConfidence,
+      expectedCentsError: matchedDistance !== null ? matchedDistance * 100 : rawDistance !== null ? rawDistance * 100 : null,
+      expectedScore: acceptedScore,
+      bestCompetitorScore,
       bestCompetitorMidi: competitor?.midi ?? null,
-      bestOctaveScore: bestCandidate?.score ?? 0,
-      neighborScore: competitor?.score ?? 0,
+      bestOctaveScore: bestOctaveCandidate?.score ?? 0,
+      neighborScore: bestCompetitorScore,
       samePitchAltScore: null,
-      expectedRank: candidateIndex >= 0 ? candidateIndex + 1 : null,
-      expectedTop1: Math.round(candidateNotes[0]?.midi ?? Number.NaN) === roundedMidi,
-      expectedTop3: candidateNotes.slice(0, 3).some((candidate) => Math.round(candidate.midi) === roundedMidi),
+      expectedRank,
+      expectedTop1: assignment !== null ? top1CandidateAccepted : false,
+      expectedTop3: assignment !== null ? assignment.candidateIndex < 3 : false,
       expectedPairwiseWinRate: null,
       octaveCompetitorOutranked: false,
-      expectedVsSourceWon: matched ? true : null,
+      expectedVsSourceWon: assignment !== null ? true : null,
       positionAmbiguous: false,
-      candidateScoreCount: candidateNotes.length,
-      sharedEvidenceAvailability: [],
-      sharedEvidenceLimitations: ['live_pitch_frame'],
-      evidenceSource: 'masp_proxy',
+      candidateScoreCount: input.candidates.length,
+      sharedEvidenceAvailability: shared.sharedEvidenceAvailability,
+      sharedEvidenceLimitations: shared.sharedEvidenceLimitations,
+      evidenceSource: shared.evidenceSource,
       spectralProbe: null,
       samePitchAltDetected: false,
       expectedPositionMatch: true
@@ -217,21 +198,139 @@ export function buildValidatorFrameEvidenceFromPitchFrame(
   });
 
   return {
-    timestampMs,
-    notes: noteEvidences,
-    rawDetectedMidis,
-    rawDetectionMaxConfidence: frame.confidence ?? null,
-    rawDetectionFrameRatio: candidateNotes.length > 0 || frame.midi_estimate !== null ? 1 : 0,
-    metadata: {
-      detectedString: frame.detected_string ?? null,
-      detectedFret: frame.detected_fret ?? null,
-      bestNoteId: frame.best_note_id ?? null
-    }
+    timestampMs: input.timestampMs,
+    notes,
+    rawDetectedMidis: input.rawDetectedMidis,
+    rawDetectionMaxConfidence: shared.detectorConfidence,
+    rawDetectionFrameRatio: shared.detectorAccepted ? 1 : 0,
+    metadata: shared.metadata
   };
 }
 
-function midiOf(candidate: { midi?: number | null }): number {
-  return typeof candidate.midi === 'number' && Number.isFinite(candidate.midi) ? Math.round(candidate.midi) : 0;
+function matchCandidatesToTargets(
+  targetMidis: number[],
+  candidates: DetectorCandidate[],
+  semitoneTolerance: number
+): {
+  byTargetIndex: Map<number, CandidateAssignment>;
+  byCandidateIndex: Map<number, CandidateAssignment>;
+} {
+  const pairings: CandidateAssignment[] = [];
+  const tolerance = Math.max(0, semitoneTolerance);
+
+  for (let targetIndex = 0; targetIndex < targetMidis.length; targetIndex += 1) {
+    const targetMidi = targetMidis[targetIndex];
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+      const candidate = candidates[candidateIndex];
+      const distanceSemitones = candidate.midi - targetMidi;
+      if (Math.abs(distanceSemitones) > tolerance + 1e-9) continue;
+      pairings.push({
+        targetIndex,
+        candidateIndex,
+        distanceSemitones
+      });
+    }
+  }
+
+  pairings.sort((left, right) => {
+    const leftCandidate = candidates[left.candidateIndex];
+    const rightCandidate = candidates[right.candidateIndex];
+    return (
+      rightCandidate.score - leftCandidate.score ||
+      Math.abs(left.distanceSemitones) - Math.abs(right.distanceSemitones) ||
+      left.candidateIndex - right.candidateIndex ||
+      left.targetIndex - right.targetIndex
+    );
+  });
+
+  const byTargetIndex = new Map<number, CandidateAssignment>();
+  const byCandidateIndex = new Map<number, CandidateAssignment>();
+
+  for (const pairing of pairings) {
+    if (byTargetIndex.has(pairing.targetIndex) || byCandidateIndex.has(pairing.candidateIndex)) {
+      continue;
+    }
+    byTargetIndex.set(pairing.targetIndex, {
+      ...pairing,
+      distanceSemitones: pairing.distanceSemitones
+    });
+    byCandidateIndex.set(pairing.candidateIndex, {
+      ...pairing,
+      distanceSemitones: pairing.distanceSemitones
+    });
+  }
+
+  return {
+    byTargetIndex,
+    byCandidateIndex
+  };
+}
+
+function resolveBestCompetitorForTarget(
+  candidates: DetectorCandidate[],
+  assignedCandidateIndex: number | null
+): DetectorCandidate | null {
+  const competitorCandidates = candidates.filter((_, index) => index !== assignedCandidateIndex);
+  return competitorCandidates[0] ?? null;
+}
+
+function resolveBestOctaveCompetitorForTarget(
+  candidates: DetectorCandidate[],
+  targetMidi: number,
+  assignedCandidateIndex: number | null
+): DetectorCandidate | null {
+  const octaveCandidates = candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ index, candidate }) => index !== assignedCandidateIndex && Math.abs(Math.abs(candidate.midi - targetMidi) - 12) <= 0.5)
+    .sort((left, right) => right.candidate.score - left.candidate.score || left.index - right.index);
+  return octaveCandidates[0]?.candidate ?? null;
+}
+
+function collectDetectorCandidatesFromPitchResult(result: PitchDetectorResult): DetectorCandidate[] {
+  const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+  return candidates
+    .map((candidate) => ({
+      midi: candidate.midi,
+      score: candidate.confidence ?? 0,
+      label: candidate.label ?? null,
+      stringId: finiteNumberOrNull((candidate as { stringId?: number }).stringId),
+      fret: finiteNumberOrNull((candidate as { fret?: number }).fret)
+    }))
+    .filter((candidate): candidate is DetectorCandidate => Number.isFinite(candidate.midi))
+    .sort((left, right) => right.score - left.score || left.midi - right.midi);
+}
+
+function collectDetectorCandidatesFromPitchFrame(frame: PitchFrame): DetectorCandidate[] {
+  const selectedNotes = Array.isArray(frame.selected_notes) ? frame.selected_notes : [];
+  const candidates: DetectorCandidate[] = selectedNotes
+    .filter((note): note is NonNullable<typeof selectedNotes>[number] & { midi: number } => Number.isFinite(note.midi))
+    .map((note) => ({
+      midi: note.midi,
+      score: note.score ?? frame.confidence ?? 0,
+      label: note.note_id ?? null,
+      stringId: finiteNumberOrNull(note.string),
+      fret: finiteNumberOrNull(note.fret)
+    }))
+    .sort((left, right) => right.score - left.score || left.midi - right.midi);
+
+  if (Number.isFinite(frame.midi_estimate ?? Number.NaN)) {
+    const midi = frame.midi_estimate as number;
+    if (!candidates.some((candidate) => candidate.midi === midi)) {
+      candidates.unshift({
+        midi,
+        score: frame.confidence ?? 0,
+        label: frame.best_note_id ?? null,
+        stringId: finiteNumberOrNull(frame.detected_string),
+        fret: finiteNumberOrNull(frame.detected_fret)
+      });
+    }
+  }
+
+  return candidates.sort((left, right) => right.score - left.score || left.midi - right.midi);
+}
+
+function finiteNumberOrNull(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function uniqueSortedNumbers(values: number[]): number[] {

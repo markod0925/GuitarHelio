@@ -17,6 +17,9 @@ function noteFrame(midi: number, timestampMs: number, overrides: Partial<Validat
   return {
     timestampMs,
     midi,
+    targetSemitoneTolerance: overrides.targetSemitoneTolerance ?? 1,
+    matchedMidi: overrides.matchedMidi ?? midi,
+    matchedSemitoneDistance: overrides.matchedSemitoneDistance ?? 0,
     detectorAccepted: overrides.detectorAccepted ?? true,
     detectorConfidence: overrides.detectorConfidence ?? 0.95,
     detectedMidi: overrides.detectedMidi ?? midi,
@@ -64,7 +67,8 @@ function frameEvidence(timestampMs: number, notes: Array<ValidatorFrameCandidate
 function monoTarget(midi: number): ValidationTarget {
   return {
     mode: 'mono',
-    midiNotes: [midi]
+    midiNotes: [midi],
+    semitoneTolerance: 1
   };
 }
 
@@ -72,6 +76,7 @@ function polyTarget(midis: number[], overrides: Partial<ValidationTarget> = {}):
   return {
     mode: 'poly',
     midiNotes: midis,
+    semitoneTolerance: overrides.semitoneTolerance ?? 1,
     ...overrides
   };
 }
@@ -101,8 +106,72 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.acceptedPostGate).toBe(true);
     expect(output.targetMode).toBe('mono');
     expect(output.validatedNotes).toEqual([60]);
+    expect(output.matchedNotes).toEqual([60]);
     expect(output.missingNotes).toEqual([]);
     expect(output.rejectStage).toBe('none');
+  });
+
+  test('accepts a mono target when the matched note stays within easy tolerance', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    target.semitoneTolerance = 3;
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectedMidi: 63, matchedMidi: 63, expectedCentsError: 300, matchedSemitoneDistance: 3 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectedMidi: 63, matchedMidi: 63, expectedCentsError: 300, matchedSemitoneDistance: 3 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectedMidi: 63, matchedMidi: 63, expectedCentsError: 300, matchedSemitoneDistance: 3 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(true);
+    expect(output.validatedNotes).toEqual([60]);
+    expect(output.matchedNotes).toEqual([63]);
+    expect(validator.getState().noteDecisions[0]?.evidence.matchedMidi).toBe(63);
+  });
+
+  test('rejects a mono target when the matched note falls outside medium tolerance', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    target.semitoneTolerance = 1;
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2, expectedScore: 100, bestCompetitorScore: 20 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2, expectedScore: 100, bestCompetitorScore: 20 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2, expectedScore: 100, bestCompetitorScore: 20 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectStage).toBe('note_level');
+    expect(output.missingNotes).toEqual([60]);
+  });
+
+  test('accepts a mono target with hard tolerance at half a semitone', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    target.semitoneTolerance = 0.5;
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectedMidi: 60.4, matchedMidi: 60.4, expectedCentsError: 40, matchedSemitoneDistance: 0.4 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectedMidi: 60.4, matchedMidi: 60.4, expectedCentsError: 40, matchedSemitoneDistance: 0.4 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectedMidi: 60.4, matchedMidi: 60.4, expectedCentsError: 40, matchedSemitoneDistance: 0.4 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(true);
+    expect(output.matchedNotes).toEqual([60]);
+  });
+
+  test('rejects a mono target with hard tolerance when pitch exceeds half a semitone', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    target.semitoneTolerance = 0.5;
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectedMidi: 60.6, matchedMidi: 60.6, expectedCentsError: 60, matchedSemitoneDistance: 0.6, expectedScore: 100, bestCompetitorScore: 20 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectedMidi: 60.6, matchedMidi: 60.6, expectedCentsError: 60, matchedSemitoneDistance: 0.6, expectedScore: 100, bestCompetitorScore: 20 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectedMidi: 60.6, matchedMidi: 60.6, expectedCentsError: 60, matchedSemitoneDistance: 0.6, expectedScore: 100, bestCompetitorScore: 20 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectStage).toBe('note_level');
   });
 
   test('rejects a mono target when the competitor wins', () => {
@@ -135,6 +204,44 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.targetMode).toBe('poly');
     expect(output.validatedNotes).toEqual([60, 64]);
     expect(output.noteValidationRatio).toBe(1);
+  });
+
+  test('accepts a poly target when one note shifts within easy tolerance', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = polyTarget([60, 64], { minNoteRatio: 1, semitoneTolerance: 3 });
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2 }), noteFrame(64, 0)]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2 }), noteFrame(64, 16)]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectedMidi: 62, matchedMidi: 62, expectedCentsError: 200, matchedSemitoneDistance: 2 }), noteFrame(64, 32)]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(true);
+    expect(output.validatedNotes).toEqual([60, 64]);
+    expect(output.matchedNotes).toEqual([62, 64]);
+  });
+
+  test('does not let one detected note satisfy two expected notes', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = polyTarget([60, 61], { minNoteRatio: 1, semitoneTolerance: 3 });
+    const frame: PitchFrame = {
+      t_seconds: 0.096,
+      midi_estimate: 60.5,
+      confidence: 1,
+      selected_notes: [
+        { midi: 60.5, score: 100, note_id: 'candidate-60_5' }
+      ],
+      chord_scores: []
+    };
+    const targetEvidence = buildValidatorFrameEvidenceFromPitchFrame(frame, 0, target);
+
+    validator.setTarget(target);
+    validator.update({ timestampMs: 0, frameEvidence: targetEvidence, target });
+    const output = validator.update({ timestampMs: 16, frameEvidence: targetEvidence, target });
+
+    expect(output.accepted).toBe(false);
+    expect(output.validatedNotes.length).toBe(1);
+    expect(output.missingNotes.length).toBe(1);
   });
 
   test('rejects a poly target when one note stays below threshold', () => {

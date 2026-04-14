@@ -54,6 +54,8 @@ export type ValidationWindowPhase = 'idle' | 'armed' | 'accepted' | 'expired';
 export type ValidationWindowState = {
   phase: ValidationWindowPhase;
   deadTime: boolean;
+  difficulty: 'Easy' | 'Medium' | 'Hard' | null;
+  semitoneTolerance: number | null;
   targetKey: string | null;
   targetIds: string[];
   targetMode: 'mono' | 'poly' | null;
@@ -85,6 +87,7 @@ export type GameplayValidationDebugCandidate = {
   score: number;
   rank: number;
   expected: boolean;
+  acceptable: boolean;
 };
 
 export type GameplayValidationDebugSnapshot = {
@@ -115,6 +118,8 @@ export type GameplayValidationDebugSnapshot = {
     armCount: number;
   };
   target: {
+    difficulty: 'Easy' | 'Medium' | 'Hard' | null;
+    semitoneTolerance: number | null;
     expectedMidis: number[];
     expectedNames: string[];
     targetKey: string | null;
@@ -148,6 +153,14 @@ export type GameplayValidationDebugSnapshot = {
     gateRejectReason: string | null;
     confidence: number;
     summary: string;
+    noteDecisions: Array<{
+      midi: number;
+      accepted: boolean;
+      decisionReason: string;
+      matchedMidi: number | null;
+      matchedSemitoneDistance: number | null;
+      targetSemitoneTolerance: number;
+    }>;
   };
 };
 
