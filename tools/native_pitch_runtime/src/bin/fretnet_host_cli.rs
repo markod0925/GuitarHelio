@@ -8,7 +8,7 @@ use native_pitch_runtime::{
         benchmark_with_config, run_with_config, HostBenchmarkConfig, HostBenchmarkResult,
         HostExecutionMode, HostFramePrediction, HostRunConfig, HostRunResult,
     },
-    resolve_default_fretnet_model_path, RuntimeConfig,
+    resolve_default_fretnet_model_path, PyinConfig, PyinPadModeConfig, RuntimeConfig,
 };
 use serde::Serialize;
 
@@ -23,6 +23,12 @@ enum CliMode {
 enum CliFormat {
     Json,
     Csv,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CliPyinPadMode {
+    Constant,
+    Reflect,
 }
 
 #[derive(Debug, Parser)]
@@ -61,6 +67,24 @@ struct Args {
     benchmark_iterations: usize,
     #[arg(long, default_value = "speaker")]
     audio_input_mode: String,
+    #[arg(long)]
+    pyin_fmin_hz: Option<f64>,
+    #[arg(long)]
+    pyin_fmax_hz: Option<f64>,
+    #[arg(long)]
+    pyin_frame_length: Option<usize>,
+    #[arg(long)]
+    pyin_win_length: Option<usize>,
+    #[arg(long)]
+    pyin_hop_length: Option<usize>,
+    #[arg(long)]
+    pyin_resolution: Option<f64>,
+    #[arg(long)]
+    pyin_fill_unvoiced: Option<f64>,
+    #[arg(long)]
+    pyin_center: bool,
+    #[arg(long, value_enum)]
+    pyin_pad_mode: Option<CliPyinPadMode>,
     #[arg(long)]
     no_flush_tail: bool,
     #[arg(long)]
@@ -287,8 +311,11 @@ fn build_runtime_config(
             .map(|path| path.display().to_string())
     };
 
+    let backend_name = backend;
+    let pyin = build_pyin_config(args, backend_name.as_str());
+
     Ok(RuntimeConfig {
-        backend_name: backend,
+        backend_name,
         sample_rate: runtime_sample_rate,
         block_size: args.block_size.max(1),
         spectral_model_json: args
@@ -306,7 +333,61 @@ fn build_runtime_config(
             .as_ref()
             .map(|path| path.display().to_string()),
         max_capture_buffer_seconds: None,
+        pyin,
     })
+}
+
+fn build_pyin_config(args: &Args, backend_name: &str) -> Option<PyinConfig> {
+    if backend_name != "pyin" {
+        return None;
+    }
+    let mut pyin = PyinConfig::default();
+    let mut touched = false;
+    if let Some(value) = args.pyin_fmin_hz {
+        pyin.fmin_hz = value;
+        touched = true;
+    }
+    if let Some(value) = args.pyin_fmax_hz {
+        pyin.fmax_hz = value;
+        touched = true;
+    }
+    if let Some(value) = args.pyin_frame_length {
+        pyin.frame_length = Some(value);
+        touched = true;
+    }
+    if let Some(value) = args.pyin_win_length {
+        pyin.win_length = Some(value);
+        touched = true;
+    }
+    if let Some(value) = args.pyin_hop_length {
+        pyin.hop_length = Some(value);
+        touched = true;
+    }
+    if let Some(value) = args.pyin_resolution {
+        pyin.resolution = Some(value);
+        touched = true;
+    }
+    if let Some(value) = args.pyin_fill_unvoiced {
+        pyin.fill_unvoiced = Some(value);
+        touched = true;
+    }
+    if args.pyin_center {
+        pyin.center = true;
+        touched = true;
+    }
+    if let Some(value) = args.pyin_pad_mode {
+        pyin.pad_mode = match value {
+            CliPyinPadMode::Constant => PyinPadModeConfig::Constant,
+            CliPyinPadMode::Reflect => PyinPadModeConfig::Reflect,
+        };
+        touched = true;
+    }
+
+    if touched {
+        Some(pyin)
+    } else {
+        None
+    }
 }
 
 fn collect_note_events(

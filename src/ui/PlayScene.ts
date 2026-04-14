@@ -3,6 +3,7 @@ import {
   BALL_GHOST_TRAIL_COUNT,
   BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS,
   BALL_GHOST_TRAIL_SAMPLE_STEP,
+  PLAY_SCENE_ENABLE_DEBUG_OVERLAY,
   PLAY_SCENE_MINIMAP_ENABLED,
   DIFFICULTY_PRESETS,
   PLAY_SCENE_NOTE_START_CUTOFF_SECONDS
@@ -21,6 +22,11 @@ import {
   type RuntimeTransition,
   type RuntimeUpdate
 } from '../game/stateMachine';
+import {
+  RealtimeGameplayValidator,
+  type RuntimeValidatorOutput,
+  type RuntimeValidatorStateSnapshot
+} from '../gameplay/validation';
 import { generateTargetNotesFromMidiTab } from '../guitar/tabTargetGenerator';
 import { fetchMidiArrayBuffer, loadMidiFromArrayBuffer, type LoadedMidi } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
@@ -39,9 +45,12 @@ import type {
   HeldHitAnalysis,
   HitDebugSnapshot,
   Layout,
+  GameplayValidationDebugRetainedSnapshot,
+  GameplayValidationDebugSnapshot,
   MutablePoint,
   PlaybackMode,
   SceneData,
+  ValidationWindowState,
 } from './playSceneTypes';
 import { RoundedBox } from './RoundedBox';
 import { GameplayController } from './play/controllers/GameplayController';
@@ -107,6 +116,9 @@ export class PlayScene extends Phaser.Scene {
   public playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
   public audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
   public detectorLegacyFallback = false;
+  public readonly realtimeGameplayValidator = new RealtimeGameplayValidator();
+  public realtimeValidationOutput?: RuntimeValidatorOutput;
+  public realtimeValidationState?: RuntimeValidatorStateSnapshot;
 
   public laneLayer?: Phaser.GameObjects.Graphics;
   public ball?: Phaser.GameObjects.Arc;
@@ -140,6 +152,8 @@ export class PlayScene extends Phaser.Scene {
   public lastHudLiveScoreText = '';
   public debugButton?: RoundedBox;
   public debugButtonLabel?: Phaser.GameObjects.Text;
+  public debugOverlayToggleButton?: RoundedBox;
+  public debugOverlayToggleLabel?: Phaser.GameObjects.Text;
   public resultsOverlay?: Phaser.GameObjects.Container;
   public pauseOverlay?: Phaser.GameObjects.Container;
   public pauseButton?: RoundedBox;
@@ -205,6 +219,11 @@ export class PlayScene extends Phaser.Scene {
   public audioProfilingSnapshot?: PitchDetectorProfilingSnapshot;
   public audioProfilingSnapshotAtMs = 0;
   public hitDebugSnapshot?: HitDebugSnapshot;
+  public validationWindowState?: ValidationWindowState;
+  public gameplayValidationDebugSnapshot?: GameplayValidationDebugSnapshot;
+  public gameplayValidationDebugLastAccepted?: GameplayValidationDebugRetainedSnapshot;
+  public gameplayValidationDebugLastExpired?: GameplayValidationDebugRetainedSnapshot;
+  public gameplayValidationDebugLastRejected?: GameplayValidationDebugRetainedSnapshot;
   public lastRuntimeTransition: RuntimeTransition = 'none';
   public lastRuntimeTransitionAtMs = 0;
   public lastAudioSeekDebug?: AudioSeekDebugInfo;
@@ -320,6 +339,30 @@ export class PlayScene extends Phaser.Scene {
     this.debugButton.on('pointerdown', () => {
       void this.playDebugTargetNote();
     });
+    this.debugOverlayToggleButton = new RoundedBox(
+      this,
+      0,
+      0,
+      Math.max(132, Math.floor(this.scale.width * 0.16)),
+      36,
+      0x0f4c81,
+      0.9
+    )
+      .setStrokeStyle(2, 0x38bdf8, 0.65)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(350);
+    this.debugOverlayToggleLabel = this.add
+      .text(0, 0, `Overlay: ${this.debugOverlayEnabled ? 'ON' : 'OFF'}`, {
+        color: '#eff6ff',
+        fontFamily: 'Montserrat, sans-serif',
+        fontStyle: 'bold',
+        fontSize: `${Math.max(12, Math.floor(this.scale.width * 0.0135))}px`
+      })
+      .setOrigin(0.5)
+      .setDepth(351);
+    this.debugOverlayToggleButton.on('pointerdown', () => {
+      this.toggleDebugOverlay();
+    });
     this.pauseButton = new RoundedBox(
       this,
       0,
@@ -348,10 +391,12 @@ export class PlayScene extends Phaser.Scene {
     });
     this.syncPauseButtonIcon();
     this.createPlaybackSpeedSlider();
-    if (this.debugOverlayEnabled) {
-      this.createDebugOverlay();
-      this.updateDebugOverlay();
+    if (PLAY_SCENE_ENABLE_DEBUG_OVERLAY) {
       this.input.keyboard?.on('keydown-F3', this.toggleDebugOverlay, this);
+      if (this.debugOverlayEnabled) {
+        this.createDebugOverlay();
+        this.updateDebugOverlay();
+      }
     }
 
     this.drawStaticLanes();

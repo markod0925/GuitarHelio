@@ -70,6 +70,7 @@ fn ac14_runtime_config(sample_rate: u32, block_size: usize) -> RuntimeConfig {
         fretnet_model_path: None,
         fretnet_ort_library_path: None,
         max_capture_buffer_seconds: None,
+        pyin: None,
     }
 }
 
@@ -167,6 +168,40 @@ fn host_harness_benchmark_reports_iterations() {
 }
 
 #[test]
+fn pyin_streaming_is_deterministic_for_same_input() {
+    for sample_rate in [48_000_u32, 44_100_u32, 32_000_u32] {
+        let block_size = 1_024_usize;
+        let audio = synthetic_audio(sample_rate, block_size * 64, 110.0);
+        let runtime_cfg = RuntimeConfig {
+            backend_name: "pyin".to_owned(),
+            sample_rate,
+            block_size,
+            spectral_model_json: None,
+            audio_input_mode: Some("speaker".to_owned()),
+            masp_assets_dir: None,
+            fretnet_model_path: None,
+            fretnet_ort_library_path: None,
+            max_capture_buffer_seconds: None,
+            pyin: None,
+        };
+        let run_cfg = HostRunConfig {
+            mode: HostExecutionMode::Streaming,
+            block_size,
+            callback_size: 256,
+            flush_tail: true,
+            capture_start_time_sec: 0.0,
+        };
+
+        let run_a = run_with_config(&runtime_cfg, &audio, sample_rate, &run_cfg).expect("run A");
+        let run_b = run_with_config(&runtime_cfg, &audio, sample_rate, &run_cfg).expect("run B");
+        assert_eq!(
+            normalize_frames(&run_a.frames),
+            normalize_frames(&run_b.frames)
+        );
+    }
+}
+
+#[test]
 fn fretnet_streaming_repeatability_when_model_is_available() {
     let Some(model_path) = resolve_default_fretnet_model_path() else {
         eprintln!("skipping fretnet repeatability test because no model was found");
@@ -186,6 +221,7 @@ fn fretnet_streaming_repeatability_when_model_is_available() {
         fretnet_model_path: Some(model_path.display().to_string()),
         fretnet_ort_library_path: None,
         max_capture_buffer_seconds: None,
+        pyin: None,
     };
     let run_cfg = HostRunConfig {
         mode: HostExecutionMode::Streaming,
@@ -224,6 +260,7 @@ fn fretnet_streaming_tolerates_leading_silence_when_model_is_available() {
         fretnet_model_path: Some(model_path.display().to_string()),
         fretnet_ort_library_path: None,
         max_capture_buffer_seconds: None,
+        pyin: None,
     };
     let run_cfg = HostRunConfig {
         mode: HostExecutionMode::Streaming,

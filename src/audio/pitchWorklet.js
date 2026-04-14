@@ -44,6 +44,17 @@ const DETECTOR_PRESETS = {
     decayEnergyFactor: 0.55,
     decayCorrelationThreshold: 0.52
   },
+  pyin: {
+    windowSeconds: 2048 / 48000,
+    chunkSeconds: 256 / 48000,
+    minFrequencyHz: 75,
+    maxFrequencyHz: 1200,
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
+  },
   fretnet: {
     windowSeconds: 4096 / 48000,
     chunkSeconds: 512 / 22050,
@@ -197,6 +208,9 @@ class PitchProcessor extends AudioWorkletProcessor {
   resolvePitchPreset(detectorPreset) {
     if (detectorPreset === 'ac14') {
       return PitchDetectorPreset.Ac14;
+    }
+    if (detectorPreset === 'pyin') {
+      return PitchDetectorPreset.Baseline;
     }
     if (detectorPreset === MASP_GAME_SCENE_PRESET) {
       return PitchDetectorPreset.Baseline;
@@ -1367,6 +1381,7 @@ function sanitizeMaspContext(value) {
 
 function normalizeDetectorPreset(value) {
   if (value === 'ac14') return 'ac14';
+  if (value === 'pyin') return 'pyin';
   if (value === 'fretnet') return 'fretnet';
   if (value === MASP_GAME_SCENE_PRESET) return MASP_GAME_SCENE_PRESET;
   if (value === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
@@ -1375,6 +1390,7 @@ function normalizeDetectorPreset(value) {
 
 function getDetectorPresetConfig(detectorPreset) {
   if (detectorPreset === 'ac14') return DETECTOR_PRESETS.ac14;
+  if (detectorPreset === 'pyin') return DETECTOR_PRESETS.pyin;
   if (detectorPreset === 'fretnet') return DETECTOR_PRESETS.fretnet;
   if (detectorPreset === MASP_GAME_SCENE_PRESET) return DETECTOR_PRESETS[MASP_GAME_SCENE_PRESET];
   if (detectorPreset === 'spectral_game_runtime_unified_v3') {

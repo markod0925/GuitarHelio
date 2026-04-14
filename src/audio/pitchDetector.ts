@@ -29,6 +29,7 @@ export type PitchDetectorPreset =
   | 'baseline'
   | 'ac14'
   | 'spectral_game_runtime_unified_v3'
+  | 'pyin'
   | 'fretnet'
   | typeof MASP_GAME_SCENE_PRESET;
 
@@ -157,6 +158,13 @@ const FALLBACK_PRESET_CONFIG: Record<
     decayCorrelationThreshold: 0.6288579679610562
   },
   spectral_game_runtime_unified_v3: {
+    energyThreshold: 0.0032,
+    correlationThreshold: 0.58,
+    decayGraceFrames: 8,
+    decayEnergyFactor: 0.55,
+    decayCorrelationThreshold: 0.52
+  },
+  pyin: {
     energyThreshold: 0.0032,
     correlationThreshold: 0.58,
     decayGraceFrames: 8,
@@ -416,6 +424,7 @@ export class PitchDetectorService {
           const rustManagedFrame = this.detectorPreset === 'ac14' && payload.reference_policy_applied === true;
           const spectralRawFrame =
             this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+            this.detectorPreset === 'pyin' ||
             this.detectorPreset === 'fretnet' ||
             this.detectorPreset === MASP_GAME_SCENE_PRESET;
           const bypassPostProcessing = rustManagedFrame || spectralRawFrame;
@@ -945,6 +954,7 @@ export class PitchDetectorService {
         midi === null || !Number.isFinite(midi)
           ? null
           : this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+            this.detectorPreset === 'pyin' ||
             this.detectorPreset === 'fretnet' ||
             this.detectorPreset === MASP_GAME_SCENE_PRESET
             ? midi
@@ -952,6 +962,7 @@ export class PitchDetectorService {
       const shouldRoundMidi =
         this.roundMidi &&
         this.detectorPreset !== 'spectral_game_runtime_unified_v3' &&
+        this.detectorPreset !== 'pyin' &&
         this.detectorPreset !== 'fretnet' &&
         this.detectorPreset !== MASP_GAME_SCENE_PRESET;
       const frame: PitchFrame = {
@@ -1339,7 +1350,7 @@ function sanitizeWorkletProfilingPayload(
 }
 
 function sanitizePitchDetectorPreset(value: unknown): PitchDetectorPreset | null {
-  if (value === 'baseline' || value === 'ac14' || value === 'spectral_game_runtime_unified_v3' || value === 'fretnet' || value === MASP_GAME_SCENE_PRESET) {
+  if (value === 'baseline' || value === 'ac14' || value === 'spectral_game_runtime_unified_v3' || value === 'pyin' || value === 'fretnet' || value === MASP_GAME_SCENE_PRESET) {
     return value;
   }
   return null;

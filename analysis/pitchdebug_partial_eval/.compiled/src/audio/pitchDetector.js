@@ -1,0 +1,1117 @@
+import { DEFAULT_AUDIO_INPUT_MODE } from '../types/audioInputMode.js';
+import { applyPitchCalibration } from './pitchCalibration.js';
+import { MASP_GAME_SCENE_PRESET, sanitizeMaspValidationContext } from './maspShared.js';
+import { ensureNativePitchInputPermission, isNativePitchVerboseDiagnosticsEnabled, pollNativePitchResults, resetNativePitchDetector, shouldUseNativePitchInput, startNativePitchCapture, stopNativePitchCapture, updateNativePitchGameplayContext } from '../platform/nativePitchInput.js';
+import { evaluateNativeProcessingProgress } from '../platform/nativePitchProcessing.js';
+import { runtimeLog, toRuntimeErrorMessage } from '../app/runtimeLog.js';
+import dspCoreWasmUrl from './dsp-core/gh_dsp_core_bg.wasm?url';
+import pitchWorkletUrl from './pitchWorklet.js?worker&url';
+let dspWasmBytesPromise = null;
+const FALLBACK_PRESET_CONFIG = {
+    baseline: {
+        energyThreshold: 0.0032,
+        correlationThreshold: 0.58,
+        decayGraceFrames: 8,
+        decayEnergyFactor: 0.55,
+        decayCorrelationThreshold: 0.52
+    },
+    ac14: {
+        energyThreshold: 0.003074202393734413,
+        correlationThreshold: 0.6559736283225794,
+        decayGraceFrames: 4,
+        decayEnergyFactor: 0.4157769062463687,
+        decayCorrelationThreshold: 0.6288579679610562
+    },
+    spectral_game_runtime_unified_v3: {
+        energyThreshold: 0.0032,
+        correlationThreshold: 0.58,
+        decayGraceFrames: 8,
+        decayEnergyFactor: 0.55,
+        decayCorrelationThreshold: 0.52
+    },
+    pyin: {
+        energyThreshold: 0.0032,
+        correlationThreshold: 0.58,
+        decayGraceFrames: 8,
+        decayEnergyFactor: 0.55,
+        decayCorrelationThreshold: 0.52
+    },
+    fretnet: {
+        energyThreshold: 0.0032,
+        correlationThreshold: 0.58,
+        decayGraceFrames: 8,
+        decayEnergyFactor: 0.55,
+        decayCorrelationThreshold: 0.52
+    },
+    [MASP_GAME_SCENE_PRESET]: {
+        energyThreshold: 0.0032,
+        correlationThreshold: 0.58,
+        decayGraceFrames: 8,
+        decayEnergyFactor: 0.55,
+        decayCorrelationThreshold: 0.52
+    }
+};
+export class PitchDetectorService {
+    ctx;
+    listeners = new Set();
+    profilingListeners = new Set();
+    workletNode = null;
+    analyser = null;
+    analyserBuffer = null;
+    analyserRafId = null;
+    sink = null;
+    workletReady = false;
+    initialized = false;
+    roundMidi;
+    smoothingAlpha;
+    calibrationProfile;
+    audioInputMode;
+    enableDspCore;
+    enableEchoSuppression;
+    enableProfiling;
+    detectorPreset;
+    spectralModel;
+    smoothedMidiEstimate = null;
+    legacyFallback = false;
+    legacyFallbackReason = null;
+    micTapNode = null;
+    referenceTapNode = null;
+    channelMergerNode = null;
+    silentReferenceSource = null;
+    backendStatusResolver = null;
+    backendStatusTimeoutId = null;
+    analyserDecayGraceFrames = 0;
+    maspValidationContext = null;
+    useNativePitchInput;
+    nativeDiagnostics = null;
+    nativePollTimerId = null;
+    nativePollInFlight = false;
+    nativeStopInFlight = null;
+    nativeStartRequestId = 0;
+    nativeBackendRunning = false;
+    nativePollCount = 0;
+    nativeResultCount = 0;
+    nativeLastSummaryAtMs = 0;
+    nativeLastProcessingProgressState = null;
+    nativeVerboseDiagnostics = isNativePitchVerboseDiagnosticsEnabled();
+    constructor(ctx, options = {}) {
+        this.ctx = ctx;
+        this.roundMidi = options.roundMidi ?? true;
+        this.smoothingAlpha = clamp01(options.smoothingAlpha ?? 0);
+        this.calibrationProfile = options.calibrationProfile ?? null;
+        this.audioInputMode = options.audioInputMode ?? DEFAULT_AUDIO_INPUT_MODE;
+        this.enableDspCore = options.enableDspCore ?? true;
+        this.enableEchoSuppression = options.enableEchoSuppression ?? true;
+        this.enableProfiling = options.enableProfiling ?? false;
+        this.detectorPreset = options.detectorPreset ?? 'baseline';
+        this.spectralModel = options.spectralModel ?? null;
+        this.useNativePitchInput =
+            shouldUseNativePitchInput() &&
+                this.enableDspCore &&
+                this.detectorPreset !== 'baseline';
+    }
+    async init() {
+        if (this.useNativePitchInput) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'INFO', 'Initializing native pitch backend.', {
+                detectorPreset: this.detectorPreset,
+                sampleRate: this.ctx.sampleRate,
+                audioInputMode: this.audioInputMode
+            });
+            this.workletReady = false;
+            this.legacyFallback = false;
+            this.legacyFallbackReason = null;
+            this.initialized = true;
+            return;
+        }
+        this.workletReady = false;
+        this.legacyFallback = false;
+        this.legacyFallbackReason = null;
+        if (typeof AudioWorkletNode !== 'undefined' && this.ctx.audioWorklet) {
+            try {
+                await this.ctx.audioWorklet.addModule(pitchWorkletUrl);
+                this.workletReady = true;
+            }
+            catch (error) {
+                // Some Android WebView builds fail to load worklet modules.
+                // Continue with the analyser fallback instead of failing mic setup.
+                runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Pitch worklet unavailable, using analyser fallback.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) });
+                if (this.enableDspCore) {
+                    this.legacyFallback = true;
+                    this.legacyFallbackReason = toErrorMessage(error);
+                }
+            }
+        }
+        else if (this.enableDspCore) {
+            this.legacyFallback = true;
+            this.legacyFallbackReason = 'AudioWorklet unavailable';
+        }
+        this.initialized = true;
+    }
+    isLegacyFallback() {
+        return this.legacyFallback;
+    }
+    getLegacyFallbackReason() {
+        return this.legacyFallbackReason;
+    }
+    updateMaspValidationContext(context) {
+        this.maspValidationContext = sanitizeMaspValidationContext(context);
+        if (this.useNativePitchInput) {
+            void updateNativePitchGameplayContext(this.maspValidationContext).catch((error) => {
+                runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Failed to update native MASP gameplay context.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) });
+            });
+            return;
+        }
+        this.postMaspValidationContextToWorklet(this.maspValidationContext);
+    }
+    async start(source, referenceSource) {
+        if (!this.initialized)
+            throw new Error('PitchDetectorService not initialized');
+        const nativeStartRequestId = this.useNativePitchInput
+            ? this.nativeStartRequestId + 1
+            : 0;
+        if (this.useNativePitchInput) {
+            this.nativeStartRequestId = nativeStartRequestId;
+        }
+        this.stopInternal({ invalidatePendingNativeStart: false });
+        this.smoothedMidiEstimate = null;
+        this.analyserDecayGraceFrames = 0;
+        if (this.useNativePitchInput) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'INFO', 'Starting native pitch backend.', {
+                detectorPreset: this.detectorPreset,
+                sampleRate: this.ctx.sampleRate,
+                audioInputMode: this.audioInputMode
+            });
+            await this.startNativeBackend(nativeStartRequestId);
+            return;
+        }
+        if (!source) {
+            throw new Error('Microphone source node is required for WebAudio pitch backend.');
+        }
+        const sink = this.ctx.createGain();
+        sink.gain.value = 0;
+        sink.connect(this.ctx.destination);
+        this.sink = sink;
+        if (this.workletReady && this.enableDspCore) {
+            const backendReady = this.awaitBackendStatus(800);
+            const dspWasmBytes = await loadDspWasmBytes();
+            try {
+                const workletNode = this.createWorkletNode(dspWasmBytes);
+                this.workletNode = workletNode;
+                const micTap = this.ctx.createGain();
+                micTap.gain.value = 1;
+                source.connect(micTap);
+                this.micTapNode = micTap;
+                const merger = this.ctx.createChannelMerger(2);
+                this.channelMergerNode = merger;
+                micTap.connect(merger, 0, 0);
+                if (referenceSource) {
+                    const referenceTap = this.ctx.createGain();
+                    referenceTap.gain.value = 1;
+                    referenceSource.connect(referenceTap);
+                    referenceTap.connect(merger, 0, 1);
+                    this.referenceTapNode = referenceTap;
+                }
+                else {
+                    const silentReference = this.ctx.createConstantSource();
+                    silentReference.offset.value = 0;
+                    silentReference.connect(merger, 0, 1);
+                    silentReference.start();
+                    this.silentReferenceSource = silentReference;
+                }
+                merger.connect(workletNode);
+                workletNode.connect(sink);
+                workletNode.port.postMessage({
+                    type: 'config',
+                    audioInputMode: this.audioInputMode,
+                    enableEchoSuppression: this.enableEchoSuppression,
+                    enableProfiling: this.enableProfiling,
+                    detectorPreset: this.detectorPreset,
+                    spectralModel: this.spectralModel ?? undefined
+                });
+                this.postMaspValidationContextToWorklet(this.maspValidationContext);
+                workletNode.port.onmessage = (event) => {
+                    const payload = event.data;
+                    if (!payload)
+                        return;
+                    if (payload.type === 'status') {
+                        this.legacyFallback = Boolean(payload.legacy_fallback);
+                        this.legacyFallbackReason = this.legacyFallback ? sanitizeReason(payload.reason) : null;
+                        this.resolveBackendStatus();
+                        if (this.legacyFallback && payload.reason) {
+                            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Pitch worklet running in legacy fallback mode.', { detectorPreset: this.detectorPreset, reason: payload.reason });
+                        }
+                        return;
+                    }
+                    if (payload.type === 'profiling') {
+                        if (!this.enableProfiling || this.profilingListeners.size === 0)
+                            return;
+                        const profilingSnapshot = sanitizeWorkletProfilingPayload(payload, this.detectorPreset);
+                        if (!profilingSnapshot)
+                            return;
+                        for (const listener of this.profilingListeners)
+                            listener(profilingSnapshot);
+                        return;
+                    }
+                    if (payload.type && payload.type !== 'frame') {
+                        return;
+                    }
+                    const rustManagedFrame = this.detectorPreset === 'ac14' && payload.reference_policy_applied === true;
+                    const spectralRawFrame = this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+                        this.detectorPreset === 'pyin' ||
+                        this.detectorPreset === 'fretnet' ||
+                        this.detectorPreset === MASP_GAME_SCENE_PRESET;
+                    const bypassPostProcessing = rustManagedFrame || spectralRawFrame;
+                    const incomingMidi = sanitizeMidi(payload.midi_estimate);
+                    const normalizedMidi = bypassPostProcessing
+                        ? incomingMidi
+                        : this.normalizeMidiEstimate(incomingMidi);
+                    const correctedMidi = bypassPostProcessing
+                        ? normalizedMidi
+                        : normalizedMidi === null || !Number.isFinite(normalizedMidi)
+                            ? null
+                            : applyPitchCalibration(normalizedMidi, this.calibrationProfile);
+                    const baseFrame = {
+                        t_seconds: Number.isFinite(payload.t_seconds) ? payload.t_seconds : this.ctx.currentTime,
+                        midi_estimate: correctedMidi,
+                        confidence: correctedMidi === null ? 0 : clamp01(payload.confidence),
+                        mic_rms: sanitizeOptionalNumber(payload.mic_rms),
+                        reference_midi: sanitizeMidi(payload.reference_midi),
+                        reference_correlation: sanitizeSigned(payload.reference_correlation),
+                        energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
+                        onset_strength: clamp01(payload.onset_strength ?? 0),
+                        contamination_score: clamp01(payload.contamination_score ?? 0),
+                        rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed),
+                        detected_string: sanitizeOptionalInteger(payload.detected_string),
+                        detected_fret: sanitizeOptionalInteger(payload.detected_fret),
+                        best_note_id: sanitizeOptionalString(payload.best_note_id),
+                        selected_notes: sanitizeSelectedNotes(payload.selected_notes),
+                        chord_scores: sanitizeChordScores(payload.chord_scores)
+                    };
+                    const gated = bypassPostProcessing
+                        ? baseFrame
+                        : applyReferenceContaminationPolicy(baseFrame, this.audioInputMode);
+                    const shouldRoundMidi = this.roundMidi && !spectralRawFrame;
+                    const frame = {
+                        ...gated,
+                        midi_estimate: gated.midi_estimate === null
+                            ? null
+                            : shouldRoundMidi
+                                ? Math.round(gated.midi_estimate)
+                                : gated.midi_estimate
+                    };
+                    for (const listener of this.listeners)
+                        listener(frame);
+                };
+                this.legacyFallback = false;
+                this.legacyFallbackReason = null;
+                await backendReady;
+                return;
+            }
+            catch (error) {
+                runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Pitch worklet node failed, using analyser fallback.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) });
+                this.workletReady = false;
+                this.legacyFallback = true;
+                this.legacyFallbackReason = toErrorMessage(error);
+                this.resolveBackendStatus();
+            }
+        }
+        // Fallback path for environments without AudioWorklet support.
+        const analyser = this.ctx.createAnalyser();
+        analyser.fftSize = this.detectorPreset === 'ac14' ? 4096 : 2048;
+        analyser.smoothingTimeConstant = 0;
+        this.analyserBuffer = new Float32Array(analyser.fftSize);
+        source.connect(analyser);
+        analyser.connect(sink);
+        this.analyser = analyser;
+        this.legacyFallback = this.enableDspCore;
+        this.legacyFallbackReason = this.enableDspCore ? this.legacyFallbackReason ?? 'Worklet backend unavailable' : null;
+        this.resolveBackendStatus();
+        this.scheduleAnalyserFrame();
+    }
+    stop() {
+        this.stopInternal({ invalidatePendingNativeStart: true });
+    }
+    stopInternal(options) {
+        if (this.useNativePitchInput && options.invalidatePendingNativeStart) {
+            this.nativeStartRequestId += 1;
+        }
+        if (this.nativePollTimerId !== null) {
+            window.clearInterval(this.nativePollTimerId);
+            this.nativePollTimerId = null;
+        }
+        this.nativePollInFlight = false;
+        if (this.useNativePitchInput) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'INFO', 'Stopping native pitch backend.', { detectorPreset: this.detectorPreset });
+            this.queueNativeStopIfNeeded();
+        }
+        this.workletNode?.disconnect();
+        this.workletNode = null;
+        this.channelMergerNode?.disconnect();
+        this.channelMergerNode = null;
+        this.micTapNode?.disconnect();
+        this.micTapNode = null;
+        this.referenceTapNode?.disconnect();
+        this.referenceTapNode = null;
+        if (this.silentReferenceSource) {
+            try {
+                this.silentReferenceSource.stop();
+            }
+            catch {
+                // no-op: already stopped
+            }
+            this.silentReferenceSource.disconnect();
+        }
+        this.silentReferenceSource = null;
+        this.analyser?.disconnect();
+        this.analyser = null;
+        this.analyserBuffer = null;
+        if (this.analyserRafId !== null) {
+            cancelAnimationFrame(this.analyserRafId);
+            this.analyserRafId = null;
+        }
+        if (this.backendStatusTimeoutId !== null) {
+            clearTimeout(this.backendStatusTimeoutId);
+            this.backendStatusTimeoutId = null;
+        }
+        if (this.backendStatusResolver) {
+            this.backendStatusResolver();
+            this.backendStatusResolver = null;
+        }
+        this.sink?.disconnect();
+        this.sink = null;
+        this.smoothedMidiEstimate = null;
+        this.analyserDecayGraceFrames = 0;
+    }
+    onPitch(listener) {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+    onProfiling(listener) {
+        this.profilingListeners.add(listener);
+        return () => this.profilingListeners.delete(listener);
+    }
+    isUsingNativePitchInput() {
+        return this.useNativePitchInput;
+    }
+    awaitBackendStatus(timeoutMs) {
+        if (this.backendStatusTimeoutId !== null) {
+            clearTimeout(this.backendStatusTimeoutId);
+            this.backendStatusTimeoutId = null;
+        }
+        if (this.backendStatusResolver) {
+            this.backendStatusResolver();
+            this.backendStatusResolver = null;
+        }
+        return new Promise((resolve) => {
+            this.backendStatusResolver = () => {
+                if (this.backendStatusTimeoutId !== null) {
+                    clearTimeout(this.backendStatusTimeoutId);
+                    this.backendStatusTimeoutId = null;
+                }
+                this.backendStatusResolver = null;
+                resolve();
+            };
+            this.backendStatusTimeoutId = setTimeout(() => {
+                this.resolveBackendStatus();
+            }, Math.max(100, timeoutMs));
+        });
+    }
+    resolveBackendStatus() {
+        this.backendStatusResolver?.();
+    }
+    async startNativeBackend(startRequestId) {
+        let captureStarted = false;
+        await this.waitForPendingNativeStop();
+        if (!this.isCurrentNativeStartRequest(startRequestId)) {
+            return;
+        }
+        runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'INFO', 'Requesting microphone permission for native backend.', { detectorPreset: this.detectorPreset });
+        const granted = await ensureNativePitchInputPermission();
+        if (!this.isCurrentNativeStartRequest(startRequestId)) {
+            return;
+        }
+        if (!granted) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Microphone permission denied for native backend.', { detectorPreset: this.detectorPreset });
+            throw new Error('Microphone permission denied.');
+        }
+        runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'INFO', 'Starting native capture.', {
+            detectorPreset: this.detectorPreset,
+            requestedSampleRate: this.ctx.sampleRate,
+            audioInputMode: this.audioInputMode
+        });
+        const start = await startNativePitchCapture({
+            detectorPreset: this.detectorPreset,
+            requestedSampleRate: this.ctx.sampleRate,
+            blockSize: 2048,
+            audioInputMode: this.audioInputMode,
+            spectralModel: this.spectralModel,
+            debugOptions: {
+                debugLoggingEnabled: this.nativeVerboseDiagnostics,
+                verboseNativePitchDiagnostics: this.nativeVerboseDiagnostics
+            }
+        });
+        captureStarted = true;
+        this.nativeBackendRunning = Boolean(start.running ?? true);
+        this.nativeDiagnostics = start.diagnostics ?? null;
+        this.nativePollCount = 0;
+        this.nativeResultCount = 0;
+        this.nativeLastSummaryAtMs = 0;
+        this.nativeLastProcessingProgressState = null;
+        const processingProgress = evaluateNativeProcessingProgress(this.nativeDiagnostics);
+        const fallbackReason = this.nativeDiagnostics?.fallback_reason;
+        const presetMismatch = this.nativeDiagnostics?.requested_input_preset &&
+            this.nativeDiagnostics?.actual_input_preset &&
+            this.nativeDiagnostics.requested_input_preset !== this.nativeDiagnostics.actual_input_preset
+            ? `Input preset downgraded to ${this.nativeDiagnostics.actual_input_preset}`
+            : null;
+        this.legacyFallbackReason = fallbackReason ?? presetMismatch;
+        this.legacyFallback = this.legacyFallbackReason !== null;
+        runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, this.legacyFallback ? 'WARN' : 'INFO', 'Native capture started.', {
+            detectorPreset: this.detectorPreset,
+            streamState: this.nativeDiagnostics?.stream_state ?? null,
+            backendName: this.nativeDiagnostics?.backend_name ?? null,
+            sampleRate: this.nativeDiagnostics?.sample_rate ?? null,
+            runtimeSampleRate: this.nativeDiagnostics?.runtime_sample_rate ?? null,
+            callbackFrames: this.nativeDiagnostics?.frames_per_callback ?? null,
+            callbackCount: this.nativeDiagnostics?.callback_count ?? null,
+            stagedSamples: this.nativeDiagnostics?.staged_sample_count ?? null,
+            targetBlockSize: this.nativeDiagnostics?.target_block_size ?? null,
+            processChecks: this.nativeDiagnostics?.process_condition_check_count ?? null,
+            processPasses: this.nativeDiagnostics?.process_condition_pass_count ?? null,
+            signalCallbacks: this.nativeDiagnostics?.signal_callback_count ?? null,
+            zeroCallbacks: this.nativeDiagnostics?.all_zero_callback_count ?? null,
+            processedBlocks: this.nativeDiagnostics?.processed_block_count ?? null,
+            emittedResults: this.nativeDiagnostics?.emitted_result_count ?? null,
+            processingProgressState: processingProgress.state,
+            processingProgressReason: processingProgress.reason,
+            lastProcessingState: this.nativeDiagnostics?.last_processing_state ?? null,
+            audioApi: this.nativeDiagnostics?.audio_api ?? null,
+            actualPreset: this.nativeDiagnostics?.actual_input_preset ?? null,
+            fallbackReason: this.legacyFallbackReason ?? null
+        });
+        if (!this.isCurrentNativeStartRequest(startRequestId)) {
+            if (captureStarted) {
+                this.queueNativeStopIfNeeded();
+                await this.waitForPendingNativeStop();
+            }
+            return;
+        }
+        if (this.maspValidationContext) {
+            await updateNativePitchGameplayContext(this.maspValidationContext);
+            if (!this.isCurrentNativeStartRequest(startRequestId)) {
+                this.queueNativeStopIfNeeded();
+                await this.waitForPendingNativeStop();
+                return;
+            }
+        }
+        this.nativePollTimerId = window.setInterval(() => {
+            void this.pollNativeBackend();
+        }, 16);
+    }
+    async pollNativeBackend() {
+        if (this.nativePollInFlight)
+            return;
+        this.nativePollInFlight = true;
+        try {
+            const nextPollCount = this.nativePollCount + 1;
+            const includeDiagnostics = this.nativeVerboseDiagnostics ||
+                nextPollCount === 1 ||
+                nextPollCount % 15 === 0;
+            const response = await pollNativePitchResults(6, { includeDiagnostics });
+            this.nativeDiagnostics = response.diagnostics ?? this.nativeDiagnostics;
+            this.nativeBackendRunning = Boolean(response.running ?? this.nativeBackendRunning);
+            this.nativePollCount = nextPollCount;
+            const resultCount = response.results?.length ?? 0;
+            this.nativeResultCount += resultCount;
+            for (const payload of response.results ?? []) {
+                const frame = sanitizeNativeDetectionPayload(payload, this.ctx.currentTime);
+                if (!frame)
+                    continue;
+                for (const listener of this.listeners)
+                    listener(frame);
+            }
+            const now = performance.now();
+            const processingProgress = evaluateNativeProcessingProgress(this.nativeDiagnostics);
+            const progressStateChanged = this.nativeLastProcessingProgressState !== processingProgress.state;
+            this.nativeLastProcessingProgressState = processingProgress.state;
+            const summaryIntervalMs = this.nativeVerboseDiagnostics ? 2000 : 8000;
+            const shouldLogPeriodic = this.nativeLastSummaryAtMs === 0 ||
+                now - this.nativeLastSummaryAtMs >= summaryIntervalMs;
+            const shouldLogOnState = processingProgress.state === 'runtime_error'
+                || processingProgress.state === 'ready_but_not_processing';
+            if (shouldLogPeriodic ||
+                shouldLogOnState ||
+                progressStateChanged ||
+                (this.nativeVerboseDiagnostics && resultCount > 0)) {
+                this.nativeLastSummaryAtMs = now;
+                runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, processingProgress.state === 'ready_but_not_processing' || processingProgress.state === 'runtime_error'
+                    ? 'WARN'
+                    : 'INFO', 'Native poll summary.', {
+                    detectorPreset: this.detectorPreset,
+                    running: response.running ?? true,
+                    pollCount: this.nativePollCount,
+                    resultCount,
+                    totalResults: this.nativeResultCount,
+                    callbackCount: this.nativeDiagnostics?.callback_count ?? null,
+                    stagedSamples: this.nativeDiagnostics?.staged_sample_count ?? null,
+                    targetBlockSize: this.nativeDiagnostics?.target_block_size ?? null,
+                    processChecks: this.nativeDiagnostics?.process_condition_check_count ?? null,
+                    processPasses: this.nativeDiagnostics?.process_condition_pass_count ?? null,
+                    signalCallbacks: this.nativeDiagnostics?.signal_callback_count ?? null,
+                    silentCallbacks: this.nativeDiagnostics?.silent_callback_count ?? null,
+                    zeroCallbacks: this.nativeDiagnostics?.all_zero_callback_count ?? null,
+                    processedBlocks: this.nativeDiagnostics?.processed_block_count ?? null,
+                    emittedResults: this.nativeDiagnostics?.emitted_result_count ?? null,
+                    runtimeNoResultCount: this.nativeDiagnostics?.runtime_process_null_result_count ?? null,
+                    runtimeErrorCount: this.nativeDiagnostics?.runtime_process_error_count ?? null,
+                    processingProgressState: processingProgress.state,
+                    processingProgressReason: processingProgress.reason,
+                    processingProgressDetail: this.describeNativeProcessingProgress(processingProgress),
+                    queueDepth: this.nativeDiagnostics?.detector_queue_depth ?? null,
+                    lastProcessingState: this.nativeDiagnostics?.last_processing_state ?? null,
+                    lastDiscardReason: this.nativeDiagnostics?.last_discard_reason ?? null,
+                    rms: this.nativeDiagnostics?.rms ?? null,
+                    peak: this.nativeDiagnostics?.peak ?? null,
+                    lastError: this.nativeDiagnostics?.last_error ?? null
+                });
+            }
+        }
+        catch (error) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Native pitch polling failed.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) });
+        }
+        finally {
+            this.nativePollInFlight = false;
+        }
+    }
+    queueNativeStopIfNeeded() {
+        if (this.nativeStopInFlight !== null || !this.nativeBackendRunning) {
+            return;
+        }
+        const next = Promise.resolve().then(async () => {
+            await stopNativePitchCapture().catch((error) => {
+                runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Failed to stop native pitch capture.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(error) });
+            });
+            await resetNativePitchDetector().catch(() => undefined);
+            this.nativeBackendRunning = false;
+        });
+        this.nativeStopInFlight = next;
+        void next.finally(() => {
+            if (this.nativeStopInFlight === next) {
+                this.nativeStopInFlight = null;
+            }
+        });
+    }
+    async waitForPendingNativeStop() {
+        const pending = this.nativeStopInFlight;
+        if (!pending) {
+            return;
+        }
+        await pending.catch(() => undefined);
+    }
+    isCurrentNativeStartRequest(startRequestId) {
+        return this.nativeStartRequestId === startRequestId;
+    }
+    describeNativeProcessingProgress(progress) {
+        switch (progress.state) {
+            case 'waiting_for_callbacks':
+            case 'waiting_for_signal':
+                return null;
+            case 'waiting_for_full_block':
+                return `staged=${progress.stagedSampleCount}/${progress.targetBlockSize} missing=${progress.missingSampleCount}`;
+            case 'ready_but_not_processing':
+                return `staged=${progress.stagedSampleCount}/${progress.targetBlockSize} callbacks=${progress.callbackCount} signalCallbacks=${progress.signalCallbackCount}`;
+            case 'processing_active':
+                return `processed=${progress.processedBlockCount} emitted=${progress.emittedResultCount}`;
+            case 'runtime_returned_no_result':
+                return `processed=${progress.processedBlockCount} nullResults=${progress.runtimeProcessNullResultCount}`;
+            case 'runtime_error':
+                return `processed=${progress.processedBlockCount} runtimeErrors=${progress.runtimeProcessErrorCount} lastError=${progress.lastError}`;
+        }
+    }
+    createWorkletNode(dspWasmBytes) {
+        const processorOptions = {
+            detectorPreset: this.detectorPreset
+        };
+        if (this.spectralModel &&
+            (this.detectorPreset === 'spectral_game_runtime_unified_v3' || this.detectorPreset === 'fretnet')) {
+            processorOptions.spectralModel = this.spectralModel;
+        }
+        if (dspWasmBytes) {
+            processorOptions.dspWasmBytes = dspWasmBytes;
+        }
+        const primaryOptions = {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            channelCount: 2,
+            channelCountMode: 'explicit',
+            outputChannelCount: [1],
+            processorOptions
+        };
+        try {
+            return new AudioWorkletNode(this.ctx, 'gh-pitch-processor', primaryOptions);
+        }
+        catch (primaryError) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Pitch worklet node creation failed with explicit channel config, retrying with minimal config.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(primaryError) });
+        }
+        try {
+            return new AudioWorkletNode(this.ctx, 'gh-pitch-processor', {
+                numberOfInputs: 1,
+                numberOfOutputs: 1,
+                outputChannelCount: [1],
+                processorOptions
+            });
+        }
+        catch (secondaryError) {
+            runtimeLog({ scene: 'shared', subsystem: 'pitch-detector' }, 'WARN', 'Pitch worklet node creation failed with minimal config, retrying with defaults.', { detectorPreset: this.detectorPreset, error: toRuntimeErrorMessage(secondaryError) });
+        }
+        return new AudioWorkletNode(this.ctx, 'gh-pitch-processor', {
+            processorOptions
+        });
+    }
+    postMaspValidationContextToWorklet(context) {
+        if (this.detectorPreset !== MASP_GAME_SCENE_PRESET)
+            return;
+        if (!this.workletNode)
+            return;
+        this.workletNode.port.postMessage({
+            type: 'masp_context',
+            context,
+            context_audio_time: this.ctx.currentTime
+        });
+    }
+    scheduleAnalyserFrame() {
+        this.analyserRafId = requestAnimationFrame(() => {
+            this.analyserRafId = null;
+            if (!this.analyser || !this.analyserBuffer)
+                return;
+            this.analyser.getFloatTimeDomainData(this.analyserBuffer);
+            const presetConfig = FALLBACK_PRESET_CONFIG[this.detectorPreset];
+            const decayActive = this.analyserDecayGraceFrames > 0;
+            const estimation = estimatePitch(this.analyserBuffer, this.ctx.sampleRate, {
+                energyThreshold: decayActive
+                    ? presetConfig.energyThreshold * presetConfig.decayEnergyFactor
+                    : presetConfig.energyThreshold,
+                correlationThreshold: decayActive
+                    ? presetConfig.decayCorrelationThreshold
+                    : presetConfig.correlationThreshold
+            });
+            if (estimation.midiEstimate !== null) {
+                this.analyserDecayGraceFrames = presetConfig.decayGraceFrames;
+            }
+            else if (this.analyserDecayGraceFrames > 0) {
+                this.analyserDecayGraceFrames -= 1;
+            }
+            const midi = this.normalizeMidiEstimate(estimation.midiEstimate);
+            const correctedMidi = midi === null || !Number.isFinite(midi)
+                ? null
+                : this.detectorPreset === 'spectral_game_runtime_unified_v3' ||
+                    this.detectorPreset === 'pyin' ||
+                    this.detectorPreset === 'fretnet' ||
+                    this.detectorPreset === MASP_GAME_SCENE_PRESET
+                    ? midi
+                    : applyPitchCalibration(midi, this.calibrationProfile);
+            const shouldRoundMidi = this.roundMidi &&
+                this.detectorPreset !== 'spectral_game_runtime_unified_v3' &&
+                this.detectorPreset !== 'pyin' &&
+                this.detectorPreset !== 'fretnet' &&
+                this.detectorPreset !== MASP_GAME_SCENE_PRESET;
+            const frame = {
+                t_seconds: this.ctx.currentTime,
+                midi_estimate: correctedMidi === null ? null : shouldRoundMidi ? Math.round(correctedMidi) : correctedMidi,
+                confidence: correctedMidi === null ? 0 : estimation.confidence,
+                mic_rms: computeSignalRms(this.analyserBuffer)
+            };
+            for (const listener of this.listeners)
+                listener(frame);
+            this.scheduleAnalyserFrame();
+        });
+    }
+    normalizeMidiEstimate(midiEstimate) {
+        if (midiEstimate === null || !Number.isFinite(midiEstimate)) {
+            this.smoothedMidiEstimate = null;
+            return null;
+        }
+        if (this.smoothingAlpha <= 0) {
+            this.smoothedMidiEstimate = midiEstimate;
+            return midiEstimate;
+        }
+        if (this.smoothedMidiEstimate === null) {
+            this.smoothedMidiEstimate = midiEstimate;
+            return midiEstimate;
+        }
+        this.smoothedMidiEstimate += this.smoothingAlpha * (midiEstimate - this.smoothedMidiEstimate);
+        return this.smoothedMidiEstimate;
+    }
+}
+function sanitizeNativeDetectionPayload(payload, fallbackTimeSeconds) {
+    const midiEstimate = sanitizeMidi(payload.midi_estimate);
+    const confidence = clamp01(payload.confidence ?? 0);
+    const selectedNotes = Array.isArray(payload.selected_notes)
+        ? payload.selected_notes
+            .map((note) => {
+            const midi = sanitizeOptionalNumber(note?.midi);
+            if (midi === undefined)
+                return null;
+            return {
+                note_id: sanitizeOptionalString(note?.note_id),
+                midi,
+                string: sanitizeOptionalInteger(note?.string),
+                fret: sanitizeOptionalInteger(note?.fret),
+                score: sanitizeOptionalNumber(note?.score) ?? undefined
+            };
+        })
+            .filter((note) => note !== null)
+        : [];
+    const chordScores = Array.isArray(payload.chord_scores)
+        ? payload.chord_scores
+            .map((score) => {
+            const chordId = sanitizeOptionalString(score?.chord_id);
+            const value = sanitizeOptionalNumber(score?.score);
+            if (!chordId || value === undefined)
+                return null;
+            return { chord_id: chordId, score: value };
+        })
+            .filter((score) => score !== null)
+        : [];
+    return {
+        t_seconds: sanitizeOptionalNumber(payload.timestamp_sec) ?? fallbackTimeSeconds,
+        midi_estimate: midiEstimate,
+        confidence: midiEstimate === null ? 0 : confidence,
+        reference_midi: sanitizeMidi(payload.reference_midi),
+        reference_correlation: sanitizeSigned(payload.reference_correlation),
+        energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
+        onset_strength: clamp01(payload.onset_strength ?? 0),
+        contamination_score: clamp01(payload.contamination_score ?? 0),
+        rejected_as_reference_bleed: Boolean(payload.rejected_as_reference_bleed),
+        detected_string: sanitizeOptionalInteger(payload.detected_string),
+        detected_fret: sanitizeOptionalInteger(payload.detected_fret),
+        best_note_id: sanitizeOptionalString(payload.best_note_id),
+        selected_notes: selectedNotes,
+        chord_scores: chordScores,
+        mic_rms: undefined
+    };
+}
+export function applyReferenceContaminationPolicy(frame, mode) {
+    const midi = sanitizeMidi(frame.midi_estimate);
+    if (midi === null) {
+        return {
+            ...frame,
+            midi_estimate: null,
+            confidence: 0
+        };
+    }
+    const referenceMidi = sanitizeMidi(frame.reference_midi);
+    if (referenceMidi === null) {
+        return {
+            ...frame,
+            midi_estimate: midi,
+            confidence: clamp01(frame.confidence),
+            rejected_as_reference_bleed: false
+        };
+    }
+    const referenceCorrelation = sanitizeSigned(frame.reference_correlation);
+    const energyRatioDb = sanitizeNumber(frame.energy_ratio_db);
+    const onsetStrength = clamp01(frame.onset_strength ?? 0);
+    const contaminationScore = clamp01(frame.contamination_score ?? estimateContaminationScore(referenceCorrelation, energyRatioDb, onsetStrength));
+    const pitchMatch = Math.abs(midi - referenceMidi) <= 0.25;
+    if (!pitchMatch) {
+        return {
+            ...frame,
+            midi_estimate: midi,
+            confidence: clamp01(frame.confidence),
+            contamination_score: contaminationScore,
+            rejected_as_reference_bleed: false
+        };
+    }
+    if (mode === 'headphones') {
+        if (referenceCorrelation >= 0.94 && energyRatioDb <= -14) {
+            return {
+                ...frame,
+                midi_estimate: null,
+                confidence: 0,
+                contamination_score: contaminationScore,
+                rejected_as_reference_bleed: true
+            };
+        }
+        return {
+            ...frame,
+            midi_estimate: midi,
+            confidence: clamp01(frame.confidence * (1 - 0.3 * contaminationScore)),
+            contamination_score: contaminationScore,
+            rejected_as_reference_bleed: false
+        };
+    }
+    const highCorrelation = referenceCorrelation >= 0.86;
+    const lowMicDominance = energyRatioDb <= -10;
+    const strongOnset = onsetStrength >= 0.22;
+    const micDominant = energyRatioDb >= 4;
+    if (highCorrelation && lowMicDominance && !strongOnset && !micDominant) {
+        return {
+            ...frame,
+            midi_estimate: null,
+            confidence: 0,
+            contamination_score: contaminationScore,
+            rejected_as_reference_bleed: true
+        };
+    }
+    return {
+        ...frame,
+        midi_estimate: midi,
+        confidence: clamp01(frame.confidence * (1 - 0.45 * contaminationScore)),
+        contamination_score: contaminationScore,
+        rejected_as_reference_bleed: false
+    };
+}
+export function isValidHeldHit(frames, expectedMidi, tolerance, holdMs = 80, minConfidence = 0.7) {
+    if (frames.length < 2)
+        return false;
+    let streakStartSeconds = null;
+    for (const frame of frames) {
+        const isValid = frame.midi_estimate !== null &&
+            frame.confidence >= minConfidence &&
+            Math.abs(frame.midi_estimate - expectedMidi) <= tolerance;
+        if (!isValid) {
+            streakStartSeconds = null;
+            continue;
+        }
+        if (streakStartSeconds === null) {
+            streakStartSeconds = frame.t_seconds;
+            continue;
+        }
+        if ((frame.t_seconds - streakStartSeconds) * 1000 >= holdMs) {
+            return true;
+        }
+    }
+    return false;
+}
+function estimatePitch(samples, sampleRate, options = {}) {
+    const rawEnergyThreshold = options.energyThreshold;
+    const rawCorrelationThreshold = options.correlationThreshold;
+    const energyThreshold = typeof rawEnergyThreshold === 'number' && Number.isFinite(rawEnergyThreshold)
+        ? Math.max(0, rawEnergyThreshold)
+        : FALLBACK_PRESET_CONFIG.baseline.energyThreshold;
+    const correlationThreshold = typeof rawCorrelationThreshold === 'number' && Number.isFinite(rawCorrelationThreshold)
+        ? clamp01(rawCorrelationThreshold)
+        : FALLBACK_PRESET_CONFIG.baseline.correlationThreshold;
+    const minFrequency = 65;
+    const maxFrequency = 1200;
+    const minLag = Math.max(1, Math.floor(sampleRate / maxFrequency));
+    const maxLag = Math.min(samples.length - 2, Math.floor(sampleRate / minFrequency));
+    let mean = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+        mean += samples[i];
+    }
+    mean /= samples.length;
+    let energy = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+        const centered = samples[i] - mean;
+        energy += centered * centered;
+    }
+    const rms = Math.sqrt(energy / samples.length);
+    if (!Number.isFinite(rms) || rms < energyThreshold) {
+        return { midiEstimate: null, confidence: 0 };
+    }
+    let bestLag = -1;
+    let bestCorrelation = -1;
+    for (let lag = minLag; lag <= maxLag; lag += 1) {
+        let cross = 0;
+        let normA = 0;
+        let normB = 0;
+        for (let i = 0; i < samples.length - lag; i += 1) {
+            const a = samples[i] - mean;
+            const b = samples[i + lag] - mean;
+            cross += a * b;
+            normA += a * a;
+            normB += b * b;
+        }
+        const denom = Math.sqrt(normA * normB);
+        if (denom <= 1e-8)
+            continue;
+        const correlation = cross / denom;
+        if (correlation > bestCorrelation) {
+            bestCorrelation = correlation;
+            bestLag = lag;
+        }
+    }
+    if (bestLag <= 0 || bestCorrelation < correlationThreshold) {
+        return { midiEstimate: null, confidence: clamp01(bestCorrelation) };
+    }
+    const frequencyHz = sampleRate / bestLag;
+    if (!Number.isFinite(frequencyHz) || frequencyHz <= 0) {
+        return { midiEstimate: null, confidence: 0 };
+    }
+    return {
+        midiEstimate: 69 + 12 * Math.log2(frequencyHz / 440),
+        confidence: clamp01((bestCorrelation - 0.45) / 0.5)
+    };
+}
+function estimateContaminationScore(referenceCorrelation, energyRatioDb, onsetStrength) {
+    const corrScore = clamp01((referenceCorrelation - 0.55) / 0.45);
+    const bleedScore = clamp01((-energyRatioDb - 3) / 18);
+    return clamp01(corrScore * 0.65 + bleedScore * 0.35 - onsetStrength * 0.25);
+}
+function sanitizeMidi(value) {
+    if (value === null || value === undefined || !Number.isFinite(value))
+        return null;
+    return value;
+}
+function sanitizeOptionalNumber(value) {
+    if (value === null || value === undefined || !Number.isFinite(value))
+        return undefined;
+    return value;
+}
+function sanitizeNumber(value) {
+    if (value === null || value === undefined || !Number.isFinite(value))
+        return 0;
+    return value;
+}
+function sanitizeSigned(value) {
+    return Math.max(-1, Math.min(1, sanitizeNumber(value)));
+}
+function sanitizeReason(value) {
+    if (typeof value !== 'string')
+        return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+function sanitizeOptionalString(value) {
+    if (typeof value !== 'string')
+        return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+function sanitizeOptionalInteger(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+        return null;
+    const rounded = Math.round(value);
+    return rounded;
+}
+function sanitizeSelectedNotes(value) {
+    if (!Array.isArray(value))
+        return undefined;
+    const out = [];
+    for (const item of value) {
+        if (!item || typeof item !== 'object')
+            continue;
+        const data = item;
+        const rawMidi = data.midi;
+        if (typeof rawMidi !== 'number' || !Number.isFinite(rawMidi))
+            continue;
+        out.push({
+            note_id: sanitizeOptionalString(data.note_id),
+            midi: rawMidi,
+            string: sanitizeOptionalInteger(data.string),
+            fret: sanitizeOptionalInteger(data.fret),
+            score: sanitizeNumber(data.score)
+        });
+    }
+    return out;
+}
+function sanitizeChordScores(value) {
+    if (!Array.isArray(value))
+        return undefined;
+    const out = [];
+    for (const item of value) {
+        if (!item || typeof item !== 'object')
+            continue;
+        const data = item;
+        const chordId = sanitizeOptionalString(data.chord_id);
+        if (!chordId)
+            continue;
+        out.push({
+            chord_id: chordId,
+            score: sanitizeNumber(data.score)
+        });
+    }
+    return out;
+}
+function sanitizeWorkletProfilingPayload(payload, fallbackPreset) {
+    const detectorPreset = sanitizePitchDetectorPreset(payload.detector_preset) ?? fallbackPreset;
+    const sampleRate = sanitizeNonNegativeFinite(payload.sample_rate, 48_000);
+    const bufferSize = sanitizeNonNegativeInteger(payload.buffer_size);
+    const hopSize = sanitizeNonNegativeInteger(payload.hop_size);
+    if (sampleRate <= 0 || bufferSize <= 0 || hopSize <= 0) {
+        return null;
+    }
+    return {
+        detectorPreset,
+        sampleRate,
+        bufferSize,
+        hopSize,
+        budgetMs: sanitizeNonNegativeFinite(payload.budget_ms, 0),
+        analysisMsAvg: sanitizeNonNegativeFinite(payload.analysis_ms_avg, 0),
+        analysisMsP95: sanitizeNonNegativeFinite(payload.analysis_ms_p95, 0),
+        analysisMsMax: sanitizeNonNegativeFinite(payload.analysis_ms_max, 0),
+        loadPctAvg: sanitizeNonNegativeFinite(payload.load_pct_avg, 0),
+        loadPctP95: sanitizeNonNegativeFinite(payload.load_pct_p95, 0),
+        shareEchoPct: sanitizeBoundedPercent(payload.share_echo_pct),
+        shareMaspPct: sanitizeBoundedPercent(payload.share_masp_pct),
+        sharePitchPct: sanitizeBoundedPercent(payload.share_pitch_pct),
+        analysesWindow: sanitizeNonNegativeInteger(payload.analyses_window),
+        analysesTotal: sanitizeNonNegativeInteger(payload.analyses_total),
+        overBudgetWindow: sanitizeNonNegativeInteger(payload.over_budget_window),
+        overBudgetTotal: sanitizeNonNegativeInteger(payload.over_budget_total),
+        emittedFramesTotal: sanitizeNonNegativeInteger(payload.emitted_frames_total),
+        maspContextUpdatesTotal: sanitizeNonNegativeInteger(payload.masp_context_updates_total),
+        configUpdatesTotal: sanitizeNonNegativeInteger(payload.config_updates_total),
+        reportIntervalMs: sanitizeNonNegativeFinite(payload.report_interval_ms, 0),
+        audioTimeSeconds: sanitizeNonNegativeFinite(payload.t_audio_seconds, 0)
+    };
+}
+function sanitizePitchDetectorPreset(value) {
+    if (value === 'baseline' || value === 'ac14' || value === 'spectral_game_runtime_unified_v3' || value === 'pyin' || value === 'fretnet' || value === MASP_GAME_SCENE_PRESET) {
+        return value;
+    }
+    return null;
+}
+function sanitizeNonNegativeFinite(value, fallback = 0) {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+        return fallback;
+    return Math.max(0, value);
+}
+function sanitizeNonNegativeInteger(value) {
+    return Math.round(sanitizeNonNegativeFinite(value, 0));
+}
+function sanitizeBoundedPercent(value) {
+    return Math.max(0, Math.min(100, sanitizeNonNegativeFinite(value, 0)));
+}
+function clamp01(value) {
+    if (!Number.isFinite(value))
+        return 0;
+    return Math.max(0, Math.min(1, value));
+}
+function computeSignalRms(samples) {
+    if (samples.length <= 0)
+        return 0;
+    let energy = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+        const value = samples[i];
+        energy += value * value;
+    }
+    return Math.sqrt(energy / samples.length);
+}
+function toErrorMessage(error) {
+    if (error instanceof Error && typeof error.message === 'string' && error.message.trim().length > 0) {
+        return error.message.trim();
+    }
+    if (typeof error === 'string' && error.trim().length > 0) {
+        return error.trim();
+    }
+    return 'Unknown error';
+}
+async function loadDspWasmBytes() {
+    if (!dspWasmBytesPromise) {
+        dspWasmBytesPromise = fetch(dspCoreWasmUrl)
+            .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(`Failed to load DSP WASM (${response.status})`);
+            }
+            return await response.arrayBuffer();
+        })
+            .catch((error) => {
+            console.warn('Unable to preload DSP WASM bytes for worklet processor options.', error);
+            return null;
+        });
+    }
+    return await dspWasmBytesPromise;
+}

@@ -1,7 +1,6 @@
 import {
   DEFAULT_HOLD_MS,
-  DEFAULT_MIN_CONFIDENCE,
-  TARGET_HIT_GRACE_SECONDS
+  DEFAULT_MIN_CONFIDENCE
 } from '../../../app/config';
 import { buildMaspValidationContextForTargetGroup } from '../../../audio/maspShared';
 import { resolveTargetGroup, resolveTargetChordId } from '../../../guitar/targetGrouping';
@@ -10,6 +9,12 @@ import { updateRuntimeState, type RuntimeTransition, type RuntimeUpdate } from '
 import { PlayState, type ScoreEvent, type TargetNote } from '../../../types/models';
 import { analyzeHeldHitForTarget } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
+import {
+  buildValidationWindowTargetKey,
+  markGameplayValidationWindowAccepted,
+  resolveGameplayValidationToleranceSeconds,
+  syncGameplayValidationWindow
+} from './validationWindow';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 type ChordHitProgress = {
@@ -125,8 +130,11 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   const previousState = this.runtime.state;
   let songSecondsNow: number | undefined;
 
-  if (this.runtime.state === PlayState.Playing) {
+  if (this.playbackStarted && this.audioCtx) {
     songSecondsNow = this.getSongSecondsNow();
+  }
+
+  if (this.runtime.state === PlayState.Playing && songSecondsNow !== undefined) {
     this.runtime.current_tick = this.tempoMap.secondsToTick(songSecondsNow);
     if (this.playbackMode === 'midi') {
       this.scrubPlayer?.updateToTick(this.runtime.current_tick, this.audioCtx.currentTime);
@@ -137,18 +145,12 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   const active = activeGroup[0];
   syncMaspValidationContext(this, activeGroup);
   syncActiveChordTracking(this, active);
+  const validationWindow = syncGameplayValidationWindow(this, performance.now(), songSecondsNow);
 
   const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
-  const isWithinGraceWindow =
-    active !== undefined &&
-    this.runtime.state === PlayState.Playing &&
-    songSecondsNow !== undefined &&
-    targetSeconds !== undefined &&
-    songSecondsNow >= targetSeconds - TARGET_HIT_GRACE_SECONDS &&
-    songSecondsNow <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
-  const canValidateHit =
-    active !== undefined && (this.runtime.state === PlayState.WaitingForHit || isWithinGraceWindow);
+  const canValidateHit = validationWindow.phase === 'armed';
   const thresholds = resolveDetectionThresholds(this);
+  const validationTolerance = resolveGameplayValidationToleranceSeconds(this.sceneData?.difficulty);
   const requireStringValidation = shouldRequireStringValidation(this.sceneData?.difficulty);
 
   const leadHitAnalysis =
@@ -169,12 +171,18 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
     active !== undefined && canValidateHit
       ? updateChordHitProgress(this, activeGroup, requireStringValidation)
       : {
-        requiredCount: activeGroup.length,
-        hitCount: countChordHits(this, activeGroup),
-        valid: false
-      };
+          requiredCount: activeGroup.length,
+          hitCount: countChordHits(this, activeGroup),
+          valid: false
+        };
 
-  const validHit = active !== undefined && canValidateHit && chordProgress.valid;
+  const runtimeValidationOutput = this.realtimeValidationOutput;
+  const validHit =
+    active !== undefined &&
+    validationWindow.phase === 'accepted' &&
+    validationWindow.targetKey !== null &&
+    validationWindow.targetKey === buildValidationWindowTargetKey(activeGroup) &&
+    runtimeValidationOutput?.accepted === true;
   const targetDeltaMs =
     songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined;
 
@@ -191,7 +199,7 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   snapshot.songSecondsNow = songSecondsNow;
   snapshot.targetSeconds = targetSeconds;
   snapshot.targetDeltaMs = targetDeltaMs;
-  snapshot.isWithinGraceWindow = isWithinGraceWindow;
+  snapshot.isWithinGraceWindow = validationWindow.phase === 'armed' || validationWindow.phase === 'accepted';
   snapshot.canValidateHit = canValidateHit;
   snapshot.validHit = validHit;
   snapshot.activeTarget = active;
@@ -204,12 +212,13 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   snapshot.activeChordSize = chordProgress.requiredCount;
   snapshot.validatedChordNotes = chordProgress.hitCount;
   this.hitDebugSnapshot = snapshot;
+  this.validationWindowState = validationWindow;
 
   const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, validHit, {
     gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
     targetTimeSeconds: targetSeconds,
     songTimeSeconds: songSecondsNow,
-    lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
+    lateHitWindowSeconds: validationTolerance.lateSeconds,
     finishWhenNoTargets: false
   }, getRuntimeUpdateScratch(this));
 
@@ -273,6 +282,11 @@ function handleTransitionImpl(
     this.waitingStartMs = null;
     this.latestFrames.clear();
     this.gameplayPitchStabilizer?.reset();
+    markGameplayValidationWindowAccepted(
+      this,
+      performance.now(),
+      this.playbackStarted ? this.getSongSecondsNow() : undefined
+    );
 
     if (signedDeltaMs !== undefined && signedDeltaMs < -50) {
       this.feedbackText = 'Too Soon';
@@ -336,11 +350,12 @@ function consumeDebugHitImpl(this: PlaySceneContext): void {
   const active = activeGroup[0];
   const targetTimeSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
   const songTimeSeconds = this.getSongSecondsNow();
+  const validationTolerance = resolveGameplayValidationToleranceSeconds(this.sceneData?.difficulty);
   const update = updateRuntimeState(this.runtime, this.targets, this.audioCtx.currentTime, true, {
     gatingTimeoutSeconds: this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds,
     targetTimeSeconds,
     songTimeSeconds,
-    lateHitWindowSeconds: TARGET_HIT_GRACE_SECONDS,
+    lateHitWindowSeconds: validationTolerance.lateSeconds,
     finishWhenNoTargets: false
   }, getRuntimeUpdateScratch(this));
   this.runtime = update.state;
@@ -409,7 +424,8 @@ function isInsideLiveHitWindowImpl(this: PlaySceneContext, target: TargetNote): 
   if (!this.tempoMap) return false;
   const targetSeconds = this.tempoMap.tickToSeconds(target.tick);
   const now = this.getSongSecondsNow();
-  return now >= targetSeconds - TARGET_HIT_GRACE_SECONDS && now <= targetSeconds + TARGET_HIT_GRACE_SECONDS;
+  const tolerance = resolveGameplayValidationToleranceSeconds(this.sceneData?.difficulty);
+  return now >= targetSeconds - tolerance.earlySeconds && now <= targetSeconds + tolerance.lateSeconds;
 }
 
 function resolveTransitionGroup(target: TargetNote | undefined, targetGroup: TargetNote[] | undefined): TargetNote[] {

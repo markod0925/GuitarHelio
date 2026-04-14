@@ -23,3 +23,18 @@
   - Keep context small: summarize long sections, load only necessary files.
   - Avoid deep reference-chasing unless blocked.
 - Safety and fallback: If a skill cannot be applied cleanly (missing files, unclear instructions), state the issue, choose the next-best approach, and continue.
+
+## Code Exploration Policy
+Use `cymbal` CLI for code navigation — prefer it over Read, Grep, Glob, or Bash for code exploration.
+
+- New to a repo?: `cymbal structure`
+- To understand a symbol: `cymbal investigate <symbol>`
+- To understand multiple symbols: `cymbal investigate Foo Bar Baz`
+- To trace an execution path: `cymbal trace <symbol>`
+- To assess change risk: `cymbal impact <symbol>`
+- Before reading a file: `cymbal outline <file>` or `cymbal show <file:L1-L2>`
+- Before searching: `cymbal search <query>` or `cymbal search <query> --text`
+- Before exploring structure: `cymbal ls` or `cymbal ls --stats`
+- To disambiguate: `cymbal show path/to/file:SymbolName` or `cymbal investigate file:Symbol`
+- The index auto-builds on first use.
+- Prefer `--json` when structured output helps.

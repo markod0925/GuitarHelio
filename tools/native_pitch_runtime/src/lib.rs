@@ -19,6 +19,7 @@ use guitar_pitch::masp::{
 };
 use guitar_pitch::types::{AudioBuffer, OPEN_MIDI};
 use ndarray::IxDyn;
+use pyin::{Framing, PYINExecutor, PadMode};
 use serde::{Deserialize, Serialize};
 
 pub mod host_harness;
@@ -36,6 +37,9 @@ const FRETNET_STREAM_TARGET_SAMPLE_RATE: u32 = 44_100;
 const FRETNET_MAX_FRAMES: usize = 48;
 const FRETNET_STRING_COUNT: usize = 6;
 const FRETNET_RELATIVE_SILENCE_CLASS: usize = 0;
+const PYIN_DEFAULT_FMIN_HZ: f64 = 82.406_89;
+const PYIN_DEFAULT_FMAX_HZ: f64 = 1_200.0;
+const PYIN_DEFAULT_RESOLUTION: f64 = 0.1;
 
 fn init_stage_store() -> &'static Mutex<String> {
     static STORE: OnceLock<Mutex<String>> = OnceLock::new();
@@ -93,6 +97,126 @@ pub struct RuntimeConfig {
     pub fretnet_ort_library_path: Option<String>,
     #[serde(default)]
     pub max_capture_buffer_seconds: Option<f64>,
+    #[serde(default)]
+    pub pyin: Option<PyinConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PyinPadModeConfig {
+    Constant,
+    Reflect,
+}
+
+impl Default for PyinPadModeConfig {
+    fn default() -> Self {
+        Self::Constant
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PyinConfig {
+    #[serde(default = "default_pyin_fmin_hz")]
+    pub fmin_hz: f64,
+    #[serde(default = "default_pyin_fmax_hz")]
+    pub fmax_hz: f64,
+    #[serde(default)]
+    pub frame_length: Option<usize>,
+    #[serde(default)]
+    pub win_length: Option<usize>,
+    #[serde(default)]
+    pub hop_length: Option<usize>,
+    #[serde(default = "default_pyin_resolution")]
+    pub resolution: Option<f64>,
+    #[serde(default)]
+    pub fill_unvoiced: Option<f64>,
+    #[serde(default)]
+    pub center: bool,
+    #[serde(default)]
+    pub pad_mode: PyinPadModeConfig,
+}
+
+impl Default for PyinConfig {
+    fn default() -> Self {
+        Self {
+            fmin_hz: default_pyin_fmin_hz(),
+            fmax_hz: default_pyin_fmax_hz(),
+            frame_length: None,
+            win_length: None,
+            hop_length: None,
+            resolution: default_pyin_resolution(),
+            fill_unvoiced: None,
+            center: false,
+            pad_mode: PyinPadModeConfig::default(),
+        }
+    }
+}
+
+fn default_pyin_fmin_hz() -> f64 {
+    PYIN_DEFAULT_FMIN_HZ
+}
+
+fn default_pyin_fmax_hz() -> f64 {
+    PYIN_DEFAULT_FMAX_HZ
+}
+
+fn default_pyin_resolution() -> Option<f64> {
+    Some(PYIN_DEFAULT_RESOLUTION)
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedPyinConfig {
+    fmin_hz: f64,
+    fmax_hz: f64,
+    frame_length: usize,
+    win_length: Option<usize>,
+    hop_length: usize,
+    resolution: Option<f64>,
+    fill_unvoiced: f64,
+    center: bool,
+    pad_mode: PyinPadModeConfig,
+}
+
+fn next_power_of_two_at_least(value: usize) -> usize {
+    if value <= 1 {
+        return 1;
+    }
+    value.next_power_of_two()
+}
+
+fn derive_default_pyin_frame_length(
+    sample_rate: u32,
+    runtime_block_size: usize,
+    fmin_hz: f64,
+) -> usize {
+    let safe_runtime_block = runtime_block_size.max(256);
+    if !fmin_hz.is_finite() || fmin_hz <= 0.0 {
+        return safe_runtime_block;
+    }
+    let max_period = (sample_rate.max(8_000) as f64 / fmin_hz).ceil().max(1.0) as usize;
+    let min_safe_frame = (max_period + 2) * 2;
+    safe_runtime_block.max(next_power_of_two_at_least(min_safe_frame))
+}
+
+fn resolve_pyin_config(config: &RuntimeConfig) -> ResolvedPyinConfig {
+    let pyin_cfg = config.pyin.clone().unwrap_or_default();
+    let sample_rate = config.sample_rate.max(8_000);
+    let runtime_block_size = config.block_size.max(256);
+    let frame_length = pyin_cfg.frame_length.unwrap_or_else(|| {
+        derive_default_pyin_frame_length(sample_rate, runtime_block_size, pyin_cfg.fmin_hz)
+    });
+    let hop_length = pyin_cfg.hop_length.unwrap_or(runtime_block_size).max(1);
+    ResolvedPyinConfig {
+        fmin_hz: pyin_cfg.fmin_hz,
+        fmax_hz: pyin_cfg.fmax_hz,
+        frame_length,
+        win_length: pyin_cfg.win_length,
+        hop_length,
+        resolution: pyin_cfg.resolution,
+        fill_unvoiced: pyin_cfg.fill_unvoiced.unwrap_or(f64::NAN),
+        center: pyin_cfg.center,
+        pad_mode: pyin_cfg.pad_mode,
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -654,11 +778,209 @@ impl FretNetDetector {
     }
 }
 
+struct PyinDetector {
+    executor: PYINExecutor<f64>,
+    capture_buffer: CaptureBuffer,
+    frame_length: usize,
+    fill_unvoiced: f64,
+    center: bool,
+    pad_mode: PyinPadModeConfig,
+    min_inference_interval_seconds: f64,
+    last_inference_time_sec: f64,
+}
+
+impl PyinDetector {
+    fn new(config: &RuntimeConfig) -> Result<Self, String> {
+        let pyin_cfg = resolve_pyin_config(config);
+        validate_pyin_config(&pyin_cfg, config.sample_rate)?;
+        let min_inference_interval_seconds =
+            pyin_cfg.hop_length as f64 / config.sample_rate.max(8_000) as f64;
+        let executor = PYINExecutor::<f64>::new(
+            pyin_cfg.fmin_hz,
+            pyin_cfg.fmax_hz,
+            config.sample_rate.max(8_000),
+            pyin_cfg.frame_length,
+            pyin_cfg.win_length,
+            Some(pyin_cfg.hop_length),
+            pyin_cfg.resolution,
+        );
+        Ok(Self {
+            executor,
+            capture_buffer: CaptureBuffer::new(
+                config.sample_rate.max(8_000),
+                config
+                    .max_capture_buffer_seconds
+                    .unwrap_or(DEFAULT_CAPTURE_BUFFER_SECONDS),
+            ),
+            frame_length: pyin_cfg.frame_length,
+            fill_unvoiced: pyin_cfg.fill_unvoiced,
+            center: pyin_cfg.center,
+            pad_mode: pyin_cfg.pad_mode,
+            min_inference_interval_seconds,
+            last_inference_time_sec: -min_inference_interval_seconds,
+        })
+    }
+
+    fn process(
+        &mut self,
+        samples: &[f32],
+        capture_time_sec: f64,
+    ) -> Result<Option<DetectionEvent>, String> {
+        self.capture_buffer.push_block(samples, capture_time_sec);
+        if capture_time_sec - self.last_inference_time_sec < self.min_inference_interval_seconds {
+            return Ok(None);
+        }
+        let frame_window_seconds =
+            self.frame_length as f64 / self.capture_buffer.sample_rate as f64;
+        let Some(window) = self.capture_buffer.latest_window(frame_window_seconds) else {
+            return Ok(None);
+        };
+        if window.len() < self.frame_length {
+            return Ok(None);
+        }
+
+        let frame_start = window.len() - self.frame_length;
+        let frame = &window[frame_start..];
+        let frame_f64 = frame
+            .iter()
+            .map(|sample| *sample as f64)
+            .collect::<Vec<_>>();
+        let framing = if self.center {
+            match self.pad_mode {
+                PyinPadModeConfig::Constant => Framing::Center(PadMode::Constant(0.0)),
+                PyinPadModeConfig::Reflect => Framing::Center(PadMode::Reflect),
+            }
+        } else {
+            Framing::Valid
+        };
+
+        let started = Instant::now();
+        let (_timestamp, f0, voiced_flag, voiced_prob) =
+            self.executor.pyin(&frame_f64, self.fill_unvoiced, framing);
+        self.last_inference_time_sec = capture_time_sec;
+
+        let Some(last_index) = f0.len().checked_sub(1) else {
+            return Ok(None);
+        };
+        let pitch_hz_f64 = f0[last_index];
+        let voiced = voiced_flag.get(last_index).copied().unwrap_or(false)
+            && pitch_hz_f64.is_finite()
+            && pitch_hz_f64 > 0.0;
+        let pitch_hz = if voiced {
+            Some(pitch_hz_f64 as f32)
+        } else {
+            None
+        };
+        let midi_estimate = pitch_hz.map(hz_to_midi);
+        let confidence = voiced_prob
+            .get(last_index)
+            .copied()
+            .filter(|value| value.is_finite())
+            .map(|value| value.clamp(0.0, 1.0) as f32)
+            .unwrap_or(0.0);
+        let selected_notes = midi_estimate
+            .map(|midi| {
+                vec![ResultNote {
+                    note_id: Some(format!("pyin_midi_{midi:.2}")),
+                    midi,
+                    string: None,
+                    fret: None,
+                    score: Some(confidence),
+                }]
+            })
+            .unwrap_or_default();
+
+        Ok(Some(DetectionEvent {
+            backend_name: "pyin".to_owned(),
+            timestamp_sec: capture_time_sec,
+            pitch_hz,
+            midi_estimate,
+            confidence,
+            selected_notes,
+            chord_scores: Vec::new(),
+            detected_string: None,
+            detected_fret: None,
+            best_note_id: None,
+            rejected_as_reference_bleed: None,
+            reference_midi: None,
+            reference_correlation: None,
+            energy_ratio_db: None,
+            onset_strength: None,
+            contamination_score: None,
+            validation_passed: None,
+            reason: if voiced {
+                None
+            } else {
+                Some("pyin_unvoiced".to_owned())
+            },
+            weighted_score: None,
+            score_threshold: None,
+            processing_time_ms: started.elapsed().as_secs_f64() * 1000.0,
+            callback_to_result_latency_ms: 0.0,
+        }))
+    }
+
+    fn reset(&mut self) {
+        self.capture_buffer.clear();
+        self.last_inference_time_sec = -self.min_inference_interval_seconds;
+    }
+}
+
+fn validate_pyin_config(config: &ResolvedPyinConfig, sample_rate: u32) -> Result<(), String> {
+    if !(config.fmin_hz.is_finite() && config.fmin_hz > 0.0) {
+        return Err("pyin.fmin_hz must be a positive finite number".to_owned());
+    }
+    if !(config.fmax_hz.is_finite() && config.fmax_hz > config.fmin_hz) {
+        return Err("pyin.fmax_hz must be finite and greater than pyin.fmin_hz".to_owned());
+    }
+    let sr = sample_rate.max(8_000) as f64;
+    if config.fmax_hz > sr * 0.5 {
+        return Err(format!(
+            "pyin.fmax_hz ({}) must be <= Nyquist ({})",
+            config.fmax_hz,
+            sr * 0.5
+        ));
+    }
+    if config.frame_length < 4 {
+        return Err("pyin.frame_length must be >= 4 samples".to_owned());
+    }
+    let win_length = config.win_length.unwrap_or(config.frame_length / 2);
+    if win_length == 0 || win_length > config.frame_length {
+        return Err("pyin.win_length must be > 0 and <= pyin.frame_length".to_owned());
+    }
+    if config.frame_length <= win_length + 1 {
+        return Err(
+            "pyin.frame_length must be greater than pyin.win_length + 1 for guitar ranges"
+                .to_owned(),
+        );
+    }
+    if config.hop_length == 0 {
+        return Err("pyin.hop_length must be >= 1".to_owned());
+    }
+    if let Some(resolution) = config.resolution {
+        if !(resolution.is_finite() && resolution > 0.0 && resolution < 1.0) {
+            return Err("pyin.resolution must be finite and satisfy 0 < resolution < 1".to_owned());
+        }
+    }
+
+    let min_period = (sr / config.fmax_hz).floor().max(1.0) as usize;
+    let max_period = (sr / config.fmin_hz)
+        .ceil()
+        .min((config.frame_length - win_length - 1) as f64) as usize;
+    if max_period < min_period + 2 {
+        return Err(
+            "pyin parameter set is invalid for current sample_rate/frame_length: increase frame_length or fmin_hz, or lower fmax_hz".to_owned(),
+        );
+    }
+    Ok(())
+}
+
 enum DetectorKind {
     Ac14(DspDetector),
     Spectral(DspDetector),
     Masp(MaspDetector),
     FretNet(FretNetDetector),
+    Pyin(PyinDetector),
 }
 
 impl DetectorKind {
@@ -675,6 +997,7 @@ impl DetectorKind {
             )?)),
             "masp" | "masp_game_scene_ts_v1" => Ok(Self::Masp(MaspDetector::new(&config)?)),
             "fretnet" => Ok(Self::FretNet(FretNetDetector::new(&config)?)),
+            "pyin" => Ok(Self::Pyin(PyinDetector::new(&config)?)),
             other => Err(format!("Unsupported detector backend: {other}")),
         }
     }
@@ -704,6 +1027,7 @@ impl DetectorKind {
             Self::Spectral(detector) => detector.process(samples, capture_time_sec),
             Self::Masp(detector) => detector.process(samples, capture_time_sec),
             Self::FretNet(detector) => detector.process(samples, capture_time_sec),
+            Self::Pyin(detector) => detector.process(samples, capture_time_sec),
         }
     }
 
@@ -712,6 +1036,7 @@ impl DetectorKind {
             Self::Ac14(detector) | Self::Spectral(detector) => detector.reset(),
             Self::Masp(detector) => detector.reset(),
             Self::FretNet(detector) => detector.reset(),
+            Self::Pyin(detector) => detector.reset(),
         }
     }
 }
@@ -1533,6 +1858,10 @@ fn midi_to_hz(midi: f32) -> f32 {
     440.0 * (2.0_f32).powf((midi - 69.0) / 12.0)
 }
 
+fn hz_to_midi(hz: f32) -> f32 {
+    69.0 + 12.0 * (hz / 440.0).log2()
+}
+
 unsafe fn parse_c_string<'a>(ptr: *const c_char, field: &str) -> Result<&'a str, String> {
     if ptr.is_null() {
         return Err(format!("{field} must not be null"));
@@ -1940,6 +2269,119 @@ mod tests {
         assert_eq!(cfg.masp.rms_window_ms, MASP_RMS_WINDOW_MS);
     }
 
+    fn pyin_runtime_config(sample_rate: u32, block_size: usize) -> RuntimeConfig {
+        RuntimeConfig {
+            backend_name: "pyin".to_owned(),
+            sample_rate,
+            block_size,
+            spectral_model_json: None,
+            audio_input_mode: Some("speaker".to_owned()),
+            masp_assets_dir: None,
+            fretnet_model_path: None,
+            fretnet_ort_library_path: None,
+            max_capture_buffer_seconds: None,
+            pyin: None,
+        }
+    }
+
+    fn first_voiced_pyin_detection(
+        sample_rate: u32,
+        block_size: usize,
+        target_hz: f64,
+    ) -> DetectionEvent {
+        let config = pyin_runtime_config(sample_rate, block_size);
+        let mut runtime = NativePitchRuntime::new(config).expect("pyin runtime init");
+        let mut detection: Option<DetectionEvent> = None;
+        for block_index in 0..220usize {
+            let mut block = vec![0.0f32; block_size];
+            for sample_index in 0..block_size {
+                let i = block_index * block_size + sample_index;
+                let phase =
+                    2.0 * std::f64::consts::PI * target_hz * (i as f64 / sample_rate as f64);
+                block[sample_index] = (phase.sin() as f32) * 0.25;
+            }
+            let capture_time_sec = ((block_index + 1) * block_size) as f64 / sample_rate as f64;
+            if let Some(event) = runtime
+                .process_audio_block(&block, capture_time_sec)
+                .expect("pyin process")
+            {
+                if event.pitch_hz.is_some() {
+                    detection = Some(event);
+                    break;
+                }
+            }
+        }
+        detection.expect("expected voiced pyin output")
+    }
+
+    #[test]
+    fn pyin_defaults_resolve_from_runtime_block_and_sample_rate() {
+        let cfg_48k = pyin_runtime_config(48_000, 2_048);
+        let resolved_48k = resolve_pyin_config(&cfg_48k);
+        assert_eq!(resolved_48k.frame_length, 2_048);
+        assert_eq!(resolved_48k.hop_length, 2_048);
+        assert!(resolved_48k.win_length.is_none());
+        assert_eq!(resolved_48k.resolution, Some(PYIN_DEFAULT_RESOLUTION));
+        assert!(!resolved_48k.center);
+        assert!(resolved_48k.fill_unvoiced.is_nan());
+        validate_pyin_config(&resolved_48k, cfg_48k.sample_rate).expect("48k defaults valid");
+
+        let cfg_44k = pyin_runtime_config(44_100, 1_024);
+        let resolved_44k = resolve_pyin_config(&cfg_44k);
+        assert_eq!(resolved_44k.frame_length, 2_048);
+        assert_eq!(resolved_44k.hop_length, 1_024);
+        validate_pyin_config(&resolved_44k, cfg_44k.sample_rate).expect("44.1k defaults valid");
+
+        let cfg_32k = pyin_runtime_config(32_000, 1_024);
+        let resolved_32k = resolve_pyin_config(&cfg_32k);
+        assert_eq!(resolved_32k.frame_length, 1_024);
+        assert_eq!(resolved_32k.hop_length, 1_024);
+        validate_pyin_config(&resolved_32k, cfg_32k.sample_rate).expect("32k defaults valid");
+
+        assert_ne!(resolved_44k.frame_length, resolved_32k.frame_length);
+        assert_eq!(
+            resolved_44k.hop_length as f64 / cfg_44k.sample_rate as f64,
+            cfg_44k.block_size as f64 / cfg_44k.sample_rate as f64
+        );
+        assert_eq!(
+            resolved_32k.hop_length as f64 / cfg_32k.sample_rate as f64,
+            cfg_32k.block_size as f64 / cfg_32k.sample_rate as f64
+        );
+    }
+
+    #[test]
+    fn pyin_backend_constructs_from_runtime_config_json() {
+        let config = pyin_runtime_config(48_000, 1_024);
+        let json = serde_json::to_string(&config).expect("serialize config");
+        let runtime = NativePitchRuntime::from_config_json(&json).expect("pyin runtime init");
+        drop(runtime);
+    }
+
+    #[test]
+    fn pyin_backend_emits_pitch_for_monophonic_sine() {
+        for sample_rate in [48_000_u32, 44_100_u32, 32_000_u32] {
+            let event = first_voiced_pyin_detection(sample_rate, 1_024, 110.0);
+            assert_eq!(event.backend_name, "pyin");
+            let pitch_hz = event.pitch_hz.expect("pitch should be present");
+            assert!(pitch_hz > 95.0 && pitch_hz < 125.0);
+            let midi = event.midi_estimate.expect("midi should be present");
+            assert!(midi > 42.0 && midi < 50.0);
+            assert!((0.0..=1.0).contains(&event.confidence));
+
+            let payload = serde_json::to_value(&event).expect("serialize detection event");
+            assert_eq!(
+                payload.get("backend_name").and_then(|v| v.as_str()),
+                Some("pyin")
+            );
+            assert!(payload.get("pitch_hz").and_then(|v| v.as_f64()).is_some());
+            assert!(payload
+                .get("midi_estimate")
+                .and_then(|v| v.as_f64())
+                .is_some());
+            assert!(payload.get("confidence").and_then(|v| v.as_f64()).is_some());
+        }
+    }
+
     #[test]
     fn ffi_wrapper_matches_direct_runtime_path_for_ac14() {
         let config = RuntimeConfig {
@@ -1952,6 +2394,7 @@ mod tests {
             fretnet_model_path: None,
             fretnet_ort_library_path: None,
             max_capture_buffer_seconds: None,
+            pyin: None,
         };
         let mut runtime = NativePitchRuntime::new(config.clone()).expect("direct runtime init");
         let samples = vec![0.0_f32; 1024];

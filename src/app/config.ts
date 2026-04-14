@@ -14,8 +14,9 @@ export const PLAY_SCENE_MINIMAP_UPDATE_INTERVAL_MS = 1000;
 export const PLAY_SCENE_ENABLE_ECHO_SUPPRESSION = false;
 // Global gameplay diagnostics toggle. When false, no runtime profiling instrumentation is executed.
 export const PLAY_SCENE_ENABLE_PROFILING = false;
-// Global debug overlay toggle. When false, overlay is fully disabled in Play Scene.
-export const PLAY_SCENE_ENABLE_DEBUG_OVERLAY = false;
+// Global debug overlay toggle. Keep this enabled so PlayScene can expose runtime validation diagnostics
+// and let the per-session flag / localStorage preference decide whether it is shown.
+export const PLAY_SCENE_ENABLE_DEBUG_OVERLAY = true;
 export const PITCH_DEBUG_SCENE_ENABLED = true;
 
 // Increase/decrease this to tune how tall the ball jump looks on beat.

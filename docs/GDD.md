@@ -100,6 +100,7 @@ Like Yousician:
   - `ac14`
   - `MASP`
   - `FRETNET`
+  - `pyin`
   - `spectral_game_runtime_unified_v3`
 - runtime split:
   - web / desktop webview path: Rust/WASM `gh_dsp_core` + existing WebAudio pipeline
@@ -228,6 +229,99 @@ type DifficultyProfile = {
 If `gating_timeout_seconds` is omitted, runtime MUST use a default timeout of `2.5` seconds.
 
 If `gating_timeout_seconds` is explicitly set to `null`, runtime MUST use an infinite wait (no auto-timeout).
+
+## 4.4 Gameplay Validation Policy (Benchmark + Tuning)
+
+Gameplay validation tooling MUST support both:
+
+- single-note passages
+- multi-note/polyphonic passages
+
+Runtime gameplay MUST use a single reusable validator core under `src/gameplay/validation/`.
+That runtime validator MUST be stateful, frame-driven, target-driven, and able to switch between mono and poly targets without duplicating note-level logic.
+Mono MUST be treated as note-set cardinality `1`; poly MUST be treated as note-set cardinality `> 1`.
+The benchmark tooling MUST reuse the same shared note-evidence and gate/finalization logic where practical, while keeping dataset parsing and window labeling benchmark-only.
+
+For polyphonic passages, validation MUST be note-set oriented:
+
+- expected notes are validated per-note with competitor-aware evidence
+- per-note outcomes are aggregated into a window/chord accept decision
+- acceptance policy MUST be configurable (`all_notes_required`, `min_ratio_required`, `min_count_required`)
+- acceptance policy MUST also support explicit extra-note behavior controls (`allow_superset_if_expected_covered`, `max_extra_notes_allowed`) and empty-window quiet enforcement (`empty_window_must_be_quiet`)
+
+Polyphonic benchmark diagnostics MUST explicitly classify windows as:
+
+- `empty_window`
+- `single_note_window`
+- `poly_window`
+- `transition_window`
+
+Polyphonic benchmark reporting MUST preserve raw metrics while separating:
+
+- expected-note coverage (recall/precision)
+- extra-note contamination
+- empty-window false activation
+- strict set behavior (`exact`, `superset`, `subset`, `partial/disjoint`)
+- negative FAR breakdown by type (`empty`, `set_mismatch`, `transition_ambiguous`)
+
+Post-validator activation control MUST be an explicit, configurable layer applied after note-set evidence is computed:
+
+- gate decision input MUST include window-category and validation-evidence diagnostics (for example: `window_category`, `stable_set_ratio`, `transition_overlap_ratio`, `validated_note_count`, `expected_note_count`, `note_validation_ratio`, set relation, extra-note count, and available confidence/activity proxies)
+- gate policy MUST be able to suppress over-activation in `empty_window` and `transition_window` without rewriting detector internals
+- stable non-empty windows (`single_note_window`, `poly_window`) MUST remain permissive enough to preserve expected-note recall
+- optional temporal hysteresis MAY be enabled for benchmark evaluation only and MUST remain configurable
+
+Polyphonic benchmark outputs MUST keep both views explicitly:
+
+- pre-gate validator activation metrics
+- post-gate activation metrics
+
+Pre/post reporting MUST include at minimum recall, precision, exact/superset behavior, extra-note rate, empty-window FAR, transition-window accept rate, and stable non-empty coverage/recall metrics.
+
+Polyphonic sweep ranking MUST support both modes with explicit priorities:
+
+- strict symbolic mode: maximize recall, then minimize empty FAR, then minimize transition acceptance, then minimize extra-note rate, then improve exact-set behavior, runtime secondary
+- gameplay note-centric mode: maximize stable non-empty expected-note recall, then minimize empty FAR, then minimize transition acceptance, then minimize extra-note rate, while preserving stable-window superset acceptance when expected notes are covered
+
+Window stability slicing MUST be configurable via:
+
+- `stable_window_min_ratio`
+- `transition_overlap_threshold`
+
+Reports and sweeps MUST provide both:
+
+- strict symbolic ranking/interpretation view
+- gameplay note-centric ranking/interpretation view
+
+The primary product metric is expected-note correctness/coverage.
+Exact string/fret discrimination is secondary and MUST NOT dominate acceptance decisions for polyphonic gameplay validation.
+
+## 4.5 Runtime gameplay validation session model
+
+Runtime gameplay validation in `PlayScene` MUST be driven by the gameplay timeline, not by always-on target tracking.
+
+Required session semantics:
+
+- validation is armed only inside the current target's difficulty-resolved tolerance window
+- the current target must remain stable for the full active window
+- dead time before the window and after expiry MUST ignore gameplay acceptance
+- once a target is accepted, that window is consumed exactly once and must not re-accept the same target
+- mono and poly targets MUST share the same window lifecycle; only note-set cardinality and aggregation policy may differ
+
+Implementation placement:
+
+- `PlayScene` / play controllers MUST own window arming, disarming, and acceptance latching
+- `src/gameplay/validation/RealtimeGameplayValidator.ts` MUST remain the reusable runtime core
+- runtime validator output MUST be the authoritative source for live gameplay hit acceptance while the window is armed
+- controller code MUST set the target only when the window opens, changes, or is explicitly disarmed/reset
+
+Debug visibility MUST expose:
+
+- window phase (`idle`, `armed`, `accepted`, `expired`)
+- current target identity
+- armed/dead-time status
+- late/early bounds
+- runtime validator accept/reject reasons
 
 ---
 
@@ -506,12 +600,14 @@ Native Android detectors that MUST be supported in this pipeline:
 - `ac14`
 - `MASP`
 - `FRETNET`
+- `pyin`
 - `spectral_game_runtime_unified_v3`
 
 Pitch analysis MUST run through a DSP stage with preset-dependent analysis signal:
 
 - `baseline` / `ac14`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
 - `spectral_game_runtime_unified_v3`: `mic + reference -> delay estimate -> aligned reference diagnostics + clean mic analysis -> spectral pitch detector`
+- `pyin`: `mic -> rolling frame window -> pYIN f0 + voiced probability -> canonical detector event`
 - `masp_game_scene_ts_v1` (PlayScene only): configurable by `PLAY_SCENE_ENABLE_ECHO_SUPPRESSION`:
   - `true`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> MASP score-informed validator`
   - `false` (current default): `mic -> residual passthrough -> MASP score-informed validator` (echo suppression path disabled)
@@ -1041,6 +1137,12 @@ In debug sessions, gameplay MUST also provide a central debug overlay (toggle ke
 * current tick vs target tick and current song time vs target time
 * detected pitch (`midi_estimate`) + confidence, held-hit progress vs required hold
 * hit-gating flags (`within window`, `can validate`, `valid hit`) and waiting timeout progress
+* live validation timing (`idle` / `armed` / `accepted` / `expired`), dead-time state, and tolerance window bounds
+* expected mono/poly target identity plus aggregation / gate / note-decision policy ids
+* live top-5 spectral candidates, expected-note rank, best competitor, and octave competitor
+* runtime validator pre-gate vs post-gate acceptance, validation ratio, validated/missing/extra notes, and reject reasons
+* target reset / re-arm churn, last `setTarget()` time, and retained last accepted / expired / rejected snapshots
+* on-device toggle control for Android gameplay sessions so the overlay can be enabled without a keyboard
 
 ---
 
@@ -1127,6 +1229,7 @@ The app MUST expose a standalone `PitchDebugScene` developer workbench from `Son
   * `ac14`
   * `MASP`
   * `FRETNET`
+  * `pyin`
   * `spectral_game_runtime_unified_v3`
 * it MUST show:
   * top status/session metadata
@@ -1174,6 +1277,47 @@ The app MUST expose a standalone `PitchDebugScene` developer workbench from `Son
 * low-frequency diagnostics in this scene MUST explicitly surface energy near `E2` fundamental and harmonics so weak-fundamental cases remain visible during live capture
 
 ---
+
+### 11.11.3 Benchmark suite taxonomy (developer analysis)
+
+Pitch benchmark analysis MUST use suite-local benchmarking aligned to product tasks instead of a single flat detector ranking.
+
+Benchmark tooling MUST expose three distinct suites:
+
+* Tuner suite (analysis/tuner_benchmark/): evaluate monophonic continuous pitch tracking for tuning with ac14 and pyin
+* Practice suite (analysis/practice_benchmark/): evaluate note/string/fret free-recognition quality for practice feedback with spectral_game_runtime_unified_v3 and FRETNET
+* Gameplay validator suite (analysis/gameplay_validator_benchmark/): evaluate target-aware validation correctness for gameplay with MASP and spectral_game_runtime_unified_v3 in target-aware mode
+
+Benchmark infrastructure MAY share dataset parsing, WAV loading, metadata extraction, and result/plot serialization utilities, but suite-specific task logic and metrics MUST remain separate and explicit.
+
+Gameplay validator suite requirements:
+
+* MASP MUST be benchmarked only as a target-aware validator (not headline-ranked as a generic no-context detector)
+* spectral_game_runtime_unified_v3 MUST receive expected target context when evaluated in Gameplay validator mode
+* validator metrics (TAR/FAR/precision/recall/F1/confusion) MUST be primary; generic detector cents tables MUST NOT be the headline result for MASP validator mode
+* gameplay validator decision logic MUST be explicit and mode-driven, with at least `note_only` and `exact_position` modes
+* final ACCEPT decisions MUST depend on expected-target evidence and competitor-aware checks; generic plausibility-only acceptance is not sufficient
+* gameplay validator benchmark outputs MUST include per-case diagnostics (expected target, detected target summary, expected-vs-competitor evidence, and accept/reject reason)
+* gameplay validator sweep tooling MUST rank configs TAR-first (TAR=100% hard pass group), then FAR and mismatch FAR breakdowns
+* accepted gameplay-validator candidate configs MUST preserve TAR = 100% on the current locked benchmark dataset
+
+Reporting rules:
+
+* benchmark rankings MUST be suite-local
+* benchmark reports MUST NOT publish a single cross-suite best overall algorithm headline
+* reporting MUST explicitly distinguish detector tasks (Tuner/Practice) from validator tasks (Gameplay validator)
+
+Input policy:
+
+* RAW recordings from PitchDebug dataset sessions MUST remain the canonical benchmark input
+* HPF/LPF filtered frontends MUST stay out of headline suite metrics (optional developer diagnostics only)
+
+Each suite output MUST include:
+
+* results.json
+* results.csv
+* summary.md
+* plots/
 
 ## 11.12 Global visual theme
 
@@ -1473,6 +1617,28 @@ The MVP is complete when:
 * project builds and deploys statically
 * Windows desktop package (`.exe`) builds successfully via Electron pipeline
 * GitHub Actions tag release pipeline (`v*`) publishes both Android debug APK and Windows desktop release artifacts in the same GitHub Release
+
+---
+
+# 15. Gameplay Validator Benchmark Policy
+
+Gameplay-validator benchmark comparisons between `MASP` and `spectral_game_runtime_unified_v3` MUST use a harmonized competitor-aware decision family.
+
+Required policy constraints:
+
+* both algorithms MUST be evaluated with the same decision semantics (`expected target evidence -> competitor evidence -> shared accept/reject logic`)
+* evidence asymmetry MUST be explicit; unavailable fields MUST remain null/unavailable and MUST NOT be fabricated
+* reporting MUST include both fixed-policy comparison (same thresholds) and best-under-constraint comparison (same policy family, per-algorithm tuning)
+* TAR=`100%` MUST be the hard pass filter for tuning leaderboards
+* ranking after TAR gate MUST prioritize: strict FAR, note-mismatch FAR, same-pitch-alt FAR, runtime
+* reporting MUST separate:
+  * strict FAR (all mismatches)
+  * note-mismatch FAR (excluding `same_pitch_alt_string`)
+  * position-only FAR (`same_pitch_alt_string` only)
+
+This benchmark policy exists to measure residual algorithm headroom fairly without detector-specific acceptance hacks.
+
+The production runtime validator MUST remain the canonical gameplay decision layer, with the benchmark serving as a verification harness for the same shared core rather than a separate acceptance implementation.
 
 ---
 

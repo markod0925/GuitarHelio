@@ -14,7 +14,7 @@ Portable Rust inference path:
   - ONNX Runtime inference wrapper
   - streaming benchmark primitives and fixture-based regression tests
 - `tools/native_pitch_runtime`
-  - backend selection (`ac14`, `spectral_game_runtime_unified_v3`, `masp`, `fretnet`)
+  - backend selection (`ac14`, `spectral_game_runtime_unified_v3`, `masp`, `fretnet`, `pyin`)
   - block scheduling/capture buffering
   - FretNet decode logic and compact detection payload
 

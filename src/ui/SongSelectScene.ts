@@ -14,6 +14,7 @@ import { SongSessionController } from './song-select/controllers/SongSessionCont
 import { StartupSplashController } from './song-select/controllers/StartupSplashController';
 import { SongTunerController } from './song-select/controllers/SongTunerController';
 import { SongCatalogService } from './song-select/services/SongCatalogService';
+import { isGameplayDebugOverlayEnabled } from './playSceneDebug';
 import type {
   AssetExistenceCacheEntry,
   Difficulty,
@@ -670,7 +671,8 @@ export class SongSelectScene extends Phaser.Scene {
         audioInputMode: settingsController.getAudioInputMode(),
         allowedStrings: settingsController.getAllowedStrings(),
         allowedFingers: settingsController.getAllowedFingers(),
-        allowedFrets: settingsController.getAllowedFrets()
+        allowedFrets: settingsController.getAllowedFrets(),
+        showGameplayValidationDebug: isGameplayDebugOverlayEnabled()
       });
     };
 

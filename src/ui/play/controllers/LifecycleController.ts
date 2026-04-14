@@ -15,6 +15,7 @@ import { releaseMicStream } from '../../AudioController';
 import { isGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
 import { runtimeLog } from '../../../app/runtimeLog';
+import { createIdleValidationWindowState } from './validationWindow';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_LOOP_BUDGET_MS = 16.67;
 
@@ -60,6 +61,11 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.latestFrames.clear();
   this.gameplayPitchStabilizer?.reset();
   this.waitingStartMs = null;
+  this.validationWindowState = createIdleValidationWindowState();
+  this.gameplayValidationDebugSnapshot = undefined;
+  this.gameplayValidationDebugLastAccepted = undefined;
+  this.gameplayValidationDebugLastExpired = undefined;
+  this.gameplayValidationDebugLastRejected = undefined;
   this.playbackStartAudioTime = null;
   this.playbackStartSongSeconds = 0;
   this.pausedSongSeconds = 0;
@@ -76,6 +82,9 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.backingTrackIsPlaying = false;
   this.backingTrackAudioUrl = undefined;
   this.detectorLegacyFallback = false;
+  this.realtimeGameplayValidator.reset();
+  this.realtimeValidationOutput = undefined;
+  this.realtimeValidationState = this.realtimeGameplayValidator.getState();
   this.referenceInputGain = undefined;
   this.referenceTapGain = undefined;
   this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;
@@ -117,7 +126,9 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.longTaskLastAtMs = 0;
   this.audioProfilingSnapshot = undefined;
   this.audioProfilingSnapshotAtMs = 0;
-  this.debugOverlayEnabled = PLAY_SCENE_ENABLE_DEBUG_OVERLAY && isGameplayDebugOverlayEnabled();
+  this.debugOverlayEnabled =
+    PLAY_SCENE_ENABLE_DEBUG_OVERLAY &&
+    (this.sceneData?.showGameplayValidationDebug === true || isGameplayDebugOverlayEnabled());
   this.playbackSpeedMultiplier = sceneClass.PLAYBACK_SPEED_DEFAULT;
 }
 
@@ -226,6 +237,10 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.debugButton = undefined;
   this.debugButtonLabel?.destroy();
   this.debugButtonLabel = undefined;
+  this.debugOverlayToggleButton?.destroy();
+  this.debugOverlayToggleButton = undefined;
+  this.debugOverlayToggleLabel?.destroy();
+  this.debugOverlayToggleLabel = undefined;
   this.multiplierShipEngineGlow?.destroy();
   this.multiplierShipEngineGlow = undefined;
   this.multiplierShipWingTop?.destroy();
@@ -256,6 +271,8 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.debugOverlayPanel = undefined;
   this.debugOverlayText = undefined;
   this.hitDebugSnapshot = undefined;
+  this.realtimeValidationOutput = undefined;
+  this.realtimeValidationState = undefined;
 
   this.noteRenderer.destroy();
 

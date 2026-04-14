@@ -204,6 +204,10 @@ function drawStaticLanesImpl(this: PlaySceneContext): void {
     this.debugButton.setPosition(layout.right - 62, 52);
     this.debugButtonLabel.setPosition(this.debugButton.x, this.debugButton.y);
   }
+  if (this.debugOverlayToggleButton && this.debugOverlayToggleLabel) {
+    this.debugOverlayToggleButton.setPosition(layout.right - 62, 92);
+    this.debugOverlayToggleLabel.setPosition(this.debugOverlayToggleButton.x, this.debugOverlayToggleButton.y);
+  }
 }
 
 function createMultiplierWidgetImpl(this: PlaySceneContext): void {

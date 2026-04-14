@@ -182,7 +182,7 @@ type NativePitchInputPlugin = {
     capture_seconds?: number;
   }) => Promise<{ diagnostics?: NativePitchDiagnostics }>;
   startCapture: (options: {
-    backend_name: 'ac14' | 'masp' | 'fretnet' | 'spectral_game_runtime_unified_v3';
+    backend_name: 'ac14' | 'masp' | 'fretnet' | 'pyin' | 'spectral_game_runtime_unified_v3';
     requested_sample_rate?: number;
     block_size?: number;
     channel_count?: number;
@@ -659,9 +659,10 @@ function readLocalStorageValue(storageKey: string): boolean | null {
 
 function mapPresetToNativeBackend(
   preset: PitchDetectorPreset
-): 'ac14' | 'masp' | 'fretnet' | 'spectral_game_runtime_unified_v3' {
+): 'ac14' | 'masp' | 'fretnet' | 'pyin' | 'spectral_game_runtime_unified_v3' {
   if (preset === 'ac14') return 'ac14';
   if (preset === 'fretnet') return 'fretnet';
+  if (preset === 'pyin') return 'pyin';
   if (preset === 'spectral_game_runtime_unified_v3') return 'spectral_game_runtime_unified_v3';
   return 'masp';
 }

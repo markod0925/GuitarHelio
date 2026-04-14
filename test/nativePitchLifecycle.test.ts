@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type NativePitchInputMock = {
   ensureNativePitchInputPermission: ReturnType<typeof vi.fn>;
+  isNativePitchVerboseDiagnosticsEnabled: ReturnType<typeof vi.fn>;
   pollNativePitchResults: ReturnType<typeof vi.fn>;
   resetNativePitchDetector: ReturnType<typeof vi.fn>;
   shouldUseNativePitchInput: ReturnType<typeof vi.fn>;
@@ -31,6 +32,7 @@ async function loadPitchDetectorWithNativeMocks(overrides: Partial<NativePitchIn
 
   const nativePitchInput: NativePitchInputMock = {
     ensureNativePitchInputPermission: vi.fn().mockResolvedValue(true),
+    isNativePitchVerboseDiagnosticsEnabled: vi.fn().mockReturnValue(false),
     pollNativePitchResults: vi.fn().mockResolvedValue({ running: true, diagnostics: {}, results: [] }),
     resetNativePitchDetector: vi.fn().mockResolvedValue(undefined),
     shouldUseNativePitchInput: vi.fn().mockReturnValue(true),
@@ -122,5 +124,20 @@ describe('PitchDetectorService native lifecycle', () => {
     expect(nativePitchInput.startNativePitchCapture).not.toHaveBeenCalled();
     expect(nativePitchInput.stopNativePitchCapture).not.toHaveBeenCalled();
     expect(nativePitchInput.resetNativePitchDetector).not.toHaveBeenCalled();
+  });
+
+  test('pyin preset routes through the same native startup path', async () => {
+    const { PitchDetectorService, nativePitchInput } = await loadPitchDetectorWithNativeMocks();
+    const detector = new PitchDetectorService({ sampleRate: 48_000, currentTime: 0 } as AudioContext, {
+      detectorPreset: 'pyin'
+    });
+
+    await detector.init();
+    await detector.start();
+
+    expect(nativePitchInput.startNativePitchCapture).toHaveBeenCalledTimes(1);
+    expect(nativePitchInput.startNativePitchCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ detectorPreset: 'pyin' })
+    );
   });
 });

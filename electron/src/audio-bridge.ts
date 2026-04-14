@@ -1,5 +1,5 @@
 export type ElectronNativePitchStartOptions = {
-  detector: 'ac14' | 'masp' | 'fretnet' | 'spectral_game_runtime_unified_v3';
+  detector: 'ac14' | 'masp' | 'fretnet' | 'pyin' | 'spectral_game_runtime_unified_v3';
   sampleRateHint: number;
   bufferFrames: number;
   audioInputMode?: 'speaker' | 'headphones';

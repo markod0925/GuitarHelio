@@ -67,6 +67,7 @@ The native pipeline is designed to support these backends:
 - `ac14`
 - `MASP`
 - `FRETNET`
+- `pyin`
 - `spectral_game_runtime_unified_v3`
 
 ### ac14
@@ -103,6 +104,12 @@ The native runtime uses information already present in that repo:
 
 The live decoder prefers semantic outputs and only falls back to `tablature_rel` when needed.
 For raw fallback decoding, the flattened `tablature_rel` layout is interpreted per string instead of as a single global peak map.
+
+### pyin
+
+`pyin` is integrated in the same Rust native runtime backend registry used by the other detectors.
+It runs on the native worker thread and emits the same compact result schema (`pitch_hz`, `midi_estimate`, `confidence`, etc.) used by the existing polling path.
+Parameter ownership and sample-rate derivation details are documented in `docs/PYIN_RUNTIME_AUDIT.md`.
 
 ## Result contract
 

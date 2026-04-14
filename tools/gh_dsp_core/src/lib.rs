@@ -54,6 +54,7 @@ const SPECTRAL_CHORD_ALPHA: f32 = 0.7;
 const SPECTRAL_EMIT_CHORD_SCORES: bool = true;
 const SPECTRAL_DC_REMOVE: bool = true;
 const SPECTRAL_TIE_EPSILON: f32 = 1e-6;
+const SPECTRAL_CANDIDATE_SCORE_LIMIT: usize = 12;
 const SPECTRAL_BYPASS_REFERENCE_CANCELLATION: bool = true;
 const FRETNET_MIN_FREQ_HZ: f32 = 82.406_89;
 const FRETNET_MAX_HARMONIC_FREQ_HZ: f32 = 6500.0;
@@ -136,6 +137,16 @@ pub struct SpectralSelectedNote {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct SpectralCandidateScore {
+    pub note_id: String,
+    pub midi: f32,
+    pub guitar_string: u32,
+    pub fret: u32,
+    pub raw_score: f32,
+    pub relative_score: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct SpectralChordScore {
     pub chord_id: String,
     pub score: f32,
@@ -146,6 +157,7 @@ struct SpectralFrameOutput {
     midi_estimate: Option<f32>,
     confidence: f32,
     selected_notes: Vec<SpectralSelectedNote>,
+    candidate_scores: Vec<SpectralCandidateScore>,
     chord_scores: Vec<SpectralChordScore>,
     best_note_id: Option<String>,
     detected_string: Option<u32>,
@@ -170,6 +182,7 @@ pub struct NativePitchFrame {
     pub detected_fret: Option<u32>,
     pub best_note_id: Option<String>,
     pub selected_notes: Vec<SpectralSelectedNote>,
+    pub candidate_scores: Vec<SpectralCandidateScore>,
     pub chord_scores: Vec<SpectralChordScore>,
     pub residual_block: Vec<f32>,
 }
@@ -440,6 +453,8 @@ impl GhDspCore {
         }
         let selected_notes_value = spectral_selected_notes_to_js_array(&native.selected_notes);
         set_value(&output, "selected_notes", selected_notes_value.as_ref());
+        let candidate_scores_value = spectral_candidate_scores_to_js_array(&native.candidate_scores);
+        set_value(&output, "candidate_scores", candidate_scores_value.as_ref());
         let chord_scores_value = spectral_chord_scores_to_js_array(&native.chord_scores);
         set_value(&output, "chord_scores", chord_scores_value.as_ref());
 
@@ -531,6 +546,7 @@ impl GhDspCore {
         let reference_midi = reference_hz.map(midi_from_hz);
 
         let mut selected_notes = Vec::<SpectralSelectedNote>::new();
+        let mut candidate_scores = Vec::<SpectralCandidateScore>::new();
         let mut chord_scores = Vec::<SpectralChordScore>::new();
         let mut best_note_id: Option<String> = None;
         let mut detected_string: Option<u32> = None;
@@ -589,6 +605,7 @@ impl GhDspCore {
                 });
                 if let Some(frame) = spectral {
                     selected_notes = frame.selected_notes;
+                    candidate_scores = frame.candidate_scores;
                     chord_scores = frame.chord_scores;
                     best_note_id = frame.best_note_id;
                     detected_string = frame.detected_string;
@@ -624,6 +641,7 @@ impl GhDspCore {
             detected_fret,
             best_note_id,
             selected_notes,
+            candidate_scores,
             chord_scores,
             residual_block: self.residual_block.clone(),
         }
@@ -788,6 +806,7 @@ impl SpectralUnifiedBackend {
                 midi_estimate: None,
                 confidence: 0.0,
                 selected_notes: Vec::new(),
+                candidate_scores: Vec::new(),
                 chord_scores: Vec::new(),
                 best_note_id: None,
                 detected_string: None,
@@ -847,6 +866,7 @@ impl SpectralUnifiedBackend {
                 midi_estimate: None,
                 confidence: 0.0,
                 selected_notes: Vec::new(),
+                candidate_scores: Vec::new(),
                 chord_scores: Vec::new(),
                 best_note_id: None,
                 detected_string: None,
@@ -854,6 +874,7 @@ impl SpectralUnifiedBackend {
             };
         }
 
+        let candidate_scores = self.build_candidate_scores(&raw_scores, &relative_scores);
         let selected_notes =
             self.select_polyphonic_notes(&raw_scores, &relative_scores, best_score, profile);
         let chord_scores = if profile.emit_chord_scores {
@@ -885,6 +906,7 @@ impl SpectralUnifiedBackend {
             midi_estimate: Some(best_note.midi),
             confidence,
             selected_notes,
+            candidate_scores,
             chord_scores,
             best_note_id: Some(best_note.id.clone()),
             detected_string,
@@ -973,6 +995,27 @@ impl SpectralUnifiedBackend {
                 guitar_string: self.notes[index].guitar_string,
                 fret: self.notes[index].fret,
                 score: score.max(*relative_scores.get(index).unwrap_or(&0.0)),
+            })
+            .collect()
+    }
+
+    fn build_candidate_scores(
+        &self,
+        raw_scores: &[(usize, f32)],
+        relative_scores: &[f32],
+    ) -> Vec<SpectralCandidateScore> {
+        let mut sorted = raw_scores.to_vec();
+        sorted.sort_by(|a, b| b.1.total_cmp(&a.1));
+        sorted
+            .into_iter()
+            .take(SPECTRAL_CANDIDATE_SCORE_LIMIT.max(1))
+            .map(|(index, raw_score)| SpectralCandidateScore {
+                note_id: self.notes[index].id.clone(),
+                midi: self.notes[index].midi,
+                guitar_string: self.notes[index].guitar_string,
+                fret: self.notes[index].fret,
+                raw_score,
+                relative_score: relative_scores.get(index).copied().unwrap_or(0.0),
             })
             .collect()
     }
@@ -1642,6 +1685,21 @@ fn spectral_selected_notes_to_js_array(notes: &[SpectralSelectedNote]) -> js_sys
         set_number(&object, "string", note.guitar_string as f64);
         set_number(&object, "fret", note.fret as f64);
         set_number(&object, "score", note.score as f64);
+        out.push(object.as_ref());
+    }
+    out
+}
+
+fn spectral_candidate_scores_to_js_array(scores: &[SpectralCandidateScore]) -> js_sys::Array {
+    let out = js_sys::Array::new();
+    for candidate in scores {
+        let object = js_sys::Object::new();
+        set_value(&object, "note_id", &JsValue::from_str(&candidate.note_id));
+        set_number(&object, "midi", candidate.midi as f64);
+        set_number(&object, "string", candidate.guitar_string as f64);
+        set_number(&object, "fret", candidate.fret as f64);
+        set_number(&object, "raw_score", candidate.raw_score as f64);
+        set_number(&object, "relative_score", candidate.relative_score as f64);
         out.push(object.as_ref());
     }
     out

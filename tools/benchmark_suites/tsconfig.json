@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "outDir": "../../analysis/benchmark_suites/.compiled",
+    "rootDir": "../..",
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "*.ts",
+    "../../src/vite-env.d.ts",
+    "../../src/audio/dsp-core/gh_dsp_core.js"
+  ]
+}

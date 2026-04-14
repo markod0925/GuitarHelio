@@ -1,27 +1,27 @@
 import { Capacitor } from '@capacitor/core';
-import {
-  DEFAULT_HOLD_MS,
-  DEFAULT_MIN_CONFIDENCE,
-  PLAY_SCENE_ENABLE_PROFILING,
-  TARGET_HIT_GRACE_SECONDS
-} from '../../../app/config';
+import { PLAY_SCENE_ENABLE_PROFILING } from '../../../app/config';
 import { saveSongHighScoreIfHigher } from '../../../app/sessionPersistence';
 import { summarizeScores } from '../../../game/scoring';
 import { PlayState } from '../../../types/models';
 import { formatSummary } from '../../hud';
+import { setGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import {
-  formatDebugBool,
-  formatDebugNumber,
-  formatDebugPath,
-  formatSignedMs,
-  setGameplayDebugOverlayEnabled
-} from '../../playSceneDebug';
+  buildGameplayValidationDebugSnapshot,
+  formatGameplayValidationDebugSnapshot,
+  resolveGameplayValidationDebugPalette
+} from './gameplayValidationDebugOverlay';
 import { RoundedBox } from '../../RoundedBox';
 import {
   computeEndScreenStars as computeOverlayEndScreenStars,
   resolveTopFeedbackMessage as resolveOverlayTopFeedbackMessage
 } from '../../UIOverlays';
 import type { PlaySceneContext } from './PlaySceneContext';
+import type {
+  GameplayValidationDebugEventKind,
+  GameplayValidationDebugRetainedSnapshot,
+  GameplayValidationDebugSnapshot
+} from '../../playSceneTypes';
+import { createIdleValidationWindowState } from './validationWindow';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_THREAD_BUDGET_MS = 16.67;
 
@@ -143,6 +143,8 @@ function finishSongImpl(this: PlaySceneContext): void {
   this.setBallAndTrailVisible(false);
   this.debugButton?.disableInteractive().setVisible(false);
   this.debugButtonLabel?.setVisible(false);
+  this.debugOverlayToggleButton?.disableInteractive().setVisible(false);
+  this.debugOverlayToggleLabel?.setVisible(false);
   this.pauseButton?.disableInteractive().setVisible(false);
   this.pauseButtonLeftBar?.setVisible(false);
   this.pauseButtonRightBar?.setVisible(false);
@@ -156,6 +158,8 @@ function finishSongImpl(this: PlaySceneContext): void {
   this.playbackSpeedLabel?.setVisible(false);
   this.playbackSpeedValueText?.setVisible(false);
   this.debugOverlayContainer?.setVisible(false);
+  this.validationWindowState = createIdleValidationWindowState();
+  this.realtimeGameplayValidator.setTarget(null);
 
   this.runtimeTimer?.remove(false);
   this.runtimeTimer = undefined;
@@ -603,15 +607,16 @@ function persistNativeSongHighScoreImpl(this: PlaySceneContext, songScoreKey: st
 function createDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayEnabled || this.debugOverlayContainer) return;
 
-  this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.78)
-    .setStrokeStyle(2, 0x38bdf8, 0.48)
+  this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.82)
+    .setStrokeStyle(2, 0x38bdf8, 0.5)
     .setDepth(910);
   this.debugOverlayText = this.add
     .text(0, 0, '', {
       color: '#dbeafe',
-      fontFamily: 'Montserrat, sans-serif',
-      fontSize: '12px',
-      lineSpacing: 3
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      lineSpacing: 2,
+      wordWrap: { width: Math.max(220, Math.floor(this.scale.width * 0.78)) }
     })
     .setOrigin(0, 0)
     .setDepth(911);
@@ -627,16 +632,17 @@ function relayoutDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayPanel || !this.debugOverlayText) return;
 
   const { width, height } = this.scale;
-  const panelWidth = Math.min(760, width * 0.84);
-  const panelHeight = Math.min(460, height * 0.72);
+  const panelWidth = Math.min(820, width * 0.9);
+  const panelHeight = Math.min(520, height * 0.76);
   const centerX = width / 2;
-  const centerY = height * 0.52;
+  const centerY = height * 0.54;
 
   this.debugOverlayPanel.setBoxSize(panelWidth, panelHeight);
   this.debugOverlayPanel.setPosition(centerX, centerY);
   this.debugOverlayText
     .setPosition(centerX - panelWidth / 2 + 12, centerY - panelHeight / 2 + 12)
-    .setFontSize(`${Math.max(11, Math.floor(width * 0.0115))}px`);
+    .setFontSize(`${Math.max(10, Math.floor(width * 0.0105))}px`)
+    .setWordWrapWidth(panelWidth - 24, true);
 }
 
 function toggleDebugOverlayImpl(this: PlaySceneContext): void {
@@ -645,92 +651,102 @@ function toggleDebugOverlayImpl(this: PlaySceneContext): void {
     setGameplayDebugOverlayEnabled(true);
     this.createDebugOverlay();
     this.updateDebugOverlay();
-    this.feedbackText = 'Debug overlay ON (F3)';
+    this.feedbackText = 'Gameplay validation overlay ON';
     this.feedbackUntilMs = performance.now() + 900;
     this.updateHud();
+    this.debugOverlayToggleLabel?.setText('Overlay: ON');
     return;
   }
   const nextVisible = !this.debugOverlayContainer.visible;
   this.debugOverlayContainer.setVisible(nextVisible);
   setGameplayDebugOverlayEnabled(nextVisible);
-  this.feedbackText = `Debug overlay ${nextVisible ? 'ON' : 'OFF'} (F3)`;
+  this.debugOverlayToggleLabel?.setText(`Overlay: ${nextVisible ? 'ON' : 'OFF'}`);
+  this.feedbackText = `Gameplay validation overlay ${nextVisible ? 'ON' : 'OFF'}`;
   this.feedbackUntilMs = performance.now() + 900;
   this.updateHud();
 }
 
 function updateDebugOverlayImpl(this: PlaySceneContext): void {
-  if (!this.debugOverlayEnabled || !this.debugOverlayText || !this.debugOverlayContainer || !this.debugOverlayContainer.visible) {
+  const panel = this.debugOverlayPanel;
+  const text = this.debugOverlayText;
+  const container = this.debugOverlayContainer;
+  if (!this.debugOverlayEnabled || !panel || !text || !container || !container.visible) {
     return;
   }
 
-  const snapshot = this.hitDebugSnapshot;
-  const active = snapshot?.activeTarget ?? this.targets[this.runtime.active_target_index];
-  const latestFrame = snapshot?.latestFrame ?? this.latestFrames.latest();
-  const songSecondsNow =
-    snapshot?.songSecondsNow ?? (this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds);
-  const targetSeconds = snapshot?.targetSeconds ?? (active && this.tempoMap ? this.tempoMap.tickToSeconds(active.tick) : undefined);
-  const playbackBpm = this.getCurrentPlaybackBpm(songSecondsNow);
-  const deltaMs =
-    snapshot?.targetDeltaMs ?? (songSecondsNow !== undefined && targetSeconds !== undefined ? (songSecondsNow - targetSeconds) * 1000 : undefined);
-  const timeoutSeconds = this.profile.gating_timeout_seconds ?? this.fallbackTimeoutSeconds;
-  const waitingElapsedSeconds =
-    this.runtime.waiting_started_at_s !== undefined && this.audioCtx
-      ? Math.max(0, this.audioCtx.currentTime - this.runtime.waiting_started_at_s)
-      : undefined;
-  const transitionAgeMs = this.lastRuntimeTransitionAtMs > 0 ? performance.now() - this.lastRuntimeTransitionAtMs : undefined;
-  const clockSongSeconds = this.getSongSecondsFromClock();
-  const runtimeTickSongSeconds = this.tempoMap ? this.tempoMap.tickToSeconds(Math.max(0, this.runtime.current_tick)) : undefined;
-  const backingCurrentSeconds = this.getBackingTrackSongSeconds();
-  const backingDurationSeconds = this.backingTrackBuffer?.duration;
-  const backingDriftMs =
-    songSecondsNow !== undefined && backingCurrentSeconds !== undefined
-      ? (backingCurrentSeconds - songSecondsNow) * 1000
-      : undefined;
-  const seekDebug = this.lastAudioSeekDebug;
-  const seekAgeMs = seekDebug ? performance.now() - seekDebug.atMs : undefined;
-  const runtimeStats = summarizeRollingDurations(this.runtimeLoopDurationsMs, this.runtimeLoopSampleCount);
-  const hudStats = summarizeRollingDurations(this.hudUpdateDurationsMs, this.hudUpdateSampleCount);
-  const runtimeLoadAvgPct = runtimeStats.avgMs > 0 ? (runtimeStats.avgMs / MAIN_THREAD_BUDGET_MS) * 100 : 0;
-  const runtimeLoadP95Pct = runtimeStats.p95Ms > 0 ? (runtimeStats.p95Ms / MAIN_THREAD_BUDGET_MS) * 100 : 0;
-  const hudLoadAvgPct = hudStats.avgMs > 0 ? (hudStats.avgMs / MAIN_THREAD_BUDGET_MS) * 100 : 0;
-  const hudLoadP95Pct = hudStats.p95Ms > 0 ? (hudStats.p95Ms / MAIN_THREAD_BUDGET_MS) * 100 : 0;
-  const runtimeProfileAgeMs = this.runtimeLoopLastAtMs > 0 ? performance.now() - this.runtimeLoopLastAtMs : undefined;
-  const hudProfileAgeMs = this.hudUpdateLastAtMs > 0 ? performance.now() - this.hudUpdateLastAtMs : undefined;
-  const longTaskAvgMs = this.longTaskCount > 0 ? this.longTaskTotalDurationMs / this.longTaskCount : 0;
-  const longTaskAgeMs = this.longTaskLastAtMs > 0 ? performance.now() - this.longTaskLastAtMs : undefined;
-  const audioProfile = this.audioProfilingSnapshot;
-  const audioProfileAgeMs = this.audioProfilingSnapshotAtMs > 0 ? performance.now() - this.audioProfilingSnapshotAtMs : undefined;
-  const workletMissingReason = resolveMissingWorkletTelemetryReason(this);
+  const snapshot = buildGameplayValidationDebugSnapshot(this, performance.now());
+  const lines = formatGameplayValidationDebugSnapshot(snapshot);
+  const previousSnapshot = this.gameplayValidationDebugSnapshot;
+  this.gameplayValidationDebugSnapshot = snapshot;
 
-  const lines = [
-    'DEBUG OVERLAY (F3)',
-    `state=${this.runtime.state} mode=${this.playbackMode} audio=${this.audioCtx?.state ?? 'n/a'} transition=${this.lastRuntimeTransition}${transitionAgeMs !== undefined ? ` (${Math.round(transitionAgeMs)}ms)` : ''}`,
-    `detector=${formatDebugBool(Boolean(this.detector))} legacy=${formatDebugBool(this.detectorLegacyFallback)} mic=${formatDebugBool(Boolean(this.micStream))}`,
-    `song id=${this.sceneData?.songId ?? '-'} midi=${formatDebugPath(this.sceneData?.midiUrl)} audio=${formatDebugPath(this.sceneData?.audioUrl)}`,
-    active
-      ? `target=${this.runtime.active_target_index + 1}/${this.targets.length} id=${active.id} chord=${snapshot?.activeChordSize ?? 1} hit=${snapshot?.validatedChordNotes ?? 0} string=${active.string} fret=${active.fret} expMidi=${active.expected_midi}`
-      : `target=${this.runtime.active_target_index + 1}/${this.targets.length} none`,
-    `tick now=${Math.round(this.runtime.current_tick)} target=${active ? active.tick : '-'} dtick=${active ? active.tick - this.runtime.current_tick : '-'}`,
-    `time now=${formatDebugNumber(songSecondsNow, 3)}s target=${formatDebugNumber(targetSeconds, 3)}s bpm=${formatDebugNumber(playbackBpm, 2)} d=${formatSignedMs(deltaMs)} window=+/-${Math.round(TARGET_HIT_GRACE_SECONDS * 1000)}ms`,
-    `clock song=${formatDebugNumber(clockSongSeconds, 3)}s tickSong=${formatDebugNumber(runtimeTickSongSeconds, 3)}s startSong=${formatDebugNumber(this.playbackStartSongSeconds, 3)}s ctxStart=${formatDebugNumber(this.playbackStartAudioTime, 3)}s`,
-    `resume pausedSong=${formatDebugNumber(this.pausedSongSeconds, 3)}s pausedAudio=${formatDebugNumber(this.pausedBackingAudioSeconds, 3)}s lastAudio=${formatDebugNumber(this.lastKnownBackingAudioSeconds, 3)}s speed=${formatDebugNumber(this.playbackSpeedMultiplier, 2)}x started=${formatDebugBool(this.playbackStarted)}`,
-    `backing cur=${formatDebugNumber(backingCurrentSeconds, 3)}s dur=${formatDebugNumber(backingDurationSeconds, 3)}s playing=${formatDebugBool(this.backingTrackIsPlaying)} sourceSong=${formatDebugNumber(this.backingTrackSourceStartSongSeconds, 3)}s sourceCtx=${formatDebugNumber(this.backingTrackSourceStartedAtAudioTime, 3)}s drift=${formatSignedMs(backingDriftMs)}`,
-    `seek req=${formatDebugNumber(seekDebug?.requestedSongSeconds, 3)}s target=${formatDebugNumber(seekDebug?.targetSeconds, 3)}s before=${formatDebugNumber(seekDebug?.beforeSeekSeconds, 3)}s after=${formatDebugNumber(seekDebug?.afterPlaySeconds, 3)}s retry=${formatDebugNumber(seekDebug?.afterRetrySeconds, 3)}s fallbackMidi=${seekDebug ? formatDebugBool(seekDebug.fallbackToMidi) : '-'} ok=${seekDebug ? formatDebugBool(seekDebug.ok) : '-'} age=${seekAgeMs !== undefined ? `${Math.round(seekAgeMs)}ms` : '-'}`,
-    `cpu mainLoop avg=${formatDebugNumber(runtimeStats.avgMs, 2)}ms p95=${formatDebugNumber(runtimeStats.p95Ms, 2)}ms max=${formatDebugNumber(runtimeStats.maxMs, 2)}ms load=${formatDebugNumber(runtimeLoadAvgPct, 1)}%/${formatDebugNumber(runtimeLoadP95Pct, 1)}% overBudget=${this.runtimeLoopOverBudgetCount} n=${runtimeStats.samples} age=${runtimeProfileAgeMs !== undefined ? `${Math.round(runtimeProfileAgeMs)}ms` : '-'}`,
-    `cpu hud avg=${formatDebugNumber(hudStats.avgMs, 2)}ms p95=${formatDebugNumber(hudStats.p95Ms, 2)}ms max=${formatDebugNumber(hudStats.maxMs, 2)}ms load=${formatDebugNumber(hudLoadAvgPct, 1)}%/${formatDebugNumber(hudLoadP95Pct, 1)}% overBudget=${this.hudUpdateOverBudgetCount} n=${hudStats.samples} age=${hudProfileAgeMs !== undefined ? `${Math.round(hudProfileAgeMs)}ms` : '-'}`,
-    `cpu longtask count=${this.longTaskCount} avg=${formatDebugNumber(longTaskAvgMs, 1)}ms max=${formatDebugNumber(this.longTaskMaxDurationMs, 1)}ms age=${longTaskAgeMs !== undefined ? `${Math.round(longTaskAgeMs)}ms` : '-'}`,
-    audioProfile
-      ? `cpu worklet preset=${audioProfile.detectorPreset} hop=${audioProfile.hopSize} budget=${formatDebugNumber(audioProfile.budgetMs, 2)}ms avg=${formatDebugNumber(audioProfile.analysisMsAvg, 2)}ms p95=${formatDebugNumber(audioProfile.analysisMsP95, 2)}ms max=${formatDebugNumber(audioProfile.analysisMsMax, 2)}ms load=${formatDebugNumber(audioProfile.loadPctAvg, 1)}%/${formatDebugNumber(audioProfile.loadPctP95, 1)}% over=${audioProfile.overBudgetWindow}/${audioProfile.overBudgetTotal} n=${audioProfile.analysesWindow}/${audioProfile.analysesTotal} age=${audioProfileAgeMs !== undefined ? `${Math.round(audioProfileAgeMs)}ms` : '-'}`
-      : `cpu worklet - ${workletMissingReason}`,
-    audioProfile
-      ? `cpu split echo=${formatDebugNumber(audioProfile.shareEchoPct, 1)}% masp=${formatDebugNumber(audioProfile.shareMaspPct, 1)}% pitch=${formatDebugNumber(audioProfile.sharePitchPct, 1)}% msgs frame=${audioProfile.emittedFramesTotal} ctx=${audioProfile.maspContextUpdatesTotal} cfg=${audioProfile.configUpdatesTotal}`
-      : `cpu split - ${workletMissingReason}`,
-    `pitch midi=${formatDebugNumber(latestFrame?.midi_estimate, 2)} conf=${formatDebugNumber(latestFrame?.confidence, 2)} refMidi=${formatDebugNumber(latestFrame?.reference_midi, 2)} corr=${formatDebugNumber(latestFrame?.reference_correlation, 2)} er=${formatDebugNumber(latestFrame?.energy_ratio_db, 1)} onset=${formatDebugNumber(latestFrame?.onset_strength, 2)} contam=${formatDebugNumber(latestFrame?.contamination_score, 2)} rej=${formatDebugBool(Boolean(latestFrame?.rejected_as_reference_bleed))} hold=${Math.round(snapshot?.holdMs ?? 0)}/${Math.round(snapshot?.holdRequiredMs ?? DEFAULT_HOLD_MS)}ms`,
-    `validate can=${formatDebugBool(snapshot?.canValidateHit ?? false)} within=${formatDebugBool(snapshot?.isWithinGraceWindow ?? false)} validHit=${formatDebugBool(snapshot?.validHit ?? false)} minConf=${formatDebugNumber(snapshot?.minConfidence ?? DEFAULT_MIN_CONFIDENCE, 2)} frames=${snapshot?.sampleCount ?? this.latestFrames.length} validFrames=${snapshot?.validFrameCount ?? 0}`,
-    `waiting=${waitingElapsedSeconds !== undefined ? `${waitingElapsedSeconds.toFixed(2)}s` : '-'} timeout=${timeoutSeconds !== undefined ? `${timeoutSeconds.toFixed(2)}s` : '-'} feedback=${this.feedbackText || '-'}`
-  ];
+  if (snapshot.runtime.acceptedPostGate) {
+    this.gameplayValidationDebugLastAccepted = retainGameplayValidationSnapshot(snapshot, 'accepted', buildGameplayValidationEventLabel('accepted', snapshot));
+  } else if (snapshot.window.phase === 'expired' && previousSnapshot?.window.phase !== 'expired') {
+    this.gameplayValidationDebugLastExpired = retainGameplayValidationSnapshot(snapshot, 'expired', buildGameplayValidationEventLabel('expired', snapshot));
+  } else if (
+    snapshot.runtime.rejectStage !== 'none' &&
+    (
+      previousSnapshot?.runtime.rejectStage !== snapshot.runtime.rejectStage ||
+      previousSnapshot?.runtime.gateRejectReason !== snapshot.runtime.gateRejectReason ||
+      previousSnapshot?.window.targetKey !== snapshot.window.targetKey
+    )
+  ) {
+    this.gameplayValidationDebugLastRejected = retainGameplayValidationSnapshot(snapshot, 'rejected', buildGameplayValidationEventLabel('rejected', snapshot));
+  }
 
-  this.debugOverlayText.setText(lines.join('\n'));
+  lines.push(
+    buildRetainedSnapshotLine('Last accepted', this.gameplayValidationDebugLastAccepted),
+    buildRetainedSnapshotLine('Last expired', this.gameplayValidationDebugLastExpired),
+    buildRetainedSnapshotLine('Last rejected', this.gameplayValidationDebugLastRejected)
+  );
+
+  const palette = resolveGameplayValidationDebugPalette(snapshot.severity);
+  panel.setStrokeStyle(2, palette.panelStroke, 0.72);
+  text.setColor(palette.textColor);
+  text.setText(lines.join('\n'));
+}
+
+function retainGameplayValidationSnapshot(
+  snapshot: GameplayValidationDebugSnapshot,
+  eventKind: GameplayValidationDebugEventKind,
+  eventLabel: string
+): GameplayValidationDebugRetainedSnapshot {
+  return {
+    ...snapshot,
+    eventKind,
+    eventLabel
+  };
+}
+
+function buildGameplayValidationEventLabel(
+  eventKind: GameplayValidationDebugEventKind,
+  snapshot: GameplayValidationDebugSnapshot
+): string {
+  const target = snapshot.target.targetKey ?? '-';
+  if (eventKind === 'accepted') {
+    return `accepted target=${target} ${buildValidationSummaryTail(snapshot)}`;
+  }
+  if (eventKind === 'expired') {
+    return `expired target=${target} ${buildValidationSummaryTail(snapshot)}`;
+  }
+  return `rejected target=${target} ${buildValidationSummaryTail(snapshot)}`;
+}
+
+function buildRetainedSnapshotLine(
+  label: string,
+  snapshot: GameplayValidationDebugRetainedSnapshot | undefined
+): string {
+  if (!snapshot) {
+    return `${label}: -`;
+  }
+  return `${label}: ${snapshot.eventLabel} age=${Math.round(performance.now() - snapshot.capturedAtMs)}ms`;
+}
+
+function buildValidationSummaryTail(snapshot: GameplayValidationDebugSnapshot): string {
+  const accepted = snapshot.runtime.acceptedPostGate ? 'post=Y' : snapshot.runtime.acceptedPreGate ? 'pre=Y' : 'pre=N';
+  const stage = snapshot.runtime.rejectStage;
+  const phase = snapshot.window.phase;
+  return `${accepted} stage=${stage} phase=${phase}`;
 }
 
 function updateHudImpl(this: PlaySceneContext): void {
@@ -810,39 +826,6 @@ function recordHudUpdateDuration(scene: PlaySceneContext, durationMs: number): v
   }
 }
 
-function summarizeRollingDurations(samples: Float32Array, count: number): {
-  samples: number;
-  avgMs: number;
-  p95Ms: number;
-  maxMs: number;
-} {
-  if (count <= 0) {
-    return {
-      samples: 0,
-      avgMs: 0,
-      p95Ms: 0,
-      maxMs: 0
-    };
-  }
-  const values = new Array<number>(count);
-  let sum = 0;
-  let max = 0;
-  for (let index = 0; index < count; index += 1) {
-    const value = sanitizeDuration(samples[index]);
-    values[index] = value;
-    sum += value;
-    max = Math.max(max, value);
-  }
-  values.sort((a, b) => a - b);
-  const p95Index = Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * 0.95) - 1));
-  return {
-    samples: count,
-    avgMs: sum / count,
-    p95Ms: values[p95Index] ?? 0,
-    maxMs: max
-  };
-}
-
 function sanitizeDuration(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 0;
   return value;
@@ -853,23 +836,4 @@ function readClockMs(): number {
     return performance.now();
   }
   return Date.now();
-}
-
-function resolveMissingWorkletTelemetryReason(scene: PlaySceneContext): string {
-  if (!scene.detector) {
-    return 'detector unavailable';
-  }
-  if (scene.detectorLegacyFallback) {
-    return `legacy fallback (${scene.detector.getLegacyFallbackReason() ?? 'worklet unavailable'})`;
-  }
-  if (!scene.playbackStarted) {
-    return 'session not started';
-  }
-  if (!scene.audioCtx || scene.audioCtx.state !== 'running') {
-    return 'audio context not running';
-  }
-  if (scene.audioCtx.currentTime >= 1.5) {
-    return 'no profiling messages received';
-  }
-  return 'waiting telemetry';
 }

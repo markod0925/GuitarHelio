@@ -8,6 +8,11 @@ import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import { buildSpectralRuntimeModelFromTargets } from '../../../audio/spectralRuntimeModel';
 import { SimpleSynth } from '../../../audio/synth';
+import { resolveTargetGroup } from '../../../guitar/targetGrouping';
+import {
+  buildValidationTargetFromTargetGroup,
+  buildValidatorFrameEvidenceFromPitchFrame
+} from '../../../gameplay/validation';
 import {
   resolveResumeSongSeconds,
   resolveResumeSongSecondsForAudio,
@@ -29,6 +34,10 @@ import { isBackingTrackAudioUrl } from '../../playSceneDebug';
 import { PlayState, type SourceNote } from '../../../types/models';
 import type { PlaySceneContext } from './PlaySceneContext';
 import { runtimeLog, toRuntimeErrorMessage } from '../../../app/runtimeLog';
+import {
+  markGameplayValidationWindowAccepted,
+  syncGameplayValidationWindow
+} from './validationWindow';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class PlaybackController {
@@ -212,6 +221,21 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
     detector.onPitch((frame) => {
       if (this.pauseOverlay) return;
       if (this.runtime.state === PlayState.Finished) return;
+      const timestampMs = performance.now();
+      const songSecondsNow = this.playbackStarted ? this.getSongSecondsNow() : undefined;
+      const validationWindow = syncGameplayValidationWindow(this, timestampMs, songSecondsNow);
+      const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
+      const validationTarget = validationWindow.phase === 'armed' ? buildValidationTargetFromTargetGroup(activeGroup) : null;
+      const frameEvidence = buildValidatorFrameEvidenceFromPitchFrame(frame, timestampMs, validationTarget);
+      const validationOutput = this.realtimeGameplayValidator.update({
+        timestampMs,
+        frameEvidence
+      });
+      this.realtimeValidationOutput = validationOutput;
+      this.realtimeValidationState = this.realtimeGameplayValidator.getState();
+      if (validationOutput.accepted && validationWindow.phase === 'armed') {
+        markGameplayValidationWindowAccepted(this, timestampMs, songSecondsNow);
+      }
       this.latestFrames.push(gameplayPitchStabilizer.update(frame));
     });
     if (PLAY_SCENE_ENABLE_PROFILING) {

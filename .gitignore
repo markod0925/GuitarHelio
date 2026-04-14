@@ -20,3 +20,15 @@ target/native_pitch_runtime_host/.rustc_info.json
 target/native_pitch_runtime_wsl/.rustc_info.json
 target/native_pitch_runtime_host/CACHEDIR.TAG
 target/native_pitch_runtime_wsl/CACHEDIR.TAG
+/analysis/pitchdebug_partial_eval_raw_only/.pyin_cache
+/analysis/benchmark_suites/.compiled
+/analysis/tuner_benchmark/.pyin_cache
+/analysis/tuner_pyin_optimization/.pyin_cache
+/analysis/pitchdebug_partial_eval/.compiled
+/analysis/pitchdebug_partial_eval/.compiled
+/analysis/gameplay_validator_benchmark_poly
+/analysis/gameplay_validator_benchmark
+/analysis/gameplay_validator_benchmark
+/analysis/gameplay_validator_benchmark_poly
+/analysis/gameplay_validator_benchmark
+.cymbal/
