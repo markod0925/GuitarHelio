@@ -16,8 +16,8 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
   mode: 'note_only',
   note: {
     minExpectedScore: 0,
-    minExpectedFrameRatio: 0.5,
-    minConsecutiveExpectedFrames: 2,
+    minExpectedSupportSeconds: 0.02,
+    minConsecutiveExpectedFrames: 1,
     maxExpectedCentsError: 35,
     minExpectedConfidence: 0.2,
     minExpectedVsBestMargin: 10,
@@ -125,7 +125,7 @@ export function normalizeNoteEvidenceConfig(config: NoteEvidenceConfig): NoteEvi
   return {
     ...config,
     minExpectedScore: Number.isFinite(config.minExpectedScore) ? config.minExpectedScore : 0,
-    minExpectedFrameRatio: clamp(config.minExpectedFrameRatio, 0, 1),
+    minExpectedSupportSeconds: Number.isFinite(config.minExpectedSupportSeconds) ? Math.max(0, config.minExpectedSupportSeconds) : 0.02,
     minConsecutiveExpectedFrames: Math.max(1, Math.round(config.minConsecutiveExpectedFrames)),
     maxExpectedCentsError: Number.isFinite(config.maxExpectedCentsError) ? Math.max(0, config.maxExpectedCentsError) : 35,
     minExpectedConfidence: clamp(config.minExpectedConfidence, 0, 1),

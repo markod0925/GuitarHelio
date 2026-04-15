@@ -247,7 +247,7 @@ async function main(): Promise<void> {
 function buildDecisionConfigs(): ValidatorDecisionConfig[] {
   const base = deriveConfigWithMode(DEFAULT_VALIDATOR_DECISION_CONFIG, 'note_only');
 
-  const minExpectedFrameRatio = [0.04, 0.08];
+  const minExpectedSupportSeconds = [0.02, 0.04];
   const minConsecutiveExpectedFrames = [1, 2];
   const minExpectedConfidence = [0.2, 0.35, 0.45];
   const minExpectedVsBestMargin = [-1_000_000, 0];
@@ -256,7 +256,7 @@ function buildDecisionConfigs(): ValidatorDecisionConfig[] {
   const minExpectedTop3FrameRatio = [0, 0.4];
 
   const out: ValidatorDecisionConfig[] = [];
-  for (const frameRatio of minExpectedFrameRatio) {
+  for (const supportSeconds of minExpectedSupportSeconds) {
     for (const consecutive of minConsecutiveExpectedFrames) {
       for (const confidence of minExpectedConfidence) {
         for (const bestMargin of minExpectedVsBestMargin) {
@@ -267,7 +267,7 @@ function buildDecisionConfigs(): ValidatorDecisionConfig[] {
                   ...base,
                   id: [
                     'poly_sweep_note_only',
-                    `fr${toIdScale(frameRatio)}`,
+                    `ss${toIdScale(supportSeconds)}`,
                     `ce${consecutive}`,
                     `cf${toIdScale(confidence)}`,
                     `mb${toIdScale(bestMargin)}`,
@@ -279,7 +279,7 @@ function buildDecisionConfigs(): ValidatorDecisionConfig[] {
                   mode: 'note_only',
                   note: {
                     ...base.note,
-                    minExpectedFrameRatio: frameRatio,
+                    minExpectedSupportSeconds: supportSeconds,
                     minConsecutiveExpectedFrames: consecutive,
                     minExpectedConfidence: confidence,
                     minExpectedVsBestMargin: bestMargin,

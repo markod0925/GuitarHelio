@@ -141,7 +141,7 @@ function buildFixedPolicies(): ValidatorDecisionConfig[] {
 function buildSweepConfigs(): ValidatorDecisionConfig[] {
   const base = DEFAULT_VALIDATOR_DECISION_CONFIG;
   const minExpectedScore = [0];
-  const minExpectedFrameRatio = [0.05, 0.1];
+  const minExpectedSupportSeconds = [0.02, 0.04];
   const minConsecutiveExpectedFrames = [1, 2];
   const minExpectedVsBestMargin = [-1000000, 0];
   const minExpectedVsBestRatio = [0, 1.0];
@@ -157,7 +157,7 @@ function buildSweepConfigs(): ValidatorDecisionConfig[] {
   const out: ValidatorDecisionConfig[] = [];
   for (const mode of MODES) {
     for (const score of minExpectedScore) {
-      for (const ratio of minExpectedFrameRatio) {
+      for (const supportSeconds of minExpectedSupportSeconds) {
         for (const consecutive of minConsecutiveExpectedFrames) {
           for (const bestMargin of minExpectedVsBestMargin) {
             for (const bestRatio of minExpectedVsBestRatio) {
@@ -171,13 +171,13 @@ function buildSweepConfigs(): ValidatorDecisionConfig[] {
                             for (const positionConsecutive of minConsecutivePositionFrames) {
                               out.push({
                                 ...base,
-                                id: `sweep_${mode}_s${toIdScale(score)}_r${toIdScale(ratio)}_ce${consecutive}_mb${toIdScale(bestMargin)}_rb${toIdScale(bestRatio)}_mo${toIdScale(octaveMargin)}_t1${toIdScale(top1Ratio)}_t3${toIdScale(top3Ratio)}_pw${toIdScale(pairwiseRate)}_oc${toIdScale(octaveConf)}_vs${toIdScale(vsSource)}_rp${toIdScale(positionRatio)}_cp${positionConsecutive}`,
+                                id: `sweep_${mode}_s${toIdScale(score)}_ss${toIdScale(supportSeconds)}_ce${consecutive}_mb${toIdScale(bestMargin)}_rb${toIdScale(bestRatio)}_mo${toIdScale(octaveMargin)}_t1${toIdScale(top1Ratio)}_t3${toIdScale(top3Ratio)}_pw${toIdScale(pairwiseRate)}_oc${toIdScale(octaveConf)}_vs${toIdScale(vsSource)}_rp${toIdScale(positionRatio)}_cp${positionConsecutive}`,
                                 label: `Sweep ${mode}`,
                                 mode,
                                 note: {
                                   ...base.note,
                                   minExpectedScore: score,
-                                  minExpectedFrameRatio: ratio,
+                                  minExpectedSupportSeconds: supportSeconds,
                                   minConsecutiveExpectedFrames: consecutive,
                                   minExpectedVsBestMargin: bestMargin,
                                   minExpectedVsBestRatio: bestRatio,

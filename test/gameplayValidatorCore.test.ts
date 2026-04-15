@@ -73,7 +73,7 @@ function config(mode: ValidatorDecisionConfig['mode']): ValidatorDecisionConfig 
     mode,
     note: {
       minExpectedScore: 40,
-      minExpectedFrameRatio: 0.5,
+      minExpectedSupportSeconds: 0.02,
       minConsecutiveExpectedFrames: 2,
       maxExpectedCentsError: 35,
       minExpectedConfidence: 0.2,
@@ -152,7 +152,7 @@ describe('evaluateCaseTelemetry decision semantics', () => {
 
     const row = evaluateCaseTelemetry(telemetry, config('note_only'));
     expect(row.decisionAccept).toBe(false);
-    expect(row.decisionReason).toBe('stage_a_expected_frame_ratio_failed');
+    expect(row.decisionReason).toBe('stage_a_expected_support_seconds_failed');
   });
 
   test('distinguishes note_only vs exact_position for same-pitch alt string', () => {

@@ -62,12 +62,14 @@ export function buildValidatorNoteEvidence(
 
   const positionQualified = usableFrames.map((frame, index) => expectedQualified[index] && frame.expectedPositionMatch);
   const anyAccepted = usableFrames.map((frame) => frame.detectorAccepted);
+  const supportSeconds = estimateQualifiedSupportSeconds(usableFrames, expectedQualified);
+  const minValidatedSupportSeconds = Math.max(0, normalizedConfig.note.minExpectedSupportSeconds);
 
   const expectedQualifiedCount = countTrue(expectedQualified);
   const positionQualifiedCount = countTrue(positionQualified);
   const anyAcceptedCount = countTrue(anyAccepted);
 
-  const minExpectedFrames = Math.max(1, Math.ceil(usableFrames.length * normalizedConfig.note.minExpectedFrameRatio));
+  const minValidatedSupportFrames = Math.max(1, Math.round(normalizedConfig.note.minConsecutiveExpectedFrames));
   const minPositionFrames = Math.max(1, Math.ceil(usableFrames.length * normalizedConfig.position.minPositionFrameRatio));
   const minLegacyFrames = Math.max(1, Math.ceil(usableFrames.length * normalizedConfig.legacy.acceptFrameRatio));
 
@@ -102,7 +104,9 @@ export function buildValidatorNoteEvidence(
     matchedMidi: modeNumber(usableFrames.map((frame) => frame.matchedMidi)),
     matchedSemitoneDistance: roundNullable(median(usableFrames.map((frame) => frame.matchedSemitoneDistance).filter((value): value is number => value !== null)), 6),
     supportFrames: expectedQualifiedCount,
-    minValidatedSupportFrames: minExpectedFrames,
+    supportSeconds: roundNumber(supportSeconds, 6),
+    minValidatedSupportFrames: minValidatedSupportFrames,
+    minValidatedSupportSeconds: roundNumber(minValidatedSupportSeconds, 6),
     positionSupportFrames: positionQualifiedCount,
     positionMinValidatedSupportFrames: minPositionFrames,
     legacySupportFrames: legacyExpectedCount,
@@ -131,7 +135,7 @@ export function buildValidatorNoteEvidence(
     samePitchAltDetectedFrameCount: countTrue(usableFrames.map((frame) => frame.samePitchAltDetected)),
     samePitchAltCandidateExists: usableFrames.some((frame) => frame.samePitchAltScore !== null),
     confidenceScore,
-    expectedFrameRatio: roundNumber(usableFrames.length > 0 ? expectedQualifiedCount / usableFrames.length : 0, 6),
+    expectedSupportSeconds: roundNumber(supportSeconds, 6),
     positionFrameRatio: roundNumber(usableFrames.length > 0 ? positionQualifiedCount / usableFrames.length : 0, 6),
     expectedCentsErrorMedian: roundNullable(median(usableFrames.map((frame) => frame.expectedCentsError).filter((value): value is number => value !== null)), 6),
     expectedScoreMedian: roundNumber(median(usableFrames.map((frame) => frame.expectedScore)) ?? 0, 6),
@@ -152,7 +156,7 @@ export function evaluateNoteEvidence(
 ): { decisionAccept: boolean; decisionReason: string; acceptedNote: boolean } {
   const normalizedConfig = normalizeNoteDecisionConfig(config);
   const stageANotePass =
-    evidence.supportFrames >= evidence.minValidatedSupportFrames &&
+    evidence.supportSeconds >= evidence.minValidatedSupportSeconds &&
     evidence.minConsecutiveExpectedFrames >= normalizedConfig.note.minConsecutiveExpectedFrames &&
     evidence.confidenceScore >= normalizedConfig.note.minExpectedConfidence &&
     evidence.topKPresence.top1FrameRatio >= normalizedConfig.note.minExpectedTop1FrameRatio &&
@@ -175,8 +179,8 @@ export function evaluateNoteEvidence(
   } else if (normalizedConfig.mode === 'note_only') {
     decisionAccept = stageANotePass;
     decisionReason = stageANotePass ? 'note_stage_passed' : noteStageRejectReason({
-      expectedQualifiedCount: evidence.supportFrames,
-      minExpectedFrames: evidence.minValidatedSupportFrames,
+      supportSeconds: evidence.supportSeconds,
+      minSupportSeconds: evidence.minValidatedSupportSeconds,
       consecutive: evidence.minConsecutiveExpectedFrames,
       minConsecutive: normalizedConfig.note.minConsecutiveExpectedFrames,
       expectedConfidence: evidence.confidenceScore,
@@ -196,8 +200,8 @@ export function evaluateNoteEvidence(
     decisionAccept = stageANotePass && stageBPositionPass;
     if (!stageANotePass) {
       decisionReason = noteStageRejectReason({
-        expectedQualifiedCount: evidence.supportFrames,
-        minExpectedFrames: evidence.minValidatedSupportFrames,
+        supportSeconds: evidence.supportSeconds,
+        minSupportSeconds: evidence.minValidatedSupportSeconds,
         consecutive: evidence.minConsecutiveExpectedFrames,
         minConsecutive: normalizedConfig.note.minConsecutiveExpectedFrames,
         expectedConfidence: evidence.confidenceScore,
@@ -515,8 +519,8 @@ function finalizePreGateDecision(input: {
 }
 
 function noteStageRejectReason(input: {
-  expectedQualifiedCount: number;
-  minExpectedFrames: number;
+  supportSeconds: number;
+  minSupportSeconds: number;
   consecutive: number;
   minConsecutive: number;
   expectedConfidence: number;
@@ -532,8 +536,8 @@ function noteStageRejectReason(input: {
   expectedVsSourceFrameRatio: number;
   minExpectedVsSourceFrameRatio: number;
 }): string {
-  if (input.expectedQualifiedCount < input.minExpectedFrames) {
-    return 'stage_a_expected_frame_ratio_failed';
+  if (input.supportSeconds < input.minSupportSeconds) {
+    return 'stage_a_expected_support_seconds_failed';
   }
   if (input.consecutive < input.minConsecutive) {
     return 'stage_a_expected_consecutive_failed';
@@ -708,4 +712,21 @@ function roundNullable(value: number | null, decimals: number): number | null {
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
+}
+
+export function estimateQualifiedSupportSeconds(
+  frames: Array<{ timestampMs: number }>,
+  qualifiedMask: boolean[]
+): number {
+  const frameIntervalsSeconds = estimateFrameIntervalSeconds(frames);
+  if (frameIntervalsSeconds <= 0) return 0;
+  return roundNumber(countTrue(qualifiedMask) * frameIntervalsSeconds, 6);
+}
+
+function estimateFrameIntervalSeconds(frames: Array<{ timestampMs: number }>): number {
+  const deltas = frames
+    .slice(1)
+    .map((frame, index) => (frame.timestampMs - frames[index].timestampMs) / 1000)
+    .filter((delta) => Number.isFinite(delta) && delta > 0);
+  return Math.max(0.02, median(deltas) ?? 0.02);
 }

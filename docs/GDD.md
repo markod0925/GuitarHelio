@@ -242,6 +242,8 @@ That runtime validator MUST be stateful, frame-driven, target-driven, and able t
 Mono MUST be treated as note-set cardinality `1`; poly MUST be treated as note-set cardinality `> 1`.
 The benchmark tooling MUST reuse the same shared note-evidence and gate/finalization logic where practical, while keeping dataset parsing and window labeling benchmark-only.
 Benchmark harnesses MAY default to Medium pitch tolerance when difficulty is not explicitly provided, but they MUST keep the tolerance configurable so Easy/Hard runs remain reproducible.
+Per-note support MUST be expressed as a physical duration in seconds (`supportSeconds` / `minExpectedSupportSeconds`) and MUST NOT be modeled as a frame ratio, because frame ratios scale with window length and difficulty.
+Consecutive-frame checks remain a separate gate and MAY stay frame-based.
 
 For polyphonic passages, validation MUST be note-set oriented:
 

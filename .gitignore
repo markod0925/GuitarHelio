@@ -39,3 +39,4 @@ target/native_pitch_runtime_wsl/CACHEDIR.TAG
 /analysis/practice_benchmark
 /analysis/tuner_benchmark
 /analysis/tuner_pyin_optimization
+..cymbalindex.db

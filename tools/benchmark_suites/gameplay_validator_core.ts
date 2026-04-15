@@ -1,4 +1,7 @@
-import { evaluateNoteEvidence as evaluateRuntimeNoteEvidence } from '../../src/gameplay/validation';
+import {
+  evaluateNoteEvidence as evaluateRuntimeNoteEvidence,
+  estimateQualifiedSupportSeconds
+} from '../../src/gameplay/validation';
 import type {
   ValidatorNoteEvidence as RuntimeValidatorNoteEvidence
 } from '../../src/gameplay/validation';
@@ -122,7 +125,7 @@ export type ValidatorCaseTelemetry = {
 
 export type NoteEvidenceConfig = {
   minExpectedScore: number;
-  minExpectedFrameRatio: number;
+  minExpectedSupportSeconds: number;
   minConsecutiveExpectedFrames: number;
   maxExpectedCentsError: number;
   minExpectedConfidence: number;
@@ -195,7 +198,9 @@ export type ValidatorNoteEvidence = {
   rawDetectionMaxConfidence: number | null;
   rawDetectionFrameRatio: number | null;
   supportFrames: number;
+  supportSeconds: number;
   minValidatedSupportFrames: number;
+  minValidatedSupportSeconds: number;
   positionSupportFrames: number;
   positionMinValidatedSupportFrames: number;
   legacySupportFrames: number;
@@ -219,7 +224,7 @@ export type ValidatorNoteEvidence = {
   samePitchAltDetectedFrameCount: number;
   samePitchAltCandidateExists: boolean;
   confidenceScore: number;
-  expectedFrameRatio: number;
+  expectedSupportSeconds: number;
   positionFrameRatio: number;
   expectedCentsErrorMedian: number | null;
   expectedScoreMedian: number;
@@ -250,7 +255,7 @@ export type ValidatorRow = ValidatorNoteEvidence & {
   minConsecutivePositionFrames: number;
   firstExpectedHitLatencyMs: number | null;
   firstAnyHitLatencyMs: number | null;
-  expectedFrameRatio: number;
+  expectedSupportSeconds: number;
   positionFrameRatio: number;
   expectedCentsErrorMedian: number | null;
   expectedScoreMedian: number;
@@ -318,7 +323,7 @@ export const LEGACY_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
   mode: 'legacy_hit_ratio',
   note: {
     minExpectedScore: 0,
-    minExpectedFrameRatio: 0,
+    minExpectedSupportSeconds: 0.02,
     minConsecutiveExpectedFrames: 1,
     maxExpectedCentsError: 50,
     minExpectedConfidence: 0,
@@ -349,7 +354,7 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
   mode: 'note_only',
   note: {
     minExpectedScore: 0,
-    minExpectedFrameRatio: 0.05,
+    minExpectedSupportSeconds: 0.02,
     minConsecutiveExpectedFrames: 1,
     maxExpectedCentsError: 50,
     minExpectedConfidence: 0.4298,
@@ -435,7 +440,9 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
   const anyAcceptedCount = countTrue(anyAccepted);
 
   const expectedHitConfidenceMedian = median(frames.map((frame) => frame.detectorConfidence)) ?? 0;
-  const minExpectedFrames = Math.max(1, Math.ceil(frames.length * config.note.minExpectedFrameRatio));
+  const supportSeconds = estimateQualifiedSupportSeconds(frames, expectedQualified);
+  const minValidatedSupportSeconds = Math.max(0, config.note.minExpectedSupportSeconds);
+  const minValidatedSupportFrames = Math.max(1, Math.round(config.note.minConsecutiveExpectedFrames));
   const minPositionFrames = Math.max(1, Math.ceil(frames.length * config.position.minPositionFrameRatio));
   const minLegacyFrames = Math.max(1, Math.ceil(frames.length * config.legacy.acceptFrameRatio));
 
@@ -449,7 +456,7 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
   const stageALegacyPass = legacyExpectedCount >= minLegacyFrames;
 
   const stageANotePass =
-    expectedQualifiedCount >= minExpectedFrames &&
+    supportSeconds >= minValidatedSupportSeconds &&
     longestConsecutiveTrue(expectedQualified) >= config.note.minConsecutiveExpectedFrames &&
     expectedHitConfidenceMedian >= config.note.minExpectedConfidence &&
     ratioTrue(expectedTop1Mask) >= config.note.minExpectedTop1FrameRatio &&
@@ -472,8 +479,8 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
   } else if (config.mode === 'note_only') {
     decisionAccept = stageANotePass;
     decisionReason = stageANotePass ? 'note_stage_passed' : noteStageRejectReason({
-      expectedQualifiedCount,
-      minExpectedFrames,
+      supportSeconds,
+      minSupportSeconds: minValidatedSupportSeconds,
       consecutive: longestConsecutiveTrue(expectedQualified),
       minConsecutive: config.note.minConsecutiveExpectedFrames,
       expectedConfidence: expectedHitConfidenceMedian,
@@ -493,8 +500,8 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
     decisionAccept = stageANotePass && stageBPositionPass;
     if (!stageANotePass) {
       decisionReason = noteStageRejectReason({
-        expectedQualifiedCount,
-        minExpectedFrames,
+        supportSeconds,
+        minSupportSeconds: minValidatedSupportSeconds,
         consecutive: longestConsecutiveTrue(expectedQualified),
         minConsecutive: config.note.minConsecutiveExpectedFrames,
         expectedConfidence: expectedHitConfidenceMedian,
@@ -558,7 +565,9 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
     rawDetectionMaxConfidence: roundNullable(frames.length > 0 ? Math.max(...frames.map((frame) => frame.detectorConfidence)) : null, 6),
     rawDetectionFrameRatio: roundNullable(frames.length > 0 ? anyAcceptedCount / frames.length : null, 6),
     supportFrames: expectedQualifiedCount,
-    minValidatedSupportFrames: minExpectedFrames,
+    supportSeconds: roundNumber(supportSeconds, 6),
+    minValidatedSupportFrames,
+    minValidatedSupportSeconds: roundNumber(minValidatedSupportSeconds, 6),
     positionSupportFrames: positionQualifiedCount,
     positionMinValidatedSupportFrames: minPositionFrames,
     legacySupportFrames: legacyExpectedCount,
@@ -602,7 +611,7 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
     hitFrameCountPosition: positionQualifiedCount,
     firstExpectedHitLatencyMs: roundNullable(firstTimestampWhere(expectedQualified, frames), 3),
     firstAnyHitLatencyMs: roundNullable(firstTimestampWhere(anyAccepted, frames), 3),
-    expectedFrameRatio: roundNumber(frames.length > 0 ? expectedQualifiedCount / frames.length : 0, 6),
+    expectedSupportSeconds: roundNumber(supportSeconds, 6),
     positionFrameRatio: roundNumber(frames.length > 0 ? positionQualifiedCount / frames.length : 0, 6),
     expectedCentsErrorMedian: roundNullable(median(frames.map((frame) => frame.expectedCentsError).filter((value): value is number => value !== null)), 6),
     expectedScoreMedian: roundNumber(median(frames.map((frame) => frame.expectedScore)) ?? 0, 6),
@@ -667,7 +676,9 @@ export function evaluateNoteEvidence(
     matchedMidi: null,
     matchedSemitoneDistance: null,
     supportFrames: evidence.supportFrames,
+    supportSeconds: evidence.supportSeconds,
     minValidatedSupportFrames: evidence.minValidatedSupportFrames,
+    minValidatedSupportSeconds: evidence.minValidatedSupportSeconds,
     positionSupportFrames: evidence.positionSupportFrames,
     positionMinValidatedSupportFrames: evidence.positionMinValidatedSupportFrames,
     legacySupportFrames: evidence.legacySupportFrames,
@@ -691,7 +702,7 @@ export function evaluateNoteEvidence(
     samePitchAltDetectedFrameCount: evidence.samePitchAltDetectedFrameCount,
     samePitchAltCandidateExists: evidence.samePitchAltCandidateExists,
     confidenceScore: evidence.confidenceScore,
-    expectedFrameRatio: evidence.expectedFrameRatio,
+    expectedSupportSeconds: evidence.expectedSupportSeconds,
     positionFrameRatio: evidence.positionFrameRatio,
     expectedCentsErrorMedian: evidence.expectedCentsErrorMedian,
     expectedScoreMedian: evidence.expectedScoreMedian,
@@ -850,8 +861,8 @@ function buildBandTarFar(
 }
 
 function noteStageRejectReason(input: {
-  expectedQualifiedCount: number;
-  minExpectedFrames: number;
+  supportSeconds: number;
+  minSupportSeconds: number;
   consecutive: number;
   minConsecutive: number;
   expectedConfidence: number;
@@ -867,8 +878,8 @@ function noteStageRejectReason(input: {
   expectedVsSourceFrameRatio: number;
   minExpectedVsSourceFrameRatio: number;
 }): string {
-  if (input.expectedQualifiedCount < input.minExpectedFrames) {
-    return 'stage_a_expected_frame_ratio_failed';
+  if (input.supportSeconds < input.minSupportSeconds) {
+    return 'stage_a_expected_support_seconds_failed';
   }
   if (input.consecutive < input.minConsecutive) {
     return 'stage_a_expected_consecutive_failed';

@@ -273,12 +273,12 @@ describe('RealtimeGameplayValidator', () => {
 
     const output = validator.update({
       timestampMs: 32,
-      frameEvidence: frameEvidence(32, [noteFrame(64, 32), noteFrame(67, 32)]),
+      frameEvidence: frameEvidence(32, [noteFrame(64, 32)]),
       target: poly
     });
 
     expect(output.accepted).toBe(false);
-    expect(output.validatedNotes).toEqual([]);
+    expect(output.validatedNotes).toEqual([64]);
     expect(validator.getState().targetRevision).toBe(2);
   });
 
@@ -296,7 +296,7 @@ describe('RealtimeGameplayValidator', () => {
 
     const output = validator.update({
       timestampMs: 32,
-      frameEvidence: frameEvidence(32, [noteFrame(67, 32)]),
+      frameEvidence: frameEvidence(32, [noteFrame(60, 32)]),
       target: mono
     });
 

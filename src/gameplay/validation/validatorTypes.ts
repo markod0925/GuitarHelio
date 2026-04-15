@@ -2,7 +2,7 @@ export type DecisionMode = 'legacy_hit_ratio' | 'note_only' | 'exact_position';
 
 export type NoteEvidenceConfig = {
   minExpectedScore: number;
-  minExpectedFrameRatio: number;
+  minExpectedSupportSeconds: number;
   minConsecutiveExpectedFrames: number;
   maxExpectedCentsError: number;
   minExpectedConfidence: number;
@@ -64,7 +64,9 @@ export type ValidatorNoteEvidence = {
   matchedMidi: number | null;
   matchedSemitoneDistance: number | null;
   supportFrames: number;
+  supportSeconds: number;
   minValidatedSupportFrames: number;
+  minValidatedSupportSeconds: number;
   positionSupportFrames: number;
   positionMinValidatedSupportFrames: number;
   legacySupportFrames: number;
@@ -88,7 +90,7 @@ export type ValidatorNoteEvidence = {
   samePitchAltDetectedFrameCount: number;
   samePitchAltCandidateExists: boolean;
   confidenceScore: number;
-  expectedFrameRatio: number;
+  expectedSupportSeconds: number;
   positionFrameRatio: number;
   expectedCentsErrorMedian: number | null;
   expectedScoreMedian: number;

@@ -87,7 +87,7 @@ function config(overrides: DeepPartialValidatorDecisionConfig = {}): ValidatorDe
     mode: 'note_only',
     note: {
       minExpectedScore: 40,
-      minExpectedFrameRatio: 0.5,
+      minExpectedSupportSeconds: 0.02,
       minConsecutiveExpectedFrames: 1,
       maxExpectedCentsError: 50,
       minExpectedConfidence: 0.2,
