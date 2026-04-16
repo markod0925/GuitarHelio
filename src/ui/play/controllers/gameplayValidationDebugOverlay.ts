@@ -10,6 +10,10 @@ import type {
 } from '../../playSceneTypes';
 import { formatDebugBool, formatDebugNumber, formatSignedMs } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
+import {
+  describeGameplayValidationDebugLogLocation,
+  recordGameplayValidationDebugLog
+} from './gameplayValidationDebugLog';
 
 const TOP_CANDIDATE_LIMIT = 5;
 const FRAME_CHANGE_THRESHOLD_MS = 34;
@@ -169,7 +173,7 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
         .join(' | ')
     : '-';
 
-  return [
+  const lines = [
     `Gameplay Validation Debug [${paletteLabel}]`,
     `Timing: phase=${snapshot.window.phase} dead=${formatDebugBool(snapshot.window.deadTime)} activeWindow=${activeWindowLabel} difficulty=${snapshot.target.difficulty ?? '-'} tol=${toleranceLabel} song=${formatDebugNumber(snapshot.playbackSongSeconds, 3)}s target=${formatDebugNumber(snapshot.targetSongSeconds, 3)}s dt=${formatSignedMs(snapshot.targetDeltaMs ?? undefined)} early=${formatDebugNumber(snapshot.window.earlyToleranceSeconds, 3)}s late=${formatDebugNumber(snapshot.window.lateToleranceSeconds, 3)}s`,
     `Target: mode=${targetLabel} armed=${snapshot.window.currentArmedTargetId ?? '-'} key=${snapshot.target.targetKey ?? '-'} expected=${formatCanonicalTargets(snapshot.target.expectedMidis, snapshot.target.expectedNames, snapshot.target.semitoneTolerance)} ranks=${snapshot.spectral.expectedRanks} agg=${snapshot.target.aggregationPolicyId ?? '-'} gate=${snapshot.target.activationGatePolicyId ?? '-'} noteCfg=${snapshot.target.noteDecisionConfigId ?? '-'}`,
@@ -179,7 +183,11 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
     `Runtime: notes=${noteDecisionSummary}`,
     `Runtime: gate=${snapshot.runtime.gateRejectReason ?? '-'} reasons=${snapshot.runtime.rejectReasons.length > 0 ? snapshot.runtime.rejectReasons.join('|') : '-'} summary=${snapshot.runtime.summary}`,
     `Reset: changed=${formatDebugBool(snapshot.window.targetChangedThisFrame)} setTarget=${snapshot.window.setTargetCount} reset=${snapshot.window.resetCount} arm=${snapshot.window.armCount} lastSet=${lastSetTargetAge} lastReset=${lastResetAge} changeAt=${snapshot.window.lastTargetChangeAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.window.lastTargetChangeAtMs) : '-'}`,
+    `Log: ${describeGameplayValidationDebugLogLocation()}`
   ];
+
+  recordGameplayValidationDebugLog(snapshot, lines);
+  return lines;
 }
 
 export function resolveGameplayValidationDebugPalette(severity: GameplayValidationDebugSeverity): GameplayValidationDebugPalette {
