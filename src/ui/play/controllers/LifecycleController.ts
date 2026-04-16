@@ -41,6 +41,7 @@ export class LifecycleController {
 }
 
 function initializeSessionStateImpl(this: PlaySceneContext): void {
+  finalizeGameplayValidationDebugLog();
   runtimeLog(
     { scene: 'PlayScene', subsystem: 'scene' },
     'INFO',
