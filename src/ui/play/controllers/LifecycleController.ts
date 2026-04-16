@@ -16,6 +16,7 @@ import { isGameplayDebugOverlayEnabled } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
 import { runtimeLog } from '../../../app/runtimeLog';
 import { createIdleValidationWindowState } from './validationWindow';
+import { finalizeGameplayValidationDebugLog } from './gameplayValidationDebugLog';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_LOOP_BUDGET_MS = 16.67;
 
@@ -172,6 +173,7 @@ function startRuntimeLoopImpl(this: PlaySceneContext): void {
 
 function cleanupImpl(this: PlaySceneContext): void {
   runtimeLog({ scene: 'PlayScene', subsystem: 'scene' }, 'INFO', 'Cleaning up play scene.');
+  finalizeGameplayValidationDebugLog();
   void disableKeepScreenOnAfterPlayScene();
   stopLongTaskObserver(this);
   this.input.keyboard?.off('keydown-ESC', this.onBackRequested, this);
