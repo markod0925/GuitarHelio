@@ -76,6 +76,7 @@ export function syncGameplayValidationWindow(
   nowMs: number,
   songSecondsNow: number | undefined
 ): ValidationWindowState {
+  // This is the live target-confirmation lifecycle: arm a window, keep it live only while the target is confirmable, then accept or expire it.
   const validator = scene.realtimeGameplayValidator as
     | {
         reset: () => void;

@@ -28,7 +28,8 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     minExpectedTop3FrameRatio: 0,
     minExpectedPairwiseWinRate: 0,
     maxOctaveConfusionFrameRatio: 1,
-    minExpectedVsSourceFrameRatio: 0
+    minExpectedVsSourceFrameRatio: 0,
+    minExpectedTargetConfirmationFrameRatio: 0
   },
   position: {
     minPositionFrameRatio: 0.5,
@@ -38,6 +39,21 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
   legacy: {
     frameToleranceCents: 50,
     acceptFrameRatio: 0.12
+  }
+};
+
+// Canonical Android mono benchmark-aligned note gate used by PlayScene.
+export const PLAY_SCENE_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
+  ...DEFAULT_VALIDATOR_DECISION_CONFIG,
+  note: {
+    ...DEFAULT_VALIDATOR_DECISION_CONFIG.note,
+    maxExpectedCentsError: 50,
+    minExpectedConfidence: 0.4298,
+    minExpectedVsSourceFrameRatio: 0.6,
+    minExpectedTargetConfirmationFrameRatio: 0.6,
+    minExpectedVsBestMargin: -1_000_000,
+    minExpectedVsBestRatio: 0,
+    minExpectedVsOctaveMargin: -1_000_000
   }
 };
 
@@ -137,7 +153,10 @@ export function normalizeNoteEvidenceConfig(config: NoteEvidenceConfig): NoteEvi
     minExpectedTop3FrameRatio: clamp(config.minExpectedTop3FrameRatio, 0, 1),
     minExpectedPairwiseWinRate: clamp(config.minExpectedPairwiseWinRate, 0, 1),
     maxOctaveConfusionFrameRatio: clamp(config.maxOctaveConfusionFrameRatio, 0, 1),
-    minExpectedVsSourceFrameRatio: clamp(config.minExpectedVsSourceFrameRatio, 0, 1)
+    minExpectedVsSourceFrameRatio: clamp(config.minExpectedVsSourceFrameRatio, 0, 1),
+    minExpectedTargetConfirmationFrameRatio: config.minExpectedTargetConfirmationFrameRatio === undefined
+      ? undefined
+      : clamp(config.minExpectedTargetConfirmationFrameRatio, 0, 1)
   };
 }
 

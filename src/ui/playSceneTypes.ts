@@ -141,10 +141,26 @@ export type GameplayValidationDebugSnapshot = {
     latestMidiEstimate: number | null;
     latestConfidence: number | null;
   };
+  detector: {
+    latestMidiEstimate: number | null;
+    latestConfidence: number | null;
+    selectedNoteCount: number;
+    bestNoteId: string | null;
+    micRms: number | null;
+    referenceMidi: number | null;
+    referenceCorrelation: number | null;
+    energyRatioDb: number | null;
+    onsetStrength: number | null;
+    contaminationScore: number | null;
+    rejectedAsReferenceBleed: boolean | null;
+    stabilizerLockedMidi: number | null;
+  };
   runtime: {
     acceptedPreGate: boolean;
     acceptedPostGate: boolean;
     noteValidationRatio: number;
+    frameCount: number;
+    targetStartedAtMs: number | null;
     validatedNotes: number[];
     missingNotes: number[];
     extraNotes: number[];
@@ -160,7 +176,37 @@ export type GameplayValidationDebugSnapshot = {
       matchedMidi: number | null;
       matchedSemitoneDistance: number | null;
       targetSemitoneTolerance: number;
+      supportFrames: number;
+      supportSeconds: number;
+      minValidatedSupportFrames: number;
+      minValidatedSupportSeconds: number;
+      confidenceScore: number;
+      expectedVsSourceFrameRatio: number;
+      targetConfirmationFrameRatio: number;
+      expectedTop1FrameRatio: number;
+      expectedTop3FrameRatio: number;
+      octaveConfusionFrameRatio: number;
+      rawDetectionFrameRatio: number | null;
+      rawDetectionMaxConfidence: number | null;
     }>;
+    live: {
+      armedWindows: number;
+      acceptedWindows: number;
+      expiredWindows: number;
+      suppressedWindows: number;
+      noTargetWindows: number;
+      deadTimeWindows: number;
+      gateSuppressedWindows: number;
+      windowsWithTopCandidateConfirmation: number;
+      windowsWithNoMeaningfulEvidence: number;
+      earlyAcceptWindows: number;
+      lateAcceptWindows: number;
+      timeoutMissWindows: number;
+      totalSamples: number;
+      averageConfirmationLatencyMs: number | null;
+      medianConfirmationLatencyMs: number | null;
+      confirmationState: 'confirmed' | 'near' | 'far' | 'suppressed' | 'idle';
+    } | null;
   };
 };
 

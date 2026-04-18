@@ -56,6 +56,8 @@ export function buildValidatorNoteEvidence(
   const octaveConfusionMask = usableFrames.map((frame) => frame.octaveCompetitorOutranked);
   const sourceComparableMask = usableFrames.map((frame) => frame.expectedVsSourceWon !== null);
   const expectedVsSourceWinMask = usableFrames.map((frame) => frame.expectedVsSourceWon === true);
+  // In live gameplay this is a proxy for "did the armed target stay confirmed in-window?"
+  const targetConfirmationFrameRatio = ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask);
   const pairwiseWinRates = usableFrames
     .map((frame) => frame.expectedPairwiseWinRate)
     .filter((value): value is number => value !== null && Number.isFinite(value));
@@ -130,7 +132,8 @@ export function buildValidatorNoteEvidence(
     expectedTop1FrameRatio: roundNumber(ratioTrue(expectedTop1Mask), 6),
     expectedTop3FrameRatio: roundNumber(ratioTrue(expectedTop3Mask), 6),
     octaveConfusionFrameRatio: roundNumber(ratioTrue(octaveConfusionMask), 6),
-    expectedVsSourceFrameRatio: roundNumber(ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask), 6),
+    expectedVsSourceFrameRatio: roundNumber(targetConfirmationFrameRatio, 6),
+    targetConfirmationFrameRatio: roundNumber(targetConfirmationFrameRatio, 6),
     positionAmbiguousFrameRatio: roundNumber(ratioTrue(usableFrames.map((frame) => frame.positionAmbiguous)), 6),
     samePitchAltDetectedFrameCount: countTrue(usableFrames.map((frame) => frame.samePitchAltDetected)),
     samePitchAltCandidateExists: usableFrames.some((frame) => frame.samePitchAltScore !== null),
@@ -155,6 +158,8 @@ export function evaluateNoteEvidence(
   config: ValidatorDecisionConfig
 ): { decisionAccept: boolean; decisionReason: string; acceptedNote: boolean } {
   const normalizedConfig = normalizeNoteDecisionConfig(config);
+  const minTargetConfirmationFrameRatio =
+    normalizedConfig.note.minExpectedTargetConfirmationFrameRatio ?? normalizedConfig.note.minExpectedVsSourceFrameRatio;
   const stageANotePass =
     evidence.supportSeconds >= evidence.minValidatedSupportSeconds &&
     evidence.minConsecutiveExpectedFrames >= normalizedConfig.note.minConsecutiveExpectedFrames &&
@@ -163,7 +168,7 @@ export function evaluateNoteEvidence(
     evidence.topKPresence.top3FrameRatio >= normalizedConfig.note.minExpectedTop3FrameRatio &&
     (evidence.expectedPairwiseWinRate ?? 0) >= normalizedConfig.note.minExpectedPairwiseWinRate &&
     evidence.octaveConfusionFrameRatio <= normalizedConfig.note.maxOctaveConfusionFrameRatio &&
-    evidence.expectedVsSourceFrameRatio >= normalizedConfig.note.minExpectedVsSourceFrameRatio;
+    evidence.targetConfirmationFrameRatio >= minTargetConfirmationFrameRatio;
 
   const stageBPositionPass =
     evidence.positionSupportFrames >= evidence.positionMinValidatedSupportFrames &&
@@ -193,8 +198,8 @@ export function evaluateNoteEvidence(
       minExpectedPairwiseWinRate: normalizedConfig.note.minExpectedPairwiseWinRate,
       octaveConfusionFrameRatio: evidence.octaveConfusionFrameRatio,
       maxOctaveConfusionFrameRatio: normalizedConfig.note.maxOctaveConfusionFrameRatio,
-      expectedVsSourceFrameRatio: evidence.expectedVsSourceFrameRatio,
-      minExpectedVsSourceFrameRatio: normalizedConfig.note.minExpectedVsSourceFrameRatio
+      targetConfirmationFrameRatio: evidence.targetConfirmationFrameRatio,
+      minTargetConfirmationFrameRatio
     });
   } else {
     decisionAccept = stageANotePass && stageBPositionPass;
@@ -214,8 +219,8 @@ export function evaluateNoteEvidence(
         minExpectedPairwiseWinRate: normalizedConfig.note.minExpectedPairwiseWinRate,
         octaveConfusionFrameRatio: evidence.octaveConfusionFrameRatio,
         maxOctaveConfusionFrameRatio: normalizedConfig.note.maxOctaveConfusionFrameRatio,
-        expectedVsSourceFrameRatio: evidence.expectedVsSourceFrameRatio,
-        minExpectedVsSourceFrameRatio: normalizedConfig.note.minExpectedVsSourceFrameRatio
+        targetConfirmationFrameRatio: evidence.targetConfirmationFrameRatio,
+        minTargetConfirmationFrameRatio
       });
     } else if (!stageBPositionPass) {
       decisionReason = positionStageRejectReason({
@@ -533,8 +538,8 @@ function noteStageRejectReason(input: {
   minExpectedPairwiseWinRate: number;
   octaveConfusionFrameRatio: number;
   maxOctaveConfusionFrameRatio: number;
-  expectedVsSourceFrameRatio: number;
-  minExpectedVsSourceFrameRatio: number;
+  targetConfirmationFrameRatio: number;
+  minTargetConfirmationFrameRatio: number;
 }): string {
   if (input.supportSeconds < input.minSupportSeconds) {
     return 'stage_a_expected_support_seconds_failed';
@@ -557,8 +562,8 @@ function noteStageRejectReason(input: {
   if (input.octaveConfusionFrameRatio > input.maxOctaveConfusionFrameRatio) {
     return 'stage_a_octave_confusion_ratio_failed';
   }
-  if (input.expectedVsSourceFrameRatio < input.minExpectedVsSourceFrameRatio) {
-    return 'stage_a_expected_vs_source_ratio_failed';
+  if (input.targetConfirmationFrameRatio < input.minTargetConfirmationFrameRatio) {
+    return 'stage_a_target_confirmation_ratio_failed';
   }
   return 'stage_a_expected_evidence_failed';
 }

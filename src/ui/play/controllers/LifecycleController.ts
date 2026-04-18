@@ -17,6 +17,7 @@ import type { PlaySceneContext } from './PlaySceneContext';
 import { runtimeLog } from '../../../app/runtimeLog';
 import { createIdleValidationWindowState } from './validationWindow';
 import { finalizeGameplayValidationDebugLog } from './gameplayValidationDebugLog';
+import { createGameplayValidationLiveTraceSession } from './gameplayValidationLiveTrace';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_LOOP_BUDGET_MS = 16.67;
 
@@ -87,6 +88,7 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.realtimeGameplayValidator.reset();
   this.realtimeValidationOutput = undefined;
   this.realtimeValidationState = this.realtimeGameplayValidator.getState();
+  this.gameplayValidationLiveTrace = createGameplayValidationLiveTraceSession();
   this.referenceInputGain = undefined;
   this.referenceTapGain = undefined;
   this.lastBallTrailRedrawAtMs = Number.NEGATIVE_INFINITY;

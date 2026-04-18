@@ -138,6 +138,7 @@ export type NoteEvidenceConfig = {
   minExpectedPairwiseWinRate: number;
   maxOctaveConfusionFrameRatio: number;
   minExpectedVsSourceFrameRatio: number;
+  minExpectedTargetConfirmationFrameRatio?: number;
 };
 
 export type PositionEvidenceConfig = {
@@ -220,6 +221,7 @@ export type ValidatorNoteEvidence = {
   expectedTop3FrameRatio: number;
   octaveConfusionFrameRatio: number;
   expectedVsSourceFrameRatio: number;
+  targetConfirmationFrameRatio: number;
   positionAmbiguousFrameRatio: number;
   samePitchAltDetectedFrameCount: number;
   samePitchAltCandidateExists: boolean;
@@ -271,6 +273,7 @@ export type ValidatorRow = ValidatorNoteEvidence & {
   expectedPairwiseWinRateMean: number | null;
   octaveConfusionFrameRatio: number;
   expectedVsSourceFrameRatio: number;
+  targetConfirmationFrameRatio: number;
   positionAmbiguousFrameRatio: number;
   samePitchAltDetectedFrameCount: number;
   thresholdsApplied: {
@@ -494,7 +497,9 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
       octaveConfusionFrameRatio: ratioTrue(octaveConfusionMask),
       maxOctaveConfusionFrameRatio: config.note.maxOctaveConfusionFrameRatio,
       expectedVsSourceFrameRatio: ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask),
-      minExpectedVsSourceFrameRatio: config.note.minExpectedVsSourceFrameRatio
+      targetConfirmationFrameRatio: ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask),
+      minExpectedVsSourceFrameRatio: config.note.minExpectedVsSourceFrameRatio,
+      minTargetConfirmationFrameRatio: config.note.minExpectedTargetConfirmationFrameRatio ?? config.note.minExpectedVsSourceFrameRatio
     });
   } else {
     decisionAccept = stageANotePass && stageBPositionPass;
@@ -515,7 +520,9 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
         octaveConfusionFrameRatio: ratioTrue(octaveConfusionMask),
         maxOctaveConfusionFrameRatio: config.note.maxOctaveConfusionFrameRatio,
         expectedVsSourceFrameRatio: ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask),
-        minExpectedVsSourceFrameRatio: config.note.minExpectedVsSourceFrameRatio
+        targetConfirmationFrameRatio: ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask),
+        minExpectedVsSourceFrameRatio: config.note.minExpectedVsSourceFrameRatio,
+        minTargetConfirmationFrameRatio: config.note.minExpectedTargetConfirmationFrameRatio ?? config.note.minExpectedVsSourceFrameRatio
       });
     } else if (!stageBPositionPass) {
       decisionReason = positionStageRejectReason({
@@ -593,6 +600,7 @@ export function evaluateCaseTelemetry(caseTelemetry: ValidatorCaseTelemetry, con
     expectedPairwiseWinRateMean: pairwiseWinRates.length > 0 ? roundNumber(average(pairwiseWinRates), 6) : null,
     octaveConfusionFrameRatio: roundNumber(ratioTrue(octaveConfusionMask), 6),
     expectedVsSourceFrameRatio: roundNumber(ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask), 6),
+    targetConfirmationFrameRatio: roundNumber(ratioTrueByMask(expectedVsSourceWinMask, sourceComparableMask), 6),
     positionAmbiguousFrameRatio: roundNumber(ratioTrue(frames.map((frame) => frame.positionAmbiguous)), 6),
     samePitchAltDetectedFrameCount: countTrue(frames.map((frame) => frame.samePitchAltDetected)),
     samePitchAltCandidateExists: caseTelemetry.samePitchAltCandidateExists,
@@ -698,6 +706,7 @@ export function evaluateNoteEvidence(
     expectedTop3FrameRatio: evidence.expectedTop3FrameRatio,
     octaveConfusionFrameRatio: evidence.octaveConfusionFrameRatio,
     expectedVsSourceFrameRatio: evidence.expectedVsSourceFrameRatio,
+    targetConfirmationFrameRatio: evidence.targetConfirmationFrameRatio,
     positionAmbiguousFrameRatio: evidence.positionAmbiguousFrameRatio,
     samePitchAltDetectedFrameCount: evidence.samePitchAltDetectedFrameCount,
     samePitchAltCandidateExists: evidence.samePitchAltCandidateExists,
@@ -877,6 +886,8 @@ function noteStageRejectReason(input: {
   maxOctaveConfusionFrameRatio: number;
   expectedVsSourceFrameRatio: number;
   minExpectedVsSourceFrameRatio: number;
+  targetConfirmationFrameRatio: number;
+  minTargetConfirmationFrameRatio: number;
 }): string {
   if (input.supportSeconds < input.minSupportSeconds) {
     return 'stage_a_expected_support_seconds_failed';
@@ -899,8 +910,8 @@ function noteStageRejectReason(input: {
   if (input.octaveConfusionFrameRatio > input.maxOctaveConfusionFrameRatio) {
     return 'stage_a_octave_confusion_ratio_failed';
   }
-  if (input.expectedVsSourceFrameRatio < input.minExpectedVsSourceFrameRatio) {
-    return 'stage_a_expected_vs_source_ratio_failed';
+  if (input.targetConfirmationFrameRatio < input.minTargetConfirmationFrameRatio) {
+    return 'stage_a_target_confirmation_ratio_failed';
   }
   return 'stage_a_expected_evidence_failed';
 }

@@ -49,6 +49,7 @@
     "benchmark:suite:tuner": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_tuner_benchmark.js",
     "benchmark:suite:practice": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_practice_benchmark.js",
     "benchmark:suite:gameplay-validator": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_gameplay_validator_benchmark.js",
+    "benchmark:suite:gameplay-validator:ac14-mono": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_gameplay_validator_ac14_mono_final.js",
     "benchmark:suite:gameplay-validator:poly": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_gameplay_validator_poly_benchmark.js",
     "benchmark:suites:all": "npm run benchmark:suite:tuner && npm run benchmark:suite:practice && npm run benchmark:suite:gameplay-validator",
     "benchmark:suite:gameplay-validator:sweep": "npm run benchmark:suites:build && node analysis/benchmark_suites/.compiled/tools/benchmark_suites/run_gameplay_validator_sweep.js",

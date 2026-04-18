@@ -15,6 +15,7 @@ import {
   resolveGameplayValidationToleranceSeconds,
   syncGameplayValidationWindow
 } from './validationWindow';
+import { recordGameplayValidationLiveTrace } from './gameplayValidationLiveTrace';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 type ChordHitProgress = {
@@ -145,7 +146,17 @@ function tickRuntimeImpl(this: PlaySceneContext): void {
   const active = activeGroup[0];
   syncMaspValidationContext(this, activeGroup);
   syncActiveChordTracking(this, active);
-  const validationWindow = syncGameplayValidationWindow(this, performance.now(), songSecondsNow);
+  const nowMs = performance.now();
+  const validationWindow = syncGameplayValidationWindow(this, nowMs, songSecondsNow);
+  recordGameplayValidationLiveTrace(this.gameplayValidationLiveTrace, {
+    timestampMs: nowMs,
+    songSecondsNow,
+    frame: this.latestFrames.latest(),
+    validationWindow,
+    runtimeOutput: this.realtimeValidationOutput,
+    targetGroup: activeGroup,
+    difficulty: this.sceneData?.difficulty ?? null
+  });
 
   const targetSeconds = active ? this.tempoMap.tickToSeconds(active.tick) : undefined;
   const canValidateHit = validationWindow.phase === 'armed';

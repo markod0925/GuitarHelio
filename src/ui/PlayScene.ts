@@ -24,6 +24,7 @@ import {
 } from '../game/stateMachine';
 import {
   RealtimeGameplayValidator,
+  PLAY_SCENE_VALIDATOR_DECISION_CONFIG,
   type RuntimeValidatorOutput,
   type RuntimeValidatorStateSnapshot
 } from '../gameplay/validation';
@@ -60,6 +61,10 @@ import { LifecycleController } from './play/controllers/LifecycleController';
 import { PlayDebugController } from './play/controllers/PlayDebugController';
 import { PlayLayoutController } from './play/controllers/PlayLayoutController';
 import { UIController } from './play/controllers/UIController';
+import {
+  createGameplayValidationLiveTraceSession,
+  type GameplayValidationLiveTraceSession
+} from './play/controllers/gameplayValidationLiveTrace';
 
 export class PlayScene extends Phaser.Scene {
   public static readonly PAUSE_BUTTON_SIZE = 34;
@@ -116,9 +121,12 @@ export class PlayScene extends Phaser.Scene {
   public playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
   public audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
   public detectorLegacyFallback = false;
-  public readonly realtimeGameplayValidator = new RealtimeGameplayValidator();
+  public readonly realtimeGameplayValidator = new RealtimeGameplayValidator({
+    noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+  });
   public realtimeValidationOutput?: RuntimeValidatorOutput;
   public realtimeValidationState?: RuntimeValidatorStateSnapshot;
+  public gameplayValidationLiveTrace: GameplayValidationLiveTraceSession = createGameplayValidationLiveTraceSession();
 
   public laneLayer?: Phaser.GameObjects.Graphics;
   public ball?: Phaser.GameObjects.Arc;

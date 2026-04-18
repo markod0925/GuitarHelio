@@ -40,3 +40,9 @@ target/native_pitch_runtime_wsl/CACHEDIR.TAG
 /analysis/tuner_benchmark
 /analysis/tuner_pyin_optimization
 ..cymbalindex.db
+..cymbal
+/.gradle
+/analysis/gameplay_validator_ac14_mono
+android/app/build.gradle
+android/build.gradle
+tsconfig.tsbuildinfo

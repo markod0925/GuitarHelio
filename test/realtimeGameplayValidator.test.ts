@@ -3,6 +3,7 @@ import {
   DEFAULT_ACTIVATION_GATE_POLICY,
   MONO_ACTIVATION_GATE_POLICY,
   MONO_NOTE_SET_POLICY,
+  PLAY_SCENE_VALIDATOR_DECISION_CONFIG,
   RealtimeGameplayValidator,
   buildValidatorFrameEvidenceFromPitchFrame,
   buildValidatorFrameEvidenceFromPitchResult,
@@ -188,6 +189,23 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.rejectStage).toBe('note_level');
     expect(output.rejectReasons.some((reason) => reason.startsWith('note:60:'))).toBe(true);
     expect(output.validatedNotes).toEqual([]);
+  });
+
+  test('keeps the PlayScene mono config aligned with the benchmark confidence floor', () => {
+    const validator = new RealtimeGameplayValidator({
+      noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+    });
+    const target = monoTarget(60);
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectorConfidence: 0.3 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectorConfidence: 0.3 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectorConfidence: 0.3 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectStage).toBe('note_level');
+    expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_confidence_failed'))).toBe(true);
   });
 
   test('accepts a poly target when enough notes validate', () => {

@@ -399,6 +399,7 @@ function toRuntimeNoteDecision(row: ValidatorRow, semitoneTolerance: number): Ru
     expectedTop3FrameRatio: row.expectedTop3FrameRatio,
     octaveConfusionFrameRatio: row.octaveConfusionFrameRatio,
     expectedVsSourceFrameRatio: row.expectedVsSourceFrameRatio,
+    targetConfirmationFrameRatio: row.targetConfirmationFrameRatio,
     positionAmbiguousFrameRatio: row.positionAmbiguousFrameRatio,
     samePitchAltDetectedFrameCount: row.samePitchAltDetectedFrameCount,
     samePitchAltCandidateExists: row.samePitchAltCandidateExists,

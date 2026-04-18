@@ -15,6 +15,8 @@ export type NoteEvidenceConfig = {
   minExpectedPairwiseWinRate: number;
   maxOctaveConfusionFrameRatio: number;
   minExpectedVsSourceFrameRatio: number;
+  // Live-facing alias for the same proxy signal used to confirm the armed target.
+  minExpectedTargetConfirmationFrameRatio?: number;
 };
 
 export type PositionEvidenceConfig = {
@@ -86,6 +88,8 @@ export type ValidatorNoteEvidence = {
   expectedTop3FrameRatio: number;
   octaveConfusionFrameRatio: number;
   expectedVsSourceFrameRatio: number;
+  // Live trace surfaces the same proxy as target confirmation so the runtime reads like the windowed system it is.
+  targetConfirmationFrameRatio: number;
   positionAmbiguousFrameRatio: number;
   samePitchAltDetectedFrameCount: number;
   samePitchAltCandidateExists: boolean;

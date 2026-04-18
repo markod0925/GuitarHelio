@@ -271,7 +271,7 @@ Minimum prerequisites:
 - `Node.js 22+`
 - Local C++ toolchain (`cmake`, `g++`, `make`) for NeuralNote/Tempo-CNN CLIs
 - Android SDK/NDK installed (for APK build)
-- JDK 21 active for Gradle/Capacitor Android
+- JDK 17 active for Gradle/Capacitor Android
 
 Server checklist (Node wrapper + C++/ONNX CLI):
 1. Build C++ converters:

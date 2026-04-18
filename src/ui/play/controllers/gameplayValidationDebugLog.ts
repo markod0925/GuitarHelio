@@ -46,6 +46,8 @@ type GameplayValidationDebugLogEntry =
       endedAtMs: number;
       metadata: GameplayValidationDebugLogMetadata;
       logicalPath: string;
+      lastSnapshot?: GameplayValidationDebugSnapshot;
+      lines?: string[];
     }
   | {
       kind: 'error';
@@ -66,13 +68,7 @@ export function beginGameplayValidationDebugLogSession(metadata: GameplayValidat
 
   const nextState = createInitialState(metadata);
   state = nextState;
-  enqueueEntry(nextState, {
-    kind: 'session-start',
-    sessionId: nextState.sessionId,
-    startedAtMs: nextState.startedAtMs,
-    metadata: nextState.metadata,
-    logicalPath: nextState.logicalPath
-  });
+  void enqueueEntry(nextState, buildSessionStartEntry(nextState));
 }
 
 export function recordGameplayValidationDebugLog(
@@ -88,7 +84,7 @@ export function recordGameplayValidationDebugLog(
 
   current.lastSignature = signature;
   current.lastWrittenAtMs = snapshot.capturedAtMs;
-  enqueueEntry(current, {
+  void enqueueEntry(current, {
     kind: 'snapshot',
     sessionId: current.sessionId,
     capturedAtMs: snapshot.capturedAtMs,
@@ -99,18 +95,25 @@ export function recordGameplayValidationDebugLog(
   });
 }
 
-export function finalizeGameplayValidationDebugLog(): void {
+export function finalizeGameplayValidationDebugLog(
+  lastSnapshot?: GameplayValidationDebugSnapshot,
+  lines: string[] = [],
+  metadata: GameplayValidationDebugLogMetadata = {}
+): void {
   if (!state) return;
 
   const current = state;
   state = null;
   current.closed = true;
-  enqueueEntry(current, {
-    kind: 'session-end',
-    sessionId: current.sessionId,
-    endedAtMs: readClockMs(),
-    metadata: current.metadata,
-    logicalPath: current.logicalPath
+  const endedAtMs = lastSnapshot?.capturedAtMs ?? readClockMs();
+  void enqueueEntry(current, {
+    ...buildSessionEndEntry(
+      current,
+      endedAtMs,
+      lastSnapshot,
+      lines
+    ),
+    metadata: current.metadata.songId || current.metadata.midiUrl ? current.metadata : metadata
   });
 }
 
@@ -131,14 +134,10 @@ export function buildGameplayValidationDebugLogPath(startedAtMs: number): string
 
 function ensureState(metadata: GameplayValidationDebugLogMetadata, atMs: number): GameplayValidationDebugLogState {
   if (!state || state.closed) {
-    const nextState = createInitialState(metadata, atMs);
-    state = nextState;
-    enqueueEntry(nextState, {
-      kind: 'session-start',
-      sessionId: nextState.sessionId,
-      startedAtMs: nextState.startedAtMs,
-      metadata: nextState.metadata,
-      logicalPath: nextState.logicalPath
+    state = createInitialState(metadata, atMs);
+    const current = state;
+    void enqueueEntry(current, {
+      ...buildSessionStartEntry(current)
     });
   }
   return state;
@@ -191,52 +190,78 @@ function buildSnapshotSignature(snapshot: GameplayValidationDebugSnapshot): stri
   ].join('|');
 }
 
-function enqueueEntry(state: GameplayValidationDebugLogState, entry: GameplayValidationDebugLogEntry): void {
-  state.writeChain = state.writeChain
-    .then(async () => {
-      if (!Capacitor.isNativePlatform()) return;
+function buildSessionStartEntry(state: GameplayValidationDebugLogState): GameplayValidationDebugLogEntry {
+  return {
+    kind: 'session-start',
+    sessionId: state.sessionId,
+    startedAtMs: state.startedAtMs,
+    metadata: state.metadata,
+    logicalPath: state.logicalPath
+  };
+}
 
+function buildSessionEndEntry(
+  state: GameplayValidationDebugLogState,
+  endedAtMs: number,
+  lastSnapshot?: GameplayValidationDebugSnapshot,
+  lines: string[] = []
+): GameplayValidationDebugLogEntry {
+  return {
+    kind: 'session-end',
+    sessionId: state.sessionId,
+    endedAtMs,
+    metadata: state.metadata,
+    logicalPath: state.logicalPath,
+    lastSnapshot,
+    lines
+  };
+}
+
+async function enqueueEntry(state: GameplayValidationDebugLogState, entry: GameplayValidationDebugLogEntry): Promise<void> {
+  state.writeChain = state.writeChain.then(async () => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    await ensureLogDirectory();
+    const payload = `${JSON.stringify(entry)}\n`;
+    await Filesystem.appendFile({
+      directory: Directory.Documents,
+      path: state.logicalPath,
+      data: payload,
+      encoding: Encoding.UTF8
+    });
+    try {
+      const fileInfo = await Filesystem.getUri({
+        directory: Directory.Documents,
+        path: state.logicalPath
+      });
+      state.fileUri = fileInfo.uri;
+    } catch {
+      state.fileUri = null;
+    }
+    state.lastError = null;
+  }).catch(async (error: unknown) => {
+    state.lastError = formatError(error);
+    try {
       await ensureLogDirectory();
-      const payload = `${JSON.stringify(entry)}\n`;
+      const errorEntry: GameplayValidationDebugLogEntry = {
+        kind: 'error',
+        sessionId: state.sessionId,
+        atMs: readClockMs(),
+        metadata: state.metadata,
+        logicalPath: state.logicalPath,
+        message: state.lastError
+      };
       await Filesystem.appendFile({
         directory: Directory.Documents,
         path: state.logicalPath,
-        data: payload,
+        data: `${JSON.stringify(errorEntry)}\n`,
         encoding: Encoding.UTF8
       });
-      try {
-        const fileInfo = await Filesystem.getUri({
-          directory: Directory.Documents,
-          path: state.logicalPath
-        });
-        state.fileUri = fileInfo.uri;
-      } catch {
-        state.fileUri = null;
-      }
-      state.lastError = null;
-    })
-    .catch(async (error: unknown) => {
-      state.lastError = formatError(error);
-      try {
-        await ensureLogDirectory();
-        const errorEntry: GameplayValidationDebugLogEntry = {
-          kind: 'error',
-          sessionId: state.sessionId,
-          atMs: readClockMs(),
-          metadata: state.metadata,
-          logicalPath: state.logicalPath,
-          message: state.lastError
-        };
-        await Filesystem.appendFile({
-          directory: Directory.Documents,
-          path: state.logicalPath,
-          data: `${JSON.stringify(errorEntry)}\n`,
-          encoding: Encoding.UTF8
-        });
-      } catch {
-        // Best effort only. The log should never interrupt gameplay.
-      }
-    });
+    } catch {
+      // Best effort only. The log should never interrupt gameplay.
+    }
+  });
+  await state.writeChain;
 }
 
 async function ensureLogDirectory(): Promise<void> {
@@ -248,7 +273,11 @@ async function ensureLogDirectory(): Promise<void> {
 }
 
 function formatTimestampForFile(value: number): string {
-  return new Date(value).toISOString().replace(/:/g, '-').replace(/\./g, '-');
+  return new Date(value)
+    .toISOString()
+    .replace(/:/g, '-')
+    .replace(/\./g, '-')
+    .replace(/Z$/, 'Z');
 }
 
 function formatError(error: unknown): string {

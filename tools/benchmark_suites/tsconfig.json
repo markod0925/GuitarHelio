@@ -20,5 +20,9 @@
     "*.ts",
     "../../src/vite-env.d.ts",
     "../../src/audio/dsp-core/gh_dsp_core.js"
+  ],
+  "exclude": [
+    "run_gameplay_validator_ac14_mono_streaming_benchmark.ts",
+    "run_gameplay_validator_ac14_mono_sweep.ts"
   ]
 }

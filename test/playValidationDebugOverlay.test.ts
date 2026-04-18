@@ -109,6 +109,16 @@ describe('play validation debug overlay', () => {
               targetSemitoneTolerance: 1,
               matchedMidi: 60,
               matchedSemitoneDistance: 0,
+              supportFrames: 2,
+              supportSeconds: 0.186,
+              minValidatedSupportFrames: 1,
+              minValidatedSupportSeconds: 0.02,
+              confidenceScore: 0.91,
+              expectedVsSourceFrameRatio: 0.75,
+              targetConfirmationFrameRatio: 0.75,
+              expectedTop1FrameRatio: 1,
+              expectedTop3FrameRatio: 1,
+              octaveConfusionFrameRatio: 0,
               rawDetectionMaxConfidence: 0.91,
               rawDetectionFrameRatio: 1
             }
@@ -126,10 +136,14 @@ describe('play validation debug overlay', () => {
     expect(snapshot.target.aggregationPolicyId).toBe('runtime_mono_all_notes_required_v1');
     expect(snapshot.target.activationGatePolicyId).toBe('runtime_mono_activation_gate_off_v1');
     expect(snapshot.target.noteDecisionConfigId).toBe('runtime_shared_note_only_v1');
+    expect(snapshot.runtime.frameCount).toBe(1);
+    expect(snapshot.runtime.noteDecisions[0]?.supportSeconds).toBe(0.186);
 
     const lines = formatGameplayValidationDebugSnapshot(snapshot);
     expect(lines[0]).toContain('Gameplay Validation Debug');
     expect(lines.some((line) => line.includes('top5=1:64'))).toBe(true);
+    expect(lines.some((line) => line.includes('history=frames1'))).toBe(true);
+    expect(lines.some((line) => line.includes('support=0.186s/0.020s'))).toBe(true);
   });
 
   test('treats waiting as an active validation window', () => {

@@ -86,6 +86,7 @@ Like Yousician:
   - C++ lock-free ring buffer + worker thread
   - Rust native detector runtime linked through JNI/CMake
   - Capacitor plugin bridge for control, diagnostics, and compact polling results
+- Android Gradle/Capacitor build toolchain MUST use Java 17 on this repository
 - Windows native microphone/runtime stack for Electron builds:
   - PortAudio input capture with WASAPI Exclusive preferred and explicit fallback to Shared
   - C++ lock-free ring buffer + worker thread
@@ -277,6 +278,22 @@ Post-validator activation control MUST be an explicit, configurable layer applie
 Polyphonic benchmark outputs MUST keep both views explicitly:
 
 - pre-gate validator activation metrics
+
+### 4.4.1 Monophonic Gameplay Fallback Benchmark
+
+For the Gameplay fallback milestone, the benchmark path MAY be reduced to a strictly monophonic contract when the detector candidate is `ac14`.
+
+This monophonic fallback MUST:
+
+- use Android mono-note takes as one benchmark set
+- use GuitarSet `_solo` material as a separate benchmark set
+- exclude GuitarSet `_comp` from this path
+- define every benchmark window in physical time units (seconds)
+- keep the Android and GuitarSet result tables separate
+- reuse context-aware suppression ideas where they are detector-agnostic
+- avoid polyphonic note-set matching in this fallback path
+
+The fallback benchmark is a pragmatic evaluation path for Gameplay, not a redesign of the broader polyphonic validator contract.
 - post-gate activation metrics
 
 Pre/post reporting MUST include at minimum recall, precision, exact/superset behavior, extra-note rate, empty-window FAR, transition-window accept rate, and stable non-empty coverage/recall metrics.
@@ -310,6 +327,8 @@ Required session semantics:
 - dead time before the window and after expiry MUST ignore gameplay acceptance
 - once a target is accepted, that window is consumed exactly once and must not re-accept the same target
 - mono and poly targets MUST share the same window lifecycle; only note-set cardinality and aggregation policy may differ
+- live validation MUST be treated as a target-confirmation system: the runtime confirms the armed target from live detector evidence collected during the window, rather than trying to reproduce the offline benchmark's explicit competitor graph
+- live success/failure semantics MUST be window-based (`confirmed`, `expired`, `suppressed`, `no_target`, `dead_time`) and must be understandable without offline probe terminology
 
 Implementation placement:
 
@@ -323,6 +342,7 @@ Debug visibility MUST expose:
 - window phase (`idle`, `armed`, `accepted`, `expired`)
 - current target identity
 - active difficulty and pitch tolerance
+- current confirmation state and live confirmation latency
 - armed/dead-time status
 - late/early bounds
 - runtime validator accept/reject reasons
@@ -1164,6 +1184,8 @@ In debug sessions, gameplay MUST also provide a central debug overlay (toggle ke
 * live top-5 spectral candidates, expected-note rank, best competitor, and octave competitor
 * runtime validator pre-gate vs post-gate acceptance, validation ratio, canonical validated/missing/extra notes, matched notes, and reject reasons
 * target reset / re-arm churn, last `setTarget()` time, and retained last accepted / expired / rejected snapshots
+* live confirmation metrics from the runtime trace session, including armed/accepted/expired/suppressed window counts, median confirmation latency, and windows with no meaningful evidence
+* current confirmation state (`confirmed`, `near`, `far`, `suppressed`, `idle`) so the overlay answers "why did this window not confirm?"
 * on-device toggle control for Android gameplay sessions so the overlay can be enabled without a keyboard
 
 ---
@@ -1661,6 +1683,7 @@ Required policy constraints:
 This benchmark policy exists to measure residual algorithm headroom fairly without detector-specific acceptance hacks.
 
 The production runtime validator MUST remain the canonical gameplay decision layer, with the benchmark serving as a verification harness for the same shared core rather than a separate acceptance implementation.
+The live runtime path MUST keep its own confirmation semantics, metrics, and traceability so it can be tuned as a gameplay system instead of as a benchmark replica.
 
 ---
 

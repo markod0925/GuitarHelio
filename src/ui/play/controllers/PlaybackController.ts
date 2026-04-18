@@ -38,6 +38,9 @@ import {
   markGameplayValidationWindowAccepted,
   syncGameplayValidationWindow
 } from './validationWindow';
+import {
+  recordGameplayValidationLiveTrace
+} from './gameplayValidationLiveTrace';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 
 export class PlaybackController {
@@ -236,6 +239,15 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       if (validationOutput.accepted && validationWindow.phase === 'armed') {
         markGameplayValidationWindowAccepted(this, timestampMs, songSecondsNow);
       }
+      recordGameplayValidationLiveTrace(this.gameplayValidationLiveTrace, {
+        timestampMs,
+        songSecondsNow,
+        frame,
+        validationWindow: this.validationWindowState ?? validationWindow,
+        runtimeOutput: validationOutput,
+        targetGroup: activeGroup,
+        difficulty: this.sceneData?.difficulty ?? null
+      });
       this.latestFrames.push(gameplayPitchStabilizer.update(frame));
     });
     if (PLAY_SCENE_ENABLE_PROFILING) {

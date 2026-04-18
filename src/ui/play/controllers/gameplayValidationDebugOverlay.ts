@@ -2,6 +2,7 @@ import { midiToNoteName } from '../../../ui/song-select/utils/songSelectUtils';
 import { resolveTargetGroup } from '../../../guitar/targetGrouping';
 import { resolveDifficultySemitoneTolerance } from '../../../gameplay/validation';
 import { PlayState, type PitchFrame, type TargetNote } from '../../../types/models';
+import { summarizeGameplayValidationLiveTrace } from './gameplayValidationLiveTrace';
 import type {
   GameplayValidationDebugCandidate,
   GameplayValidationDebugSeverity,
@@ -54,6 +55,7 @@ export function buildGameplayValidationDebugSnapshot(
   const runtimeOutput = scene.realtimeValidationOutput;
   const runtimeState = scene.realtimeValidationState;
   const noteEvidence = runtimeState?.noteDecisions?.[0]?.evidence;
+  const liveTraceMetrics = scene.gameplayValidationLiveTrace ? summarizeGameplayValidationLiveTrace(scene.gameplayValidationLiveTrace) : null;
   const allCandidates = buildTopCandidates(latestFrame, expectedMidis, semitoneTolerance ?? Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
   const topCandidates = allCandidates.slice(0, TOP_CANDIDATE_LIMIT);
   const bestCompetitor = resolveBestCompetitor(allCandidates, expectedMidis, semitoneTolerance);
@@ -73,6 +75,8 @@ export function buildGameplayValidationDebugSnapshot(
     validationWindow?.lastTargetChangeAtMs !== null &&
     validationWindow?.lastTargetChangeAtMs !== undefined &&
     nowMs - validationWindow.lastTargetChangeAtMs <= FRAME_CHANGE_THRESHOLD_MS;
+  const selectedNoteCount = Array.isArray(latestFrame?.selected_notes) ? latestFrame.selected_notes.length : 0;
+  const stabilizerLockedMidi = scene.gameplayPitchStabilizer?.getLockedMidi() ?? null;
 
   const snapshot: GameplayValidationDebugSnapshot = {
       capturedAtMs: nowMs,
@@ -125,10 +129,26 @@ export function buildGameplayValidationDebugSnapshot(
       latestMidiEstimate: latestFrame?.midi_estimate ?? null,
       latestConfidence: latestFrame?.confidence ?? null
     },
+    detector: {
+      latestMidiEstimate: latestFrame?.midi_estimate ?? null,
+      latestConfidence: latestFrame?.confidence ?? null,
+      selectedNoteCount,
+      bestNoteId: latestFrame?.best_note_id ?? null,
+      micRms: latestFrame?.mic_rms ?? null,
+      referenceMidi: latestFrame?.reference_midi ?? null,
+      referenceCorrelation: latestFrame?.reference_correlation ?? null,
+      energyRatioDb: latestFrame?.energy_ratio_db ?? null,
+      onsetStrength: latestFrame?.onset_strength ?? null,
+      contaminationScore: latestFrame?.contamination_score ?? null,
+      rejectedAsReferenceBleed: latestFrame?.rejected_as_reference_bleed ?? null,
+      stabilizerLockedMidi
+    },
       runtime: {
       acceptedPreGate: runtimeOutput?.acceptedPreGate ?? false,
       acceptedPostGate: runtimeOutput?.acceptedPostGate ?? false,
       noteValidationRatio: runtimeOutput?.noteValidationRatio ?? 0,
+      frameCount: runtimeState?.frameCount ?? 0,
+      targetStartedAtMs: runtimeState?.targetStartedAtMs ?? null,
       validatedNotes: runtimeOutput?.validatedNotes ?? [],
       noteDecisions: runtimeState?.noteDecisions?.map((decision) => ({
         midi: decision.midi,
@@ -136,8 +156,26 @@ export function buildGameplayValidationDebugSnapshot(
         decisionReason: decision.decisionReason,
         matchedMidi: decision.evidence.matchedMidi,
         matchedSemitoneDistance: decision.evidence.matchedSemitoneDistance,
-        targetSemitoneTolerance: decision.evidence.targetSemitoneTolerance
+        targetSemitoneTolerance: decision.evidence.targetSemitoneTolerance,
+        supportFrames: decision.evidence.supportFrames,
+        supportSeconds: decision.evidence.supportSeconds,
+        minValidatedSupportFrames: decision.evidence.minValidatedSupportFrames,
+        minValidatedSupportSeconds: decision.evidence.minValidatedSupportSeconds,
+        confidenceScore: decision.evidence.confidenceScore,
+        expectedVsSourceFrameRatio: decision.evidence.expectedVsSourceFrameRatio,
+        targetConfirmationFrameRatio: decision.evidence.targetConfirmationFrameRatio,
+        expectedTop1FrameRatio: decision.evidence.expectedTop1FrameRatio,
+        expectedTop3FrameRatio: decision.evidence.expectedTop3FrameRatio,
+        octaveConfusionFrameRatio: decision.evidence.octaveConfusionFrameRatio,
+        rawDetectionFrameRatio: decision.evidence.rawDetectionFrameRatio,
+        rawDetectionMaxConfidence: decision.evidence.rawDetectionMaxConfidence
       })) ?? [],
+      live: liveTraceMetrics
+        ? {
+            ...liveTraceMetrics,
+            confirmationState: resolveConfirmationState(validationWindow, runtimeOutput, allCandidates, expectedMidis, playbackSongSeconds, targetSongSeconds, semitoneTolerance)
+          }
+        : null,
       missingNotes: runtimeOutput?.missingNotes ?? [],
       extraNotes: runtimeOutput?.extraNotes ?? [],
       rejectReasons: runtimeOutput?.rejectReasons ?? [],
@@ -172,6 +210,10 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
         .map((decision) => formatNoteDecisionSummary(snapshot.target.expectedMidis, decision, snapshot.target.semitoneTolerance))
         .join(' | ')
     : '-';
+  const targetAgeMs = snapshot.runtime.targetStartedAtMs !== null ? snapshot.capturedAtMs - snapshot.runtime.targetStartedAtMs : null;
+  const referenceBleedLabel = snapshot.detector.rejectedAsReferenceBleed === null
+    ? '-'
+    : formatDebugBool(snapshot.detector.rejectedAsReferenceBleed);
 
   const lines = [
     `Gameplay Validation Debug [${paletteLabel}]`,
@@ -179,9 +221,14 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
     `Target: mode=${targetLabel} armed=${snapshot.window.currentArmedTargetId ?? '-'} key=${snapshot.target.targetKey ?? '-'} expected=${formatCanonicalTargets(snapshot.target.expectedMidis, snapshot.target.expectedNames, snapshot.target.semitoneTolerance)} ranks=${snapshot.spectral.expectedRanks} agg=${snapshot.target.aggregationPolicyId ?? '-'} gate=${snapshot.target.activationGatePolicyId ?? '-'} noteCfg=${snapshot.target.noteDecisionConfigId ?? '-'}`,
     `Spectral: top5=${topCandidateSummary}`,
     `Spectral: bestComp=${formatCandidatePeer(snapshot.spectral.bestCompetitor)} octave=${formatCandidatePeer(snapshot.spectral.octaveCompetitor)} rawMax=${formatDebugNumber(snapshot.spectral.rawDetectionMaxConfidence, 2)} frameRatio=${formatDebugNumber(snapshot.spectral.rawDetectionFrameRatio, 2)} expectedPresent=${formatDebugBool(snapshot.spectral.expectedNotePresent)} bestNote=${snapshot.spectral.bestNoteId ?? '-'}`,
+    `Detector: midi=${formatDebugNumber(snapshot.detector.latestMidiEstimate, 2)} conf=${formatDebugNumber(snapshot.detector.latestConfidence, 2)} selected=${snapshot.detector.selectedNoteCount} locked=${snapshot.detector.stabilizerLockedMidi ?? '-'} micRms=${formatDebugNumber(snapshot.detector.micRms, 3)} ref=${formatDebugNumber(snapshot.detector.referenceMidi, 2)} corr=${formatDebugNumber(snapshot.detector.referenceCorrelation, 3)} eDb=${formatDebugNumber(snapshot.detector.energyRatioDb, 2)} onset=${formatDebugNumber(snapshot.detector.onsetStrength, 3)} contam=${formatDebugNumber(snapshot.detector.contaminationScore, 3)} bleed=${referenceBleedLabel}`,
     `Runtime: pre=${formatDebugBool(snapshot.runtime.acceptedPreGate)} post=${formatDebugBool(snapshot.runtime.acceptedPostGate)} ratio=${formatDebugNumber(snapshot.runtime.noteValidationRatio, 2)} conf=${formatDebugNumber(snapshot.runtime.confidence, 2)} validated=${formatMidiList(snapshot.runtime.validatedNotes)} missing=${formatMidiList(snapshot.runtime.missingNotes)} extra=${formatMidiList(snapshot.runtime.extraNotes)} stage=${snapshot.runtime.rejectStage}`,
+    `Runtime: history=frames${snapshot.runtime.frameCount} targetAge=${formatSignedMs(targetAgeMs ?? undefined)} targetStarted=${snapshot.runtime.targetStartedAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.runtime.targetStartedAtMs) : '-'}`,
     `Runtime: notes=${noteDecisionSummary}`,
     `Runtime: gate=${snapshot.runtime.gateRejectReason ?? '-'} reasons=${snapshot.runtime.rejectReasons.length > 0 ? snapshot.runtime.rejectReasons.join('|') : '-'} summary=${snapshot.runtime.summary}`,
+    snapshot.runtime.live
+      ? `Live: state=${snapshot.runtime.live.confirmationState} armed=${snapshot.runtime.live.armedWindows} accepted=${snapshot.runtime.live.acceptedWindows} expired=${snapshot.runtime.live.expiredWindows} suppressed=${snapshot.runtime.live.suppressedWindows} dead=${snapshot.runtime.live.deadTimeWindows} noTarget=${snapshot.runtime.live.noTargetWindows} medianLatency=${formatDebugNumber(snapshot.runtime.live.medianConfirmationLatencyMs, 0)}ms avgLatency=${formatDebugNumber(snapshot.runtime.live.averageConfirmationLatencyMs, 0)}ms topConfirm=${snapshot.runtime.live.windowsWithTopCandidateConfirmation} noEvidence=${snapshot.runtime.live.windowsWithNoMeaningfulEvidence}`
+      : 'Live: -',
     `Reset: changed=${formatDebugBool(snapshot.window.targetChangedThisFrame)} setTarget=${snapshot.window.setTargetCount} reset=${snapshot.window.resetCount} arm=${snapshot.window.armCount} lastSet=${lastSetTargetAge} lastReset=${lastResetAge} changeAt=${snapshot.window.lastTargetChangeAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.window.lastTargetChangeAtMs) : '-'}`,
     `Log: ${describeGameplayValidationDebugLogLocation()}`
   ];
@@ -317,6 +364,53 @@ function buildRuntimeSummary(
   return `pre=${formatDebugBool(runtimeOutput.acceptedPreGate)} post=${formatDebugBool(runtimeOutput.acceptedPostGate)} stage=${runtimeOutput.rejectStage}`;
 }
 
+function resolveConfirmationState(
+  validationWindow: ValidationWindowState | undefined,
+  runtimeOutput:
+    | {
+        acceptedPreGate: boolean;
+        acceptedPostGate: boolean;
+        rejectStage: 'none' | 'note_level' | 'aggregation' | 'gate' | 'no_target';
+        gateRejectReason: string | null;
+        noteValidationRatio: number;
+      }
+    | undefined,
+  topCandidates: GameplayValidationDebugCandidate[],
+  expectedMidis: number[],
+  playbackSongSeconds: number | undefined,
+  targetSongSeconds: number | null,
+  semitoneTolerance: number | null
+): 'confirmed' | 'near' | 'far' | 'suppressed' | 'idle' {
+  if (runtimeOutput?.acceptedPostGate) {
+    return 'confirmed';
+  }
+  if (runtimeOutput?.rejectStage === 'gate' || runtimeOutput?.gateRejectReason !== null) {
+    return 'suppressed';
+  }
+  const expectedCovered = expectedMidis.every((midi) => topCandidates.some((candidate) => isAcceptableMidi([midi], candidate.midi, semitoneTolerance)));
+  const inWindow =
+    validationWindow?.phase === 'armed' &&
+    playbackSongSeconds !== undefined &&
+    targetSongSeconds !== null &&
+    validationWindow.windowStartSeconds !== null &&
+    validationWindow.windowEndSeconds !== null &&
+    playbackSongSeconds >= validationWindow.windowStartSeconds &&
+    playbackSongSeconds <= validationWindow.windowEndSeconds;
+  if (validationWindow?.phase === 'armed' && validationWindow.deadTime === false) {
+    if (runtimeOutput?.acceptedPreGate) {
+      return 'near';
+    }
+    return runtimeOutput?.noteValidationRatio !== undefined && runtimeOutput.noteValidationRatio > 0 ? 'near' : 'far';
+  }
+  if (validationWindow?.phase === 'accepted') {
+    return 'confirmed';
+  }
+  if (validationWindow?.phase === 'expired' || validationWindow?.phase === 'idle') {
+    return expectedCovered && inWindow ? 'near' : 'idle';
+  }
+  return 'idle';
+}
+
 function resolveSeverity(
   validationWindow: ValidationWindowState | undefined,
   runtimeOutput:
@@ -396,6 +490,18 @@ function formatNoteDecisionSummary(
     matchedMidi: number | null;
     matchedSemitoneDistance: number | null;
     targetSemitoneTolerance: number;
+    supportFrames: number;
+    supportSeconds: number;
+    minValidatedSupportFrames: number;
+    minValidatedSupportSeconds: number;
+    confidenceScore: number;
+    expectedVsSourceFrameRatio: number;
+    targetConfirmationFrameRatio: number;
+    expectedTop1FrameRatio: number;
+    expectedTop3FrameRatio: number;
+    octaveConfusionFrameRatio: number;
+    rawDetectionFrameRatio: number | null;
+    rawDetectionMaxConfidence: number | null;
   },
   semitoneTolerance: number | null
 ): string {
@@ -403,7 +509,11 @@ function formatNoteDecisionSummary(
   const matched = decision.matchedMidi !== null ? `${decision.matchedMidi} ${midiToNoteName(Math.round(decision.matchedMidi))}` : '-';
   const distance = decision.matchedSemitoneDistance !== null ? `${formatDebugNumber(decision.matchedSemitoneDistance, 2)}st` : '-';
   const tol = semitoneTolerance !== null ? ` tol=${formatDebugNumber(semitoneTolerance, semitoneTolerance % 1 === 0 ? 0 : 1)}st` : '';
-  return `${canonical}->${matched} ${distance}${tol} ${decision.accepted ? 'accepted' : 'rejected'} ${decision.decisionReason}`;
+  const support = `${formatDebugNumber(decision.supportSeconds, 3)}s/${formatDebugNumber(decision.minValidatedSupportSeconds, 3)}s`;
+  const frames = `${decision.supportFrames}/${decision.minValidatedSupportFrames}`;
+  const conf = formatDebugNumber(decision.confidenceScore, 2);
+  const raw = decision.rawDetectionFrameRatio !== null ? formatDebugNumber(decision.rawDetectionFrameRatio, 2) : '-';
+  return `${canonical}->${matched} ${distance}${tol} support=${support} frames=${frames} conf=${conf} raw=${raw} top1=${formatDebugNumber(decision.expectedTop1FrameRatio, 2)} top3=${formatDebugNumber(decision.expectedTop3FrameRatio, 2)} confirm=${formatDebugNumber(decision.targetConfirmationFrameRatio, 2)} octave=${formatDebugNumber(decision.octaveConfusionFrameRatio, 2)} ${decision.accepted ? 'accepted' : 'rejected'} ${decision.decisionReason}`;
 }
 
 function isAcceptableMidi(expectedMidis: number[], midi: number, semitoneTolerance: number | null): boolean {
