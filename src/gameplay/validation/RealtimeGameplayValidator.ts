@@ -186,8 +186,13 @@ export class RealtimeGameplayValidator {
       activationGatePolicy: gatePolicy
     });
 
-    this.lastOutput = output;
-    return output;
+    this.lastOutput = applyLiveFrameEvidenceGuard(
+      output,
+      input.frameEvidence,
+      this.targetState.target,
+      this.config.noteDecisionConfig.note.minExpectedConfidence
+    );
+    return this.lastOutput;
   }
 
   getState(): RuntimeValidatorStateSnapshot {
@@ -260,6 +265,43 @@ function buildFallbackNoteEvidence(midi: number, timestampMs: number): Validator
     spectralProbe: null,
     samePitchAltDetected: false,
     expectedPositionMatch: false
+  };
+}
+
+function applyLiveFrameEvidenceGuard(
+  output: RuntimeValidatorOutput,
+  frameEvidence: RuntimeValidatorInput['frameEvidence'],
+  target: ValidationTarget,
+  minExpectedConfidence: number
+): RuntimeValidatorOutput {
+  if (!output.acceptedPostGate) {
+    return output;
+  }
+
+  const maxExpectedCentsError = Math.max(0, target.semitoneTolerance * 100);
+  const hasCurrentTargetEvidence = frameEvidence.notes.some((note) => (
+    note.detectorAccepted &&
+    note.matchedMidi !== null &&
+    note.detectorConfidence >= minExpectedConfidence &&
+    note.expectedCentsError !== null &&
+    Math.abs(note.expectedCentsError) <= maxExpectedCentsError
+  ));
+
+  if (hasCurrentTargetEvidence) {
+    return output;
+  }
+
+  const rejectReasons = output.rejectReasons.includes('gate:no_live_frame_evidence')
+    ? output.rejectReasons
+    : [...output.rejectReasons, 'gate:no_live_frame_evidence'];
+
+  return {
+    ...output,
+    accepted: false,
+    acceptedPostGate: false,
+    rejectReasons,
+    rejectStage: 'gate',
+    gateRejectReason: 'no_live_frame_evidence'
   };
 }
 

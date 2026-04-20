@@ -11,10 +11,7 @@ import type {
 } from '../../playSceneTypes';
 import { formatDebugBool, formatDebugNumber, formatSignedMs } from '../../playSceneDebug';
 import type { PlaySceneContext } from './PlaySceneContext';
-import {
-  describeGameplayValidationDebugLogLocation,
-  recordGameplayValidationDebugLog
-} from './gameplayValidationDebugLog';
+import { describeGameplayValidationDebugLogLocation } from './gameplayValidationDebugLog';
 
 const TOP_CANDIDATE_LIMIT = 5;
 const FRAME_CHANGE_THRESHOLD_MS = 34;
@@ -30,14 +27,35 @@ export function buildGameplayValidationDebugSnapshot(
   nowMs: number = performance.now()
 ): GameplayValidationDebugSnapshot {
   const validationWindow = scene.validationWindowState;
+  const runtimeSnapshot = scene.latestRuntimeValidationSnapshot;
+  const runtimeState = runtimeSnapshot?.state ?? scene.realtimeValidationState;
+  const runtimeTarget = runtimeState?.target ?? null;
+  const runtimeTargetMetadata = runtimeTarget?.metadata ?? null;
   const activeGroup = resolveTargetGroup(scene.targets, scene.runtime.active_target_index);
   const target = activeGroup[0];
-  const latestFrame = scene.latestFrames.latest();
-  const targetKey = validationWindow?.targetKey ?? (activeGroup.length > 0 ? buildTargetKey(activeGroup) : null);
-  const targetMode = validationWindow?.targetMode ?? (activeGroup.length > 1 ? 'poly' : activeGroup.length === 1 ? 'mono' : null);
-  const difficulty = validationWindow?.difficulty ?? scene.sceneData?.difficulty ?? null;
-  const semitoneTolerance = validationWindow?.semitoneTolerance ?? (difficulty !== null ? resolveDifficultySemitoneTolerance(difficulty) : null);
-  const expectedMidis = activeGroup.map((item) => item.expected_midi);
+  const latestFrame = runtimeSnapshot?.detectorFrame ?? scene.latestRuntimeDetectorFrame ?? scene.latestFrames.latest();
+  const latestFrameEvidence = runtimeSnapshot?.frameEvidence ?? scene.latestRuntimeFrameEvidence;
+  const runtimeTargetIds = extractRuntimeTargetIds(runtimeTargetMetadata);
+  const expectedMidis = runtimeTarget?.midiNotes ?? activeGroup.map((item) => item.expected_midi);
+  const fallbackTargetIds = runtimeTargetIds.length > 0
+    ? runtimeTargetIds
+    : activeGroup.map((item) => item.id);
+  const runtimeTargetKey = runtimeTargetIds.length > 0
+    ? runtimeTargetIds.join('|')
+    : activeGroup.length > 0
+      ? buildTargetKey(activeGroup)
+      : null;
+  const targetIds = fallbackTargetIds;
+  const windowTargetIds = validationWindow?.targetIds && validationWindow.targetIds.length > 0
+    ? validationWindow.targetIds
+    : targetIds;
+  const targetKey = runtimeTargetKey;
+  const windowTargetKey = validationWindow?.targetKey && validationWindow.targetKey.length > 0
+    ? validationWindow.targetKey
+    : targetKey;
+  const targetMode = runtimeTarget?.mode ?? validationWindow?.targetMode ?? (activeGroup.length > 1 ? 'poly' : activeGroup.length === 1 ? 'mono' : null);
+  const difficulty = extractRuntimeDifficulty(runtimeTargetMetadata) ?? validationWindow?.difficulty ?? scene.sceneData?.difficulty ?? null;
+  const semitoneTolerance = runtimeTarget?.semitoneTolerance ?? validationWindow?.semitoneTolerance ?? (difficulty !== null ? resolveDifficultySemitoneTolerance(difficulty) : null);
   const expectedNames = expectedMidis.map((midi) => midiToNoteName(midi));
 
   const playbackSongSeconds =
@@ -52,8 +70,7 @@ export function buildGameplayValidationDebugSnapshot(
       : null;
   const validationWindowActive = validationWindow?.phase === 'armed' && validationWindow.deadTime === false;
 
-  const runtimeOutput = scene.realtimeValidationOutput;
-  const runtimeState = scene.realtimeValidationState;
+  const runtimeOutput = runtimeSnapshot?.output ?? scene.realtimeValidationOutput;
   const noteEvidence = runtimeState?.noteDecisions?.[0]?.evidence;
   const liveTraceMetrics = scene.gameplayValidationLiveTrace ? summarizeGameplayValidationLiveTrace(scene.gameplayValidationLiveTrace) : null;
   const allCandidates = buildTopCandidates(latestFrame, expectedMidis, semitoneTolerance ?? Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
@@ -69,8 +86,8 @@ export function buildGameplayValidationDebugSnapshot(
         .join(', ')
     : '-';
 
-  const rawDetectionMaxConfidence = noteEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null;
-  const rawDetectionFrameRatio = noteEvidence?.rawDetectionFrameRatio ?? resolveRawDetectionFrameRatio(latestFrame);
+  const rawDetectionMaxConfidence = noteEvidence?.rawDetectionMaxConfidence ?? latestFrameEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null;
+  const rawDetectionFrameRatio = noteEvidence?.rawDetectionFrameRatio ?? latestFrameEvidence?.rawDetectionFrameRatio ?? resolveRawDetectionFrameRatio(latestFrame);
   const targetChangedThisFrame =
     validationWindow?.lastTargetChangeAtMs !== null &&
     validationWindow?.lastTargetChangeAtMs !== undefined &&
@@ -88,10 +105,10 @@ export function buildGameplayValidationDebugSnapshot(
     window: {
       phase: validationWindow?.phase ?? 'idle',
       deadTime: validationWindow?.deadTime ?? true,
-      targetKey,
+      targetKey: windowTargetKey,
       targetMode,
-      currentArmedTargetId: validationWindow?.phase === 'armed' ? targetKey : null,
-      targetIds: validationWindow?.targetIds ?? activeGroup.map((item) => item.id),
+      currentArmedTargetId: validationWindow?.phase === 'armed' ? windowTargetKey : null,
+      targetIds: windowTargetIds,
       windowStartSeconds: validationWindow?.windowStartSeconds ?? null,
       windowEndSeconds: validationWindow?.windowEndSeconds ?? null,
       earlyToleranceSeconds: validationWindow?.earlyToleranceSeconds ?? null,
@@ -111,7 +128,7 @@ export function buildGameplayValidationDebugSnapshot(
       expectedMidis,
       expectedNames,
       targetKey,
-      targetIds: validationWindow?.targetIds ?? activeGroup.map((item) => item.id),
+      targetIds,
       targetMode,
       aggregationPolicyId: validationWindow?.aggregationPolicyId ?? null,
       activationGatePolicyId: validationWindow?.activationGatePolicyId ?? null,
@@ -124,14 +141,16 @@ export function buildGameplayValidationDebugSnapshot(
       octaveCompetitor: octaveCompetitor ?? { midi: null, noteName: null, score: null },
       rawDetectionMaxConfidence,
       rawDetectionFrameRatio,
-      expectedNotePresent: allCandidates.some((candidate) => isAcceptableMidi(expectedMidis, candidate.midi, semitoneTolerance)),
+      expectedNotePresent: latestFrameEvidence
+        ? (latestFrameEvidence.rawDetectedMidis ?? []).some((midi) => isAcceptableMidi(expectedMidis, midi, semitoneTolerance))
+        : allCandidates.some((candidate) => isAcceptableMidi(expectedMidis, candidate.midi, semitoneTolerance)),
       bestNoteId: latestFrame?.best_note_id ?? null,
       latestMidiEstimate: latestFrame?.midi_estimate ?? null,
-      latestConfidence: latestFrame?.confidence ?? null
+      latestConfidence: latestFrameEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null
     },
     detector: {
       latestMidiEstimate: latestFrame?.midi_estimate ?? null,
-      latestConfidence: latestFrame?.confidence ?? null,
+      latestConfidence: latestFrameEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null,
       selectedNoteCount,
       bestNoteId: latestFrame?.best_note_id ?? null,
       micRms: latestFrame?.mic_rms ?? null,
@@ -232,9 +251,20 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
     `Reset: changed=${formatDebugBool(snapshot.window.targetChangedThisFrame)} setTarget=${snapshot.window.setTargetCount} reset=${snapshot.window.resetCount} arm=${snapshot.window.armCount} lastSet=${lastSetTargetAge} lastReset=${lastResetAge} changeAt=${snapshot.window.lastTargetChangeAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.window.lastTargetChangeAtMs) : '-'}`,
     `Log: ${describeGameplayValidationDebugLogLocation()}`
   ];
-
-  recordGameplayValidationDebugLog(snapshot, lines);
   return lines;
+}
+
+function extractRuntimeTargetIds(metadata: Record<string, unknown> | null): string[] {
+  const targetIds = metadata?.targetIds;
+  if (!Array.isArray(targetIds)) {
+    return [];
+  }
+  return targetIds.filter((value): value is string => typeof value === 'string' && value.length > 0);
+}
+
+function extractRuntimeDifficulty(metadata: Record<string, unknown> | null): 'Easy' | 'Medium' | 'Hard' | null {
+  const difficulty = metadata?.difficulty;
+  return difficulty === 'Easy' || difficulty === 'Medium' || difficulty === 'Hard' ? difficulty : null;
 }
 
 export function resolveGameplayValidationDebugPalette(severity: GameplayValidationDebugSeverity): GameplayValidationDebugPalette {

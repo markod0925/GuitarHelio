@@ -88,6 +88,9 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.realtimeGameplayValidator.reset();
   this.realtimeValidationOutput = undefined;
   this.realtimeValidationState = this.realtimeGameplayValidator.getState();
+  this.latestRuntimeDetectorFrame = undefined;
+  this.latestRuntimeFrameEvidence = undefined;
+  this.latestRuntimeValidationSnapshot = undefined;
   this.gameplayValidationLiveTrace = createGameplayValidationLiveTraceSession();
   this.referenceInputGain = undefined;
   this.referenceTapGain = undefined;
@@ -278,6 +281,8 @@ function cleanupImpl(this: PlaySceneContext): void {
   this.hitDebugSnapshot = undefined;
   this.realtimeValidationOutput = undefined;
   this.realtimeValidationState = undefined;
+  this.latestRuntimeDetectorFrame = undefined;
+  this.latestRuntimeFrameEvidence = undefined;
 
   this.noteRenderer.destroy();
 

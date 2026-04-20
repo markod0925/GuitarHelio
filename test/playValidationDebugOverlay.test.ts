@@ -199,4 +199,227 @@ describe('play validation debug overlay', () => {
     expect(lines[1]).toContain('dead=N');
     expect(lines[1]).toContain('activeWindow=Y');
   });
+
+  test('prefers runtime target metadata and raw runtime detector frame over scene fallbacks', () => {
+    const runtimeTargetNote = makeTarget('runtime-target', 1000, 60);
+    const fallbackSceneTarget = makeTarget('scene-fallback', 1000, 64);
+    const runtimeFrame: PitchFrame = {
+      t_seconds: 10,
+      midi_estimate: 60,
+      confidence: 0.88,
+      selected_notes: [
+        { midi: 60, score: 0.88, note_id: 'runtime-60' },
+        { midi: 67, score: 0.21, note_id: 'runtime-67' }
+      ],
+      best_note_id: 'runtime-60'
+    };
+    const stabilizedFrame: PitchFrame = {
+      t_seconds: 10,
+      midi_estimate: 64,
+      confidence: 0.93,
+      selected_notes: [
+        { midi: 64, score: 0.93, note_id: 'stabilized-64' }
+      ],
+      best_note_id: 'stabilized-64'
+    };
+
+    const snapshot = buildGameplayValidationDebugSnapshot({
+      sceneData: { difficulty: 'Hard' },
+      playbackStarted: true,
+      pausedSongSeconds: 0,
+      runtime: {
+        state: PlayState.Playing,
+        current_tick: 1000,
+        active_target_index: 1
+      },
+      getSongSecondsNow: () => 10,
+      tempoMap: {
+        tickToSeconds: () => 10
+      },
+      targets: [runtimeTargetNote, fallbackSceneTarget],
+      latestFrames: {
+        latest: () => stabilizedFrame,
+        length: 1
+      },
+      latestRuntimeDetectorFrame: runtimeFrame,
+      latestRuntimeFrameEvidence: {
+        timestampMs: 120,
+        notes: [],
+        rawDetectedMidis: [60],
+        rawDetectionMaxConfidence: 0.88,
+        rawDetectionFrameRatio: 1,
+        metadata: {}
+      },
+      validationWindowState: {
+        ...createIdleValidationWindowState(),
+        phase: 'armed',
+        deadTime: false
+      },
+      realtimeValidationOutput: {
+        accepted: false,
+        acceptedPreGate: false,
+        acceptedPostGate: false,
+        targetMode: 'mono',
+        validatedNotes: [],
+        matchedNotes: [],
+        missingNotes: [60],
+        extraNotes: [67],
+        noteValidationRatio: 0,
+        confidence: 0.88,
+        rejectReasons: [],
+        rejectStage: 'note_level',
+        gateRejectReason: null
+      } as any,
+      realtimeValidationState: {
+        target: {
+          mode: 'mono',
+          midiNotes: [60],
+          semitoneTolerance: 0.5,
+          allowSuperset: true,
+          metadata: {
+            targetIds: [runtimeTargetNote.id],
+            difficulty: 'Hard'
+          }
+        },
+        targetRevision: 2,
+        targetStartedAtMs: 100,
+        mode: 'mono',
+        frameCount: 3,
+        lastTimestampMs: 120,
+        lastOutput: null,
+        noteDecisions: []
+      } as any
+    } as any, 120);
+
+    expect(snapshot.target.expectedMidis).toEqual([60]);
+    expect(snapshot.target.targetIds).toEqual([runtimeTargetNote.id]);
+    expect(snapshot.target.targetKey).toBe(runtimeTargetNote.id);
+    expect(snapshot.target.difficulty).toBe('Hard');
+    expect(snapshot.target.semitoneTolerance).toBe(0.5);
+    expect(snapshot.spectral.topCandidates[0]?.midi).toBe(60);
+    expect(snapshot.detector.latestMidiEstimate).toBe(60);
+    expect(snapshot.detector.latestConfidence).toBe(0.88);
+  });
+
+  test('uses the last atomic runtime validation snapshot to avoid target-output skew during transitions', () => {
+    const previousTarget = makeTarget('previous-target', 1000, 57);
+    const nextTarget = makeTarget('next-target', 1100, 54);
+    const runtimeFrame: PitchFrame = {
+      t_seconds: 10,
+      midi_estimate: 57,
+      confidence: 0.55,
+      selected_notes: [
+        { midi: 57, score: 0.55, note_id: 'runtime-57' }
+      ],
+      best_note_id: 'runtime-57'
+    };
+
+    const snapshot = buildGameplayValidationDebugSnapshot({
+      sceneData: { difficulty: 'Medium' },
+      playbackStarted: true,
+      pausedSongSeconds: 0,
+      runtime: {
+        state: PlayState.Playing,
+        current_tick: 1100,
+        active_target_index: 1
+      },
+      getSongSecondsNow: () => 10,
+      tempoMap: {
+        tickToSeconds: (tick: number) => (tick === 1000 ? 10 : 11)
+      },
+      targets: [previousTarget, nextTarget],
+      latestFrames: {
+        latest: () => undefined,
+        length: 0
+      },
+      validationWindowState: {
+        ...createIdleValidationWindowState(),
+        phase: 'armed',
+        deadTime: false,
+        targetKey: nextTarget.id,
+        targetIds: [nextTarget.id],
+        targetMode: 'mono'
+      },
+      realtimeValidationOutput: {
+        accepted: true,
+        acceptedPreGate: true,
+        acceptedPostGate: true,
+        targetMode: 'mono',
+        validatedNotes: [57],
+        matchedNotes: [57],
+        missingNotes: [],
+        extraNotes: [],
+        noteValidationRatio: 1,
+        confidence: 0.55,
+        rejectReasons: [],
+        rejectStage: 'none',
+        gateRejectReason: 'disabled'
+      } as any,
+      realtimeValidationState: {
+        target: {
+          mode: 'mono',
+          midiNotes: [54],
+          semitoneTolerance: 1,
+          allowSuperset: true,
+          metadata: { targetIds: [nextTarget.id], difficulty: 'Medium' }
+        },
+        targetRevision: 2,
+        targetStartedAtMs: 120,
+        mode: 'mono',
+        frameCount: 20,
+        lastTimestampMs: 150,
+        lastOutput: null,
+        noteDecisions: []
+      } as any,
+      latestRuntimeValidationSnapshot: {
+        timestampMs: 140,
+        detectorFrame: runtimeFrame,
+        frameEvidence: {
+          timestampMs: 140,
+          notes: [],
+          rawDetectedMidis: [57],
+          rawDetectionMaxConfidence: 0.55,
+          rawDetectionFrameRatio: 1,
+          metadata: {}
+        },
+        output: {
+          accepted: true,
+          acceptedPreGate: true,
+          acceptedPostGate: true,
+          targetMode: 'mono',
+          validatedNotes: [57],
+          matchedNotes: [57],
+          missingNotes: [],
+          extraNotes: [],
+          noteValidationRatio: 1,
+          confidence: 0.55,
+          rejectReasons: [],
+          rejectStage: 'none',
+          gateRejectReason: 'disabled'
+        } as any,
+        state: {
+          target: {
+            mode: 'mono',
+            midiNotes: [57],
+            semitoneTolerance: 1,
+            allowSuperset: true,
+            metadata: { targetIds: [previousTarget.id], difficulty: 'Medium' }
+          },
+          targetRevision: 1,
+          targetStartedAtMs: 100,
+          mode: 'mono',
+          frameCount: 19,
+          lastTimestampMs: 140,
+          lastOutput: null,
+          noteDecisions: []
+        } as any
+      }
+    } as any, 150);
+
+    expect(snapshot.target.expectedMidis).toEqual([57]);
+    expect(snapshot.target.targetIds).toEqual([previousTarget.id]);
+    expect(snapshot.target.targetKey).toBe(previousTarget.id);
+    expect(snapshot.runtime.validatedNotes).toEqual([57]);
+    expect(snapshot.spectral.topCandidates[0]?.midi).toBe(57);
+  });
 });

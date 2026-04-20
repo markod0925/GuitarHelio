@@ -191,7 +191,7 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.validatedNotes).toEqual([]);
   });
 
-  test('keeps the PlayScene mono config aligned with the benchmark confidence floor', () => {
+  test('keeps the PlayScene live config aligned with the runtime confidence floor', () => {
     const validator = new RealtimeGameplayValidator({
       noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
     });
@@ -206,6 +206,45 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.accepted).toBe(false);
     expect(output.rejectStage).toBe('note_level');
     expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_confidence_failed'))).toBe(true);
+  });
+
+  test('rejects confidence just below the PlayScene live floor', () => {
+    const validator = new RealtimeGameplayValidator({
+      noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+    });
+    const target = monoTarget(60);
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { detectorConfidence: 0.64 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { detectorConfidence: 0.64 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { detectorConfidence: 0.64 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_confidence_failed'))).toBe(true);
+  });
+
+  test('requires current live frame evidence before keeping an accepted mono target active', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    validator.setTarget(target);
+
+    validator.update({ timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0)]), target });
+    validator.update({ timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16)]), target });
+    validator.update({ timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32)]), target });
+
+    const output = validator.update({
+      timestampMs: 48,
+      frameEvidence: frameEvidence(48, [], []),
+      target
+    });
+
+    expect(output.acceptedPreGate).toBe(true);
+    expect(output.accepted).toBe(false);
+    expect(output.acceptedPostGate).toBe(false);
+    expect(output.gateRejectReason).toBe('no_live_frame_evidence');
+    expect(output.rejectReasons).toContain('gate:no_live_frame_evidence');
+    expect(output.rejectStage).toBe('gate');
   });
 
   test('accepts a poly target when enough notes validate', () => {

@@ -58,6 +58,7 @@ export type GameplayValidationLiveWindowTrace = {
 
 export type GameplayValidationLiveTraceMetrics = {
   armedWindows: number;
+  // Acceptance metrics are counted per logical armed window / run, never per accepted sample.
   acceptedWindows: number;
   expiredWindows: number;
   suppressedWindows: number;
@@ -163,6 +164,13 @@ export function recordGameplayValidationLiveTrace(session: GameplayValidationLiv
   }
 
   let windowTrace = activeWindow;
+  if (!windowTrace && currentWindowId !== null) {
+    const lastWindow = session.windows[session.windows.length - 1];
+    if (lastWindow?.windowId === currentWindowId) {
+      windowTrace = lastWindow;
+      session.activeWindowIndex = session.windows.length - 1;
+    }
+  }
   if (!windowTrace) {
     windowTrace = {
       windowId: currentWindowId ?? resolveWindowId(input.validationWindow, input.timestampMs) ?? `window-${input.timestampMs}`,
@@ -226,19 +234,16 @@ export function recordGameplayValidationLiveTrace(session: GameplayValidationLiv
     windowTrace.acceptedAtSongSeconds = input.validationWindow.acceptedAtSongSeconds ?? input.songSecondsNow ?? null;
     windowTrace.outcome = 'accepted';
     windowTrace.outcomeReason = input.validationWindow.lastReason;
-    session.activeWindowIndex = null;
   } else if (input.validationWindow.phase === 'expired') {
     windowTrace.expiredAtMs = input.timestampMs;
     windowTrace.expiredAtSongSeconds = input.validationWindow.expiredAtSongSeconds ?? input.songSecondsNow ?? null;
     windowTrace.outcome = resolveTerminalOutcome(input.validationWindow, input.runtimeOutput);
     windowTrace.outcomeReason = input.validationWindow.lastReason;
-    session.activeWindowIndex = null;
   } else if (input.runtimeOutput?.acceptedPostGate) {
     windowTrace.acceptedAtMs = input.timestampMs;
     windowTrace.acceptedAtSongSeconds = input.songSecondsNow ?? null;
     windowTrace.outcome = 'accepted';
     windowTrace.outcomeReason = 'accepted';
-    session.activeWindowIndex = null;
   }
 
   refreshSessionMetrics(session);

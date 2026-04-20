@@ -48,7 +48,7 @@ export const PLAY_SCENE_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
   note: {
     ...DEFAULT_VALIDATOR_DECISION_CONFIG.note,
     maxExpectedCentsError: 50,
-    minExpectedConfidence: 0.4298,
+    minExpectedConfidence: 0.65,
     minExpectedVsSourceFrameRatio: 0.6,
     minExpectedTargetConfirmationFrameRatio: 0.6,
     minExpectedVsBestMargin: -1_000_000,

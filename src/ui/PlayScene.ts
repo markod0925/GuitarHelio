@@ -26,12 +26,13 @@ import {
   RealtimeGameplayValidator,
   PLAY_SCENE_VALIDATOR_DECISION_CONFIG,
   type RuntimeValidatorOutput,
-  type RuntimeValidatorStateSnapshot
+  type RuntimeValidatorStateSnapshot,
+  type ValidatorFrameEvidence
 } from '../gameplay/validation';
 import { generateTargetNotesFromMidiTab } from '../guitar/tabTargetGenerator';
 import { fetchMidiArrayBuffer, loadMidiFromArrayBuffer, type LoadedMidi } from '../midi/midiLoader';
 import { TempoMap } from '../midi/tempoMap';
-import type { DifficultyProfile, ScoreEvent, SourceNote, TargetNote } from '../types/models';
+import type { DifficultyProfile, PitchFrame, ScoreEvent, SourceNote, TargetNote } from '../types/models';
 import { PlayState } from '../types/models';
 import { BallTrailRingBuffer } from './BallAnimator';
 import { type PlaybackClockState } from './AudioController';
@@ -126,6 +127,15 @@ export class PlayScene extends Phaser.Scene {
   });
   public realtimeValidationOutput?: RuntimeValidatorOutput;
   public realtimeValidationState?: RuntimeValidatorStateSnapshot;
+  public latestRuntimeDetectorFrame?: PitchFrame;
+  public latestRuntimeFrameEvidence?: ValidatorFrameEvidence;
+  public latestRuntimeValidationSnapshot?: {
+    timestampMs: number;
+    detectorFrame: PitchFrame;
+    frameEvidence: ValidatorFrameEvidence;
+    output: RuntimeValidatorOutput;
+    state: RuntimeValidatorStateSnapshot;
+  };
   public gameplayValidationLiveTrace: GameplayValidationLiveTraceSession = createGameplayValidationLiveTraceSession();
 
   public laneLayer?: Phaser.GameObjects.Graphics;

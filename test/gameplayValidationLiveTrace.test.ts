@@ -5,6 +5,7 @@ import {
   createGameplayValidationLiveTraceSession,
   recordGameplayValidationLiveTrace,
   replayGameplayValidationLiveTrace,
+  summarizeGameplayValidationLiveTrace,
   serializeGameplayValidationLiveTrace
 } from '../src/ui/play/controllers/gameplayValidationLiveTrace';
 import type { PitchFrame, TargetNote } from '../src/types/models';
@@ -168,5 +169,65 @@ describe('gameplay validation live trace', () => {
     const serialized = serializeGameplayValidationLiveTrace(trace);
     expect(serialized).toContain('target-1');
     expect(serialized).toContain('accepted');
+  });
+
+  test('counts repeated accepted samples as one accepted window run', () => {
+    const targetGroup = makeTargetGroup();
+    const difficulty = 'Easy' as const;
+    const frame = makeFrame();
+    const trace = createGameplayValidationLiveTraceSession(0);
+    const validationWindow = createIdleValidationWindowState();
+    validationWindow.phase = 'armed';
+    validationWindow.deadTime = false;
+    validationWindow.targetKey = targetGroup.map((note) => note.id).join('|');
+    validationWindow.targetIds = targetGroup.map((note) => note.id);
+    validationWindow.targetMode = 'mono';
+    validationWindow.difficulty = difficulty;
+    validationWindow.semitoneTolerance = 3;
+    validationWindow.windowStartSeconds = 9.55;
+    validationWindow.windowEndSeconds = 10.55;
+    validationWindow.armedAtMs = 0;
+    validationWindow.lastReason = 'armed';
+
+    const runtimeOutput = {
+      accepted: true,
+      acceptedPreGate: true,
+      acceptedPostGate: true,
+      targetMode: 'mono',
+      validatedNotes: [60],
+      matchedNotes: [60],
+      missingNotes: [],
+      extraNotes: [],
+      noteValidationRatio: 1,
+      confidence: 0.95,
+      rejectReasons: [],
+      rejectStage: 'none',
+      gateRejectReason: 'disabled'
+    } as const;
+
+    recordGameplayValidationLiveTrace(trace, {
+      timestampMs: 32,
+      songSecondsNow: 10.05,
+      frame,
+      validationWindow,
+      runtimeOutput: runtimeOutput as any,
+      targetGroup,
+      difficulty
+    });
+    recordGameplayValidationLiveTrace(trace, {
+      timestampMs: 48,
+      songSecondsNow: 10.07,
+      frame,
+      validationWindow,
+      runtimeOutput: runtimeOutput as any,
+      targetGroup,
+      difficulty
+    });
+
+    const metrics = summarizeGameplayValidationLiveTrace(trace);
+    expect(trace.windows).toHaveLength(1);
+    expect(trace.windows[0]?.samples).toHaveLength(2);
+    expect(metrics.armedWindows).toBe(1);
+    expect(metrics.acceptedWindows).toBe(1);
   });
 });

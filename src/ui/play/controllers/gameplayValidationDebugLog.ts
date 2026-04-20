@@ -3,7 +3,11 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import type { GameplayValidationDebugSnapshot } from '../../playSceneTypes';
 
 const LOG_ROOT_DIRECTORY = 'GuitarHelio/debug-overlay-logs';
-const LOG_THROTTLE_MS = 1000;
+const LOG_DIRECTORY = Directory.Cache;
+const LOG_SESSION_PREFIX = 'playscene-debug-overlay';
+const LOG_SESSION_FILE_NAME = 'session.json';
+
+let nextSessionOrdinal = 1;
 
 export type GameplayValidationDebugLogMetadata = {
   songId?: string;
@@ -13,14 +17,13 @@ export type GameplayValidationDebugLogMetadata = {
 type GameplayValidationDebugLogState = {
   sessionId: string;
   startedAtMs: number;
-  logicalPath: string;
+  sessionDirectoryPath: string;
   fileUri: string | null;
-  lastWrittenAtMs: number;
-  lastSignature: string;
   lastError: string | null;
   writeChain: Promise<void>;
   closed: boolean;
   metadata: GameplayValidationDebugLogMetadata;
+  entries: GameplayValidationDebugLogEntry[];
 };
 
 type GameplayValidationDebugLogEntry =
@@ -28,6 +31,13 @@ type GameplayValidationDebugLogEntry =
       kind: 'session-start';
       sessionId: string;
       startedAtMs: number;
+      metadata: GameplayValidationDebugLogMetadata;
+      logicalPath: string;
+    }
+  | {
+      kind: 'session-open';
+      sessionId: string;
+      openedAtMs: number;
       metadata: GameplayValidationDebugLogMetadata;
       logicalPath: string;
     }
@@ -66,9 +76,26 @@ export function beginGameplayValidationDebugLogSession(metadata: GameplayValidat
     return;
   }
 
+  if (state && !state.closed) {
+    finalizeGameplayValidationDebugLog();
+  }
+
   const nextState = createInitialState(metadata);
   state = nextState;
-  void enqueueEntry(nextState, buildSessionStartEntry(nextState));
+  nextState.entries.push({
+    kind: 'session-start',
+    sessionId: nextState.sessionId,
+    startedAtMs: nextState.startedAtMs,
+    metadata: nextState.metadata,
+    logicalPath: nextState.sessionDirectoryPath
+  });
+  nextState.entries.push({
+    kind: 'session-open',
+    sessionId: nextState.sessionId,
+    openedAtMs: readClockMs(),
+    metadata: nextState.metadata,
+    logicalPath: nextState.sessionDirectoryPath
+  });
 }
 
 export function recordGameplayValidationDebugLog(
@@ -79,17 +106,12 @@ export function recordGameplayValidationDebugLog(
   if (!Capacitor.isNativePlatform()) return;
 
   const current = ensureState(metadata, snapshot.capturedAtMs);
-  const signature = buildSnapshotSignature(snapshot);
-  if (!shouldEmitSnapshot(current, signature, snapshot.capturedAtMs)) return;
-
-  current.lastSignature = signature;
-  current.lastWrittenAtMs = snapshot.capturedAtMs;
-  void enqueueEntry(current, {
+  current.entries.push({
     kind: 'snapshot',
     sessionId: current.sessionId,
     capturedAtMs: snapshot.capturedAtMs,
     metadata: current.metadata,
-    logicalPath: current.logicalPath,
+    logicalPath: current.sessionDirectoryPath,
     lines,
     snapshot
   });
@@ -106,38 +128,63 @@ export function finalizeGameplayValidationDebugLog(
   state = null;
   current.closed = true;
   const endedAtMs = lastSnapshot?.capturedAtMs ?? readClockMs();
-  void enqueueEntry(current, {
-    ...buildSessionEndEntry(
-      current,
-      endedAtMs,
-      lastSnapshot,
-      lines
-    ),
+  current.entries.push({
+    kind: 'session-end',
+    sessionId: current.sessionId,
+    endedAtMs,
+    logicalPath: current.sessionDirectoryPath,
+    lastSnapshot,
+    lines,
     metadata: current.metadata.songId || current.metadata.midiUrl ? current.metadata : metadata
   });
+  void flushSessionToDisk(current);
 }
 
 export function describeGameplayValidationDebugLogLocation(): string {
   if (!state) {
-    return `Documents/${LOG_ROOT_DIRECTORY}/pending.jsonl`;
+    return `Cache/${LOG_ROOT_DIRECTORY}/pending/${LOG_SESSION_FILE_NAME}`;
   }
-  return state.fileUri ?? `Documents/${state.logicalPath}`;
+  return state.fileUri ?? `Cache/${state.sessionDirectoryPath}/${LOG_SESSION_FILE_NAME}`;
 }
 
-export function buildGameplayValidationDebugLogFileName(startedAtMs: number): string {
-  return `playscene-debug-overlay-${formatTimestampForFile(startedAtMs)}.jsonl`;
+export function buildGameplayValidationDebugLogSessionDirectoryName(
+  startedAtMs: number,
+  sessionOrdinal: number
+): string {
+  return `${LOG_SESSION_PREFIX}-${formatTimestampForFile(startedAtMs)}-${sessionOrdinal.toString().padStart(3, '0')}`;
 }
 
-export function buildGameplayValidationDebugLogPath(startedAtMs: number): string {
-  return `${LOG_ROOT_DIRECTORY}/${buildGameplayValidationDebugLogFileName(startedAtMs)}`;
+export function buildGameplayValidationDebugLogSessionDirectoryPath(
+  startedAtMs: number,
+  sessionOrdinal: number
+): string {
+  return `${LOG_ROOT_DIRECTORY}/${buildGameplayValidationDebugLogSessionDirectoryName(startedAtMs, sessionOrdinal)}`;
+}
+
+export function buildGameplayValidationDebugLogSessionFilePath(
+  startedAtMs: number,
+  sessionOrdinal: number
+): string {
+  return `${buildGameplayValidationDebugLogSessionDirectoryPath(startedAtMs, sessionOrdinal)}/${LOG_SESSION_FILE_NAME}`;
 }
 
 function ensureState(metadata: GameplayValidationDebugLogMetadata, atMs: number): GameplayValidationDebugLogState {
   if (!state || state.closed) {
     state = createInitialState(metadata, atMs);
     const current = state;
-    void enqueueEntry(current, {
-      ...buildSessionStartEntry(current)
+    current.entries.push({
+      kind: 'session-start',
+      sessionId: current.sessionId,
+      startedAtMs: current.startedAtMs,
+      metadata: current.metadata,
+      logicalPath: current.sessionDirectoryPath
+    });
+    current.entries.push({
+      kind: 'session-open',
+      sessionId: current.sessionId,
+      openedAtMs: atMs,
+      metadata: current.metadata,
+      logicalPath: current.sessionDirectoryPath
     });
   }
   return state;
@@ -147,92 +194,46 @@ function createInitialState(
   metadata: GameplayValidationDebugLogMetadata,
   startedAtMs: number = readClockMs()
 ): GameplayValidationDebugLogState {
-  const sessionId = formatTimestampForFile(startedAtMs);
+  const sessionOrdinal = nextSessionOrdinal;
+  nextSessionOrdinal += 1;
+  const sessionId = `${formatTimestampForFile(startedAtMs)}-${sessionOrdinal.toString().padStart(3, '0')}`;
   return {
     sessionId,
     startedAtMs,
-    logicalPath: buildGameplayValidationDebugLogPath(startedAtMs),
+    sessionDirectoryPath: buildGameplayValidationDebugLogSessionDirectoryPath(startedAtMs, sessionOrdinal),
     fileUri: null,
-    lastWrittenAtMs: Number.NEGATIVE_INFINITY,
-    lastSignature: '',
     lastError: null,
     writeChain: Promise.resolve(),
     closed: false,
     metadata: {
       songId: metadata.songId?.trim() || undefined,
       midiUrl: metadata.midiUrl?.trim() || undefined
-    }
+    },
+    entries: []
   };
 }
 
-function shouldEmitSnapshot(
-  current: GameplayValidationDebugLogState,
-  signature: string,
-  capturedAtMs: number
-): boolean {
-  if (current.lastSignature === '') return true;
-  if (current.lastSignature !== signature) return true;
-  return capturedAtMs - current.lastWrittenAtMs >= LOG_THROTTLE_MS;
-}
-
-function buildSnapshotSignature(snapshot: GameplayValidationDebugSnapshot): string {
-  return [
-    snapshot.window.phase,
-    snapshot.window.targetKey ?? '-',
-    snapshot.window.deadTime ? 'dead' : 'live',
-    snapshot.runtime.acceptedPreGate ? 'pre1' : 'pre0',
-    snapshot.runtime.acceptedPostGate ? 'post1' : 'post0',
-    snapshot.runtime.rejectStage,
-    snapshot.runtime.gateRejectReason ?? '-',
-    snapshot.spectral.expectedNotePresent ? 'expected1' : 'expected0',
-    snapshot.runtime.noteValidationRatio.toFixed(2),
-    snapshot.target.targetMode ?? '-'
-  ].join('|');
-}
-
-function buildSessionStartEntry(state: GameplayValidationDebugLogState): GameplayValidationDebugLogEntry {
-  return {
-    kind: 'session-start',
-    sessionId: state.sessionId,
-    startedAtMs: state.startedAtMs,
-    metadata: state.metadata,
-    logicalPath: state.logicalPath
-  };
-}
-
-function buildSessionEndEntry(
-  state: GameplayValidationDebugLogState,
-  endedAtMs: number,
-  lastSnapshot?: GameplayValidationDebugSnapshot,
-  lines: string[] = []
-): GameplayValidationDebugLogEntry {
-  return {
-    kind: 'session-end',
-    sessionId: state.sessionId,
-    endedAtMs,
-    metadata: state.metadata,
-    logicalPath: state.logicalPath,
-    lastSnapshot,
-    lines
-  };
-}
-
-async function enqueueEntry(state: GameplayValidationDebugLogState, entry: GameplayValidationDebugLogEntry): Promise<void> {
+async function flushSessionToDisk(state: GameplayValidationDebugLogState): Promise<void> {
   state.writeChain = state.writeChain.then(async () => {
     if (!Capacitor.isNativePlatform()) return;
 
-    await ensureLogDirectory();
-    const payload = `${JSON.stringify(entry)}\n`;
-    await Filesystem.appendFile({
-      directory: Directory.Documents,
-      path: state.logicalPath,
-      data: payload,
+    await ensureSessionDirectory(state.sessionDirectoryPath);
+    const entryPath = `${state.sessionDirectoryPath}/${LOG_SESSION_FILE_NAME}`;
+    await Filesystem.writeFile({
+      directory: LOG_DIRECTORY,
+      path: entryPath,
+      data: `${JSON.stringify({
+        sessionId: state.sessionId,
+        startedAtMs: state.startedAtMs,
+        metadata: state.metadata,
+        entries: state.entries
+      })}\n`,
       encoding: Encoding.UTF8
     });
     try {
       const fileInfo = await Filesystem.getUri({
-        directory: Directory.Documents,
-        path: state.logicalPath
+        directory: LOG_DIRECTORY,
+        path: entryPath
       });
       state.fileUri = fileInfo.uri;
     } catch {
@@ -242,19 +243,26 @@ async function enqueueEntry(state: GameplayValidationDebugLogState, entry: Gamep
   }).catch(async (error: unknown) => {
     state.lastError = formatError(error);
     try {
-      await ensureLogDirectory();
+      await ensureSessionDirectory(state.sessionDirectoryPath);
       const errorEntry: GameplayValidationDebugLogEntry = {
         kind: 'error',
         sessionId: state.sessionId,
         atMs: readClockMs(),
         metadata: state.metadata,
-        logicalPath: state.logicalPath,
+        logicalPath: state.sessionDirectoryPath,
         message: state.lastError
       };
-      await Filesystem.appendFile({
-        directory: Directory.Documents,
-        path: state.logicalPath,
-        data: `${JSON.stringify(errorEntry)}\n`,
+      state.entries.push(errorEntry);
+      const errorPath = `${state.sessionDirectoryPath}/${LOG_SESSION_FILE_NAME}`;
+      await Filesystem.writeFile({
+        directory: LOG_DIRECTORY,
+        path: errorPath,
+        data: `${JSON.stringify({
+          sessionId: state.sessionId,
+          startedAtMs: state.startedAtMs,
+          metadata: state.metadata,
+          entries: state.entries
+        })}\n`,
         encoding: Encoding.UTF8
       });
     } catch {
@@ -264,10 +272,10 @@ async function enqueueEntry(state: GameplayValidationDebugLogState, entry: Gamep
   await state.writeChain;
 }
 
-async function ensureLogDirectory(): Promise<void> {
+async function ensureSessionDirectory(sessionDirectoryPath: string): Promise<void> {
   await Filesystem.mkdir({
-    directory: Directory.Documents,
-    path: LOG_ROOT_DIRECTORY,
+    directory: LOG_DIRECTORY,
+    path: sessionDirectoryPath,
     recursive: true
   });
 }

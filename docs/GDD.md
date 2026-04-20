@@ -242,9 +242,12 @@ Runtime gameplay MUST use a single reusable validator core under `src/gameplay/v
 That runtime validator MUST be stateful, frame-driven, target-driven, and able to switch between mono and poly targets without duplicating note-level logic.
 Mono MUST be treated as note-set cardinality `1`; poly MUST be treated as note-set cardinality `> 1`.
 The benchmark tooling MUST reuse the same shared note-evidence and gate/finalization logic where practical, while keeping dataset parsing and window labeling benchmark-only.
+Live gameplay confirmation metrics MUST be counted per armed window / run, not per repeated accepted snapshot.
 Benchmark harnesses MAY default to Medium pitch tolerance when difficulty is not explicitly provided, but they MUST keep the tolerance configurable so Easy/Hard runs remain reproducible.
 Per-note support MUST be expressed as a physical duration in seconds (`supportSeconds` / `minExpectedSupportSeconds`) and MUST NOT be modeled as a frame ratio, because frame ratios scale with window length and difficulty.
 Consecutive-frame checks remain a separate gate and MAY stay frame-based.
+
+The current PlayScene live confirmation floor is `minExpectedConfidence = 0.65`.
 
 For polyphonic passages, validation MUST be note-set oriented:
 
@@ -1187,6 +1190,9 @@ In debug sessions, gameplay MUST also provide a central debug overlay (toggle ke
 * live confirmation metrics from the runtime trace session, including armed/accepted/expired/suppressed window counts, median confirmation latency, and windows with no meaningful evidence
 * current confirmation state (`confirmed`, `near`, `far`, `suppressed`, `idle`) so the overlay answers "why did this window not confirm?"
 * on-device toggle control for Android gameplay sessions so the overlay can be enabled without a keyboard
+* when the debug overlay is enabled, PlayScene MUST start a session-local event-log directory under `Cache/GuitarHelio/debug-overlay-logs/`
+* each overlay session MUST accumulate `session-start`, `session-open`, `snapshot`, `session-end`, and `error` entries in memory and write a final `session.json` dump when the overlay is hidden or the scene ends
+* the overlay log MUST remain app-local so it can be copied off-device for later inspection
 
 ---
 

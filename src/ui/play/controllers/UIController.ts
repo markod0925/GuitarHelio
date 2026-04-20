@@ -22,6 +22,12 @@ import type {
   GameplayValidationDebugSnapshot
 } from '../../playSceneTypes';
 import { createIdleValidationWindowState } from './validationWindow';
+import {
+  beginGameplayValidationDebugLogSession,
+  finalizeGameplayValidationDebugLog,
+  recordGameplayValidationDebugLog,
+  describeGameplayValidationDebugLogLocation
+} from './gameplayValidationDebugLog';
 type PlaySceneStatics = typeof import('../../PlayScene').PlayScene;
 const MAIN_THREAD_BUDGET_MS = 16.67;
 
@@ -607,6 +613,10 @@ function persistNativeSongHighScoreImpl(this: PlaySceneContext, songScoreKey: st
 function createDebugOverlayImpl(this: PlaySceneContext): void {
   if (!this.debugOverlayEnabled || this.debugOverlayContainer) return;
 
+  beginGameplayValidationDebugLogSession({
+    songId: this.sceneData?.songId,
+    midiUrl: this.sceneData?.midiUrl
+  });
   this.debugOverlayPanel = new RoundedBox(this, 0, 0, 10, 10, 0x020617, 0.82)
     .setStrokeStyle(2, 0x38bdf8, 0.5)
     .setDepth(910);
@@ -658,11 +668,27 @@ function toggleDebugOverlayImpl(this: PlaySceneContext): void {
     return;
   }
   const nextVisible = !this.debugOverlayContainer.visible;
+  if (nextVisible) {
+    beginGameplayValidationDebugLogSession({
+      songId: this.sceneData?.songId,
+      midiUrl: this.sceneData?.midiUrl
+    });
+  } else {
+    const lastSnapshot = this.gameplayValidationDebugSnapshot;
+    const lines = this.debugOverlayText?.text ? this.debugOverlayText.text.split('\n') : [];
+    finalizeGameplayValidationDebugLog(lastSnapshot, lines, {
+      songId: this.sceneData?.songId,
+      midiUrl: this.sceneData?.midiUrl
+    });
+  }
   this.debugOverlayContainer.setVisible(nextVisible);
   setGameplayDebugOverlayEnabled(nextVisible);
   this.debugOverlayToggleLabel?.setText(`Overlay: ${nextVisible ? 'ON' : 'OFF'}`);
   this.feedbackText = `Gameplay validation overlay ${nextVisible ? 'ON' : 'OFF'}`;
   this.feedbackUntilMs = performance.now() + 900;
+  if (nextVisible) {
+    this.updateDebugOverlay();
+  }
   this.updateHud();
 }
 
@@ -675,11 +701,27 @@ function updateDebugOverlayImpl(this: PlaySceneContext): void {
   }
 
   const snapshot = buildGameplayValidationDebugSnapshot(this, performance.now());
-  const lines = formatGameplayValidationDebugSnapshot(snapshot);
   const previousSnapshot = this.gameplayValidationDebugSnapshot;
   this.gameplayValidationDebugSnapshot = snapshot;
+  let lines: string[];
+  try {
+    lines = formatGameplayValidationDebugSnapshot(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    lines = [
+      'Gameplay Validation Debug [ERROR]',
+      `Formatter failed: ${message}`,
+      `Log: ${describeGameplayValidationDebugLogLocation()}`
+    ];
+  }
+  // Persist the runtime snapshot independently from overlay rendering so the final
+  // session dump still captures events even if the UI formatter is not ready or throws.
+  recordGameplayValidationDebugLog(snapshot, lines, {
+    songId: this.sceneData?.songId,
+    midiUrl: this.sceneData?.midiUrl
+  });
 
-  if (snapshot.runtime.acceptedPostGate) {
+  if (snapshot.runtime.acceptedPostGate && !previousSnapshot?.runtime.acceptedPostGate) {
     this.gameplayValidationDebugLastAccepted = retainGameplayValidationSnapshot(snapshot, 'accepted', buildGameplayValidationEventLabel('accepted', snapshot));
   } else if (snapshot.window.phase === 'expired' && previousSnapshot?.window.phase !== 'expired') {
     this.gameplayValidationDebugLastExpired = retainGameplayValidationSnapshot(snapshot, 'expired', buildGameplayValidationEventLabel('expired', snapshot));
@@ -791,7 +833,6 @@ function updateHudImpl(this: PlaySceneContext): void {
       this.playbackStarted && this.runtime.state === PlayState.Playing ? this.getSongSecondsNow() : this.pausedSongSeconds;
     const bpm = this.getCurrentPlaybackBpm(songSecondsForBpm);
     this.updateMultiplierWidget(now, bpm);
-    this.updateDebugOverlay();
   } finally {
     if (PLAY_SCENE_ENABLE_PROFILING) {
       recordHudUpdateDuration(this, readClockMs() - hudStartedAtMs);

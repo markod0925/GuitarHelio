@@ -109,6 +109,7 @@ export type ActivationGateRejectReason =
   | 'passed'
   | 'disabled'
   | 'pre_gate_inactive'
+  | 'no_live_frame_evidence'
   | 'empty_window_requires_quiet'
   | 'empty_window_validated_notes_exceeded'
   | 'empty_window_extra_notes_exceeded'

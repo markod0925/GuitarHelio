@@ -230,12 +230,22 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       const activeGroup = resolveTargetGroup(this.targets, this.runtime.active_target_index);
       const validationTarget = validationWindow.phase === 'armed' ? buildValidationTargetFromTargetGroup(activeGroup, this.sceneData?.difficulty) : null;
       const frameEvidence = buildValidatorFrameEvidenceFromPitchFrame(frame, timestampMs, validationTarget);
+      const stabilizedFrame = gameplayPitchStabilizer.update(frame);
+      this.latestRuntimeDetectorFrame = frame;
+      this.latestRuntimeFrameEvidence = frameEvidence;
       const validationOutput = this.realtimeGameplayValidator.update({
         timestampMs,
         frameEvidence
       });
       this.realtimeValidationOutput = validationOutput;
       this.realtimeValidationState = this.realtimeGameplayValidator.getState();
+      this.latestRuntimeValidationSnapshot = {
+        timestampMs,
+        detectorFrame: frame,
+        frameEvidence,
+        output: validationOutput,
+        state: this.realtimeValidationState
+      };
       if (validationOutput.accepted && validationWindow.phase === 'armed') {
         markGameplayValidationWindowAccepted(this, timestampMs, songSecondsNow);
       }
@@ -248,7 +258,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
         targetGroup: activeGroup,
         difficulty: this.sceneData?.difficulty ?? null
       });
-      this.latestFrames.push(gameplayPitchStabilizer.update(frame));
+      this.latestFrames.push(stabilizedFrame);
     });
     if (PLAY_SCENE_ENABLE_PROFILING) {
       detector.onProfiling((snapshot) => {
