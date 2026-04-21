@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { applyReferenceContaminationPolicy, isValidHeldHit } from '../src/audio/pitchDetector';
+import { applyReferenceContaminationPolicy, isValidHeldHit, sanitizeNativeDetectionPayload } from '../src/audio/pitchDetector';
 import type { PitchFrame } from '../src/types/models';
 
 function frame(t_seconds: number, midi_estimate: number | null, confidence = 0.8): PitchFrame {
@@ -103,5 +103,35 @@ describe('applyReferenceContaminationPolicy', () => {
     expect(notRejected.rejected_as_reference_bleed).toBe(false);
     expect(rejected.midi_estimate).toBeNull();
     expect(rejected.rejected_as_reference_bleed).toBe(true);
+  });
+});
+
+describe('sanitizeNativeDetectionPayload', () => {
+  test('preserves mic_rms from native pitch payloads', () => {
+    const result = sanitizeNativeDetectionPayload(
+      {
+        timestamp_sec: 1.25,
+        midi_estimate: 45,
+        confidence: 0.7,
+        mic_rms: 0.03125,
+        reference_correlation: 0.42,
+        energy_ratio_db: -6,
+        onset_strength: 0.13,
+        contamination_score: 0.21,
+        selected_notes: [
+          { midi: 45, score: 0.7, note_id: 'note-45' }
+        ]
+      },
+      0
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.mic_rms).toBeCloseTo(0.03125, 6);
+    expect(result?.native_debug?.mic_rms).toBeCloseTo(0.03125, 6);
+    expect(result?.native_debug?.reference_correlation).toBeCloseTo(0.42, 6);
+    expect(result?.native_debug?.energy_ratio_db).toBeCloseTo(-6, 6);
+    expect(result?.native_debug?.onset_strength).toBeCloseTo(0.13, 6);
+    expect(result?.native_debug?.contamination_score).toBeCloseTo(0.21, 6);
+    expect(result?.midi_estimate).toBe(45);
   });
 });

@@ -52,6 +52,13 @@ export type PitchFrame = {
   midi_estimate: number | null;
   confidence: number;
   mic_rms?: number;
+  native_debug?: {
+    mic_rms?: number;
+    reference_correlation?: number;
+    energy_ratio_db?: number;
+    onset_strength?: number;
+    contamination_score?: number;
+  };
   reference_midi?: number | null;
   reference_correlation?: number;
   energy_ratio_db?: number;

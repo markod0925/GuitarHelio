@@ -694,10 +694,18 @@ public class NativePitchInputPlugin extends Plugin {
             String fallbackReason = diagnostics != null ? diagnostics.optString("fallback_reason", "") : "";
             boolean hasError = diagnostics != null
                 && !diagnostics.optString("last_error", "").isEmpty();
-            if (!verboseNativePitchDiagnostics && running && fallbackReason.isEmpty() && !hasError) {
+            boolean shouldLogSummary = verboseNativePitchDiagnostics
+                || pollTraceCount == 1
+                || !running
+                || !fallbackReason.isEmpty()
+                || hasError;
+            if (!shouldLogSummary) {
                 return "";
             }
-            return "running=" + running + " | results=" + count + (fallbackReason.isEmpty() ? "" : " | fallback=" + fallbackReason);
+            return "running=" + running
+                + " | results=" + count
+                + summarizeFirstPollResult(results)
+                + (fallbackReason.isEmpty() ? "" : " | fallback=" + fallbackReason);
         }
 
         if ("updateGameplayContext".equals(methodName)) {
@@ -750,6 +758,31 @@ public class NativePitchInputPlugin extends Plugin {
         }
 
         return "ok=true";
+    }
+
+    private String summarizeFirstPollResult(JSONArray results) {
+        if (results == null || results.length() == 0) {
+            return "";
+        }
+        JSONObject first = results.optJSONObject(0);
+        if (first == null) {
+            return "";
+        }
+        return " | firstResult.midi=" + formatOptionalNumber(first, "midi_estimate")
+            + " | firstResult.conf=" + formatOptionalNumber(first, "confidence")
+            + " | firstResult.micRms=" + formatOptionalNumber(first, "mic_rms")
+            + " | firstResult.refCorr=" + formatOptionalNumber(first, "reference_correlation")
+            + " | firstResult.eDb=" + formatOptionalNumber(first, "energy_ratio_db")
+            + " | firstResult.onset=" + formatOptionalNumber(first, "onset_strength")
+            + " | firstResult.contam=" + formatOptionalNumber(first, "contamination_score");
+    }
+
+    private String formatOptionalNumber(JSONObject object, String key) {
+        if (object == null || key == null || !object.has(key) || object.isNull(key)) {
+            return "null";
+        }
+        Object value = object.opt(key);
+        return value != null ? String.valueOf(value) : "null";
     }
 
     private JSObject toJsObject(JSONObject object) throws JSONException {

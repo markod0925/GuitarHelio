@@ -77,6 +77,7 @@ export type NativePitchDetectionResult = {
   pitch_hz?: number | null;
   midi_estimate?: number | null;
   confidence?: number;
+  mic_rms?: number;
   selected_notes?: Array<{
     note_id?: string | null;
     midi?: number;

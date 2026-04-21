@@ -167,6 +167,7 @@ struct SpectralFrameOutput {
 #[derive(Clone, Debug, Serialize)]
 pub struct NativePitchFrame {
     pub delay_samples: i32,
+    pub mic_rms: f32,
     pub reference_correlation: f32,
     pub energy_ratio_db: f32,
     pub onset_strength: f32,
@@ -397,6 +398,7 @@ impl GhDspCore {
 
         let output = js_sys::Object::new();
         set_number(&output, "delay_samples", native.delay_samples as f64);
+        set_number(&output, "mic_rms", native.mic_rms as f64);
         set_number(
             &output,
             "reference_correlation",
@@ -626,6 +628,7 @@ impl GhDspCore {
 
         NativePitchFrame {
             delay_samples: delay_samples as i32,
+            mic_rms,
             reference_correlation,
             energy_ratio_db,
             onset_strength,

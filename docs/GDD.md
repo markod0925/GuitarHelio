@@ -112,6 +112,7 @@ The system MUST use preset-based runtime detection through `PitchDetectorService
 The start-screen tuner MUST use `ac14` for both live tuning and calibration capture.
 On Capacitor Android runtime, gameplay/tuner/practice microphone capture MUST avoid `getUserMedia` and use the native input plugin instead.
 On Electron Windows runtime, gameplay/tuner/practice microphone capture MUST avoid WebAudio `getUserMedia` and use the native addon pipeline instead.
+Native gameplay detector payloads MUST expose `mic_rms` alongside the existing contamination/reference diagnostics when the runtime backend provides it.
 
 ---
 

@@ -994,7 +994,7 @@ export class PitchDetectorService {
   }
 }
 
-function sanitizeNativeDetectionPayload(
+export function sanitizeNativeDetectionPayload(
   payload: NativePitchDetectionResult,
   fallbackTimeSeconds: number
 ): PitchFrame | null {
@@ -1031,6 +1031,13 @@ function sanitizeNativeDetectionPayload(
     midi_estimate: midiEstimate,
     confidence: midiEstimate === null ? 0 : confidence,
     reference_midi: sanitizeMidi(payload.reference_midi),
+    native_debug: {
+      mic_rms: sanitizeOptionalNumber(payload.mic_rms),
+      reference_correlation: sanitizeOptionalNumber(payload.reference_correlation),
+      energy_ratio_db: sanitizeOptionalNumber(payload.energy_ratio_db),
+      onset_strength: sanitizeOptionalNumber(payload.onset_strength),
+      contamination_score: sanitizeOptionalNumber(payload.contamination_score)
+    },
     reference_correlation: sanitizeSigned(payload.reference_correlation),
     energy_ratio_db: sanitizeNumber(payload.energy_ratio_db),
     onset_strength: clamp01(payload.onset_strength ?? 0),
@@ -1041,7 +1048,7 @@ function sanitizeNativeDetectionPayload(
     best_note_id: sanitizeOptionalString(payload.best_note_id),
     selected_notes: selectedNotes,
     chord_scores: chordScores,
-    mic_rms: undefined
+    mic_rms: sanitizeOptionalNumber(payload.mic_rms)
   };
 }
 

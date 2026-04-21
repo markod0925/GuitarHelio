@@ -147,11 +147,16 @@ export type GameplayValidationDebugSnapshot = {
     selectedNoteCount: number;
     bestNoteId: string | null;
     micRms: number | null;
+    nativePayloadMicRms: number | null;
     referenceMidi: number | null;
     referenceCorrelation: number | null;
+    nativePayloadReferenceCorrelation: number | null;
     energyRatioDb: number | null;
+    nativePayloadEnergyRatioDb: number | null;
     onsetStrength: number | null;
+    nativePayloadOnsetStrength: number | null;
     contaminationScore: number | null;
+    nativePayloadContaminationScore: number | null;
     rejectedAsReferenceBleed: boolean | null;
     stabilizerLockedMidi: number | null;
   };
