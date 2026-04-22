@@ -18,6 +18,7 @@ function noteFrame(midi: number, timestampMs: number, overrides: Partial<Validat
   return {
     timestampMs,
     midi,
+    micRms: overrides.micRms ?? 0.02,
     targetSemitoneTolerance: overrides.targetSemitoneTolerance ?? 1,
     matchedMidi: overrides.matchedMidi ?? midi,
     matchedSemitoneDistance: overrides.matchedSemitoneDistance ?? 0,
@@ -57,6 +58,7 @@ function frameEvidence(timestampMs: number, notes: Array<ValidatorFrameCandidate
   }));
   return {
     timestampMs,
+    micRms: realizedNotes.length > 0 ? Math.max(...realizedNotes.map((note) => note.micRms ?? 0)) : null,
     notes: realizedNotes,
     rawDetectedMidis: rawDetectedMidis ?? realizedNotes.map((note) => note.midi).filter((value): value is number => value !== null),
     rawDetectionMaxConfidence: realizedNotes.length > 0 ? Math.max(...realizedNotes.map((note) => note.detectorConfidence)) : null,
@@ -224,6 +226,23 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_confidence_failed'))).toBe(true);
   });
 
+  test('rejects low micRms frames before they can accumulate note evidence', () => {
+    const validator = new RealtimeGameplayValidator({
+      noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+    });
+    const target = monoTarget(60);
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { micRms: 0.004, detectorConfidence: 0.95 })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { micRms: 0.004, detectorConfidence: 0.95 })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { micRms: 0.004, detectorConfidence: 0.95 })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectStage).toBe('note_level');
+    expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_support_seconds_failed'))).toBe(true);
+  });
+
   test('requires current live frame evidence before keeping an accepted mono target active', () => {
     const validator = new RealtimeGameplayValidator();
     const target = monoTarget(60);
@@ -245,6 +264,30 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.gateRejectReason).toBe('no_live_frame_evidence');
     expect(output.rejectReasons).toContain('gate:no_live_frame_evidence');
     expect(output.rejectStage).toBe('gate');
+  });
+
+  test('rejects a post-gate mono target when the current frame falls below the micRms floor', () => {
+    const validator = new RealtimeGameplayValidator({
+      noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+    });
+    const target = monoTarget(60);
+
+    validator.setTarget(target);
+    validator.update({ timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { micRms: 0.02 })]), target });
+    validator.update({ timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { micRms: 0.02 })]), target });
+    validator.update({ timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { micRms: 0.02 })]), target });
+
+    const output = validator.update({
+      timestampMs: 48,
+      frameEvidence: frameEvidence(48, [noteFrame(60, 48, { micRms: 0.004, detectorConfidence: 0.95 })]),
+      target
+    });
+
+    expect(output.acceptedPreGate).toBe(true);
+    expect(output.acceptedPostGate).toBe(false);
+    expect(output.rejectStage).toBe('gate');
+    expect(output.gateRejectReason).toBe('mic_rms_below_floor');
+    expect(output.rejectReasons).toContain('gate:mic_rms_below_floor');
   });
 
   test('accepts a poly target when enough notes validate', () => {

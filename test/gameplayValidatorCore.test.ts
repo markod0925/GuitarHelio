@@ -81,6 +81,7 @@ function config(mode: ValidatorDecisionConfig['mode']): ValidatorDecisionConfig 
       minExpectedVsBestRatio: 1.4,
       minExpectedVsOctaveMargin: 10,
       ignoreAttackMs: 0,
+      minMicRms: 0.008,
       minExpectedTop1FrameRatio: 0,
       minExpectedTop3FrameRatio: 0,
       minExpectedPairwiseWinRate: 0,

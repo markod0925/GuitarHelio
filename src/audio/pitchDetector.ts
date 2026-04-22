@@ -300,6 +300,10 @@ export class PitchDetectorService {
     return this.legacyFallbackReason;
   }
 
+  getNativeDiagnostics(): NativePitchDiagnostics | null {
+    return this.nativeDiagnostics;
+  }
+
   updateMaspValidationContext(context: MaspValidationContext | null): void {
     this.maspValidationContext = sanitizeMaspValidationContext(context);
     if (this.useNativePitchInput) {

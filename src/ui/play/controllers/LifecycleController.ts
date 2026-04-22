@@ -3,6 +3,7 @@ import {
   DEFAULT_HOLD_MS,
   DEFAULT_MIN_CONFIDENCE,
   DEFAULT_GATING_TIMEOUT_SECONDS,
+  PLAY_SCENE_DETECTOR_PRESET,
   PLAY_SCENE_ENABLE_DEBUG_OVERLAY,
   PLAY_SCENE_ENABLE_PROFILING
 } from '../../../app/config';
@@ -84,6 +85,7 @@ function initializeSessionStateImpl(this: PlaySceneContext): void {
   this.backingTrackSourceStartSongSeconds = 0;
   this.backingTrackIsPlaying = false;
   this.backingTrackAudioUrl = undefined;
+  this.detectorPreset = PLAY_SCENE_DETECTOR_PRESET;
   this.detectorLegacyFallback = false;
   this.realtimeGameplayValidator.reset();
   this.realtimeValidationOutput = undefined;

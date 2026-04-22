@@ -24,6 +24,7 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     minExpectedVsBestRatio: 1.4,
     minExpectedVsOctaveMargin: 10,
     ignoreAttackMs: 0,
+    minMicRms: 0.008,
     minExpectedTop1FrameRatio: 0,
     minExpectedTop3FrameRatio: 0,
     minExpectedPairwiseWinRate: 0,
@@ -53,7 +54,8 @@ export const PLAY_SCENE_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     minExpectedTargetConfirmationFrameRatio: 0.6,
     minExpectedVsBestMargin: -1_000_000,
     minExpectedVsBestRatio: 0,
-    minExpectedVsOctaveMargin: -1_000_000
+    minExpectedVsOctaveMargin: -1_000_000,
+    minMicRms: DEFAULT_VALIDATOR_DECISION_CONFIG.note.minMicRms
   }
 };
 
@@ -149,6 +151,7 @@ export function normalizeNoteEvidenceConfig(config: NoteEvidenceConfig): NoteEvi
     minExpectedVsBestRatio: Number.isFinite(config.minExpectedVsBestRatio) ? Math.max(0, config.minExpectedVsBestRatio) : 0,
     minExpectedVsOctaveMargin: Number.isFinite(config.minExpectedVsOctaveMargin) ? config.minExpectedVsOctaveMargin : 0,
     ignoreAttackMs: Math.max(0, Math.round(config.ignoreAttackMs)),
+    minMicRms: Number.isFinite(config.minMicRms) ? Math.max(0, config.minMicRms) : DEFAULT_VALIDATOR_DECISION_CONFIG.note.minMicRms,
     minExpectedTop1FrameRatio: clamp(config.minExpectedTop1FrameRatio, 0, 1),
     minExpectedTop3FrameRatio: clamp(config.minExpectedTop3FrameRatio, 0, 1),
     minExpectedPairwiseWinRate: clamp(config.minExpectedPairwiseWinRate, 0, 1),

@@ -3,6 +3,7 @@ import {
   BALL_GHOST_TRAIL_COUNT,
   BALL_GHOST_TRAIL_JUMP_INTERPOLATION_STEPS,
   BALL_GHOST_TRAIL_SAMPLE_STEP,
+  PLAY_SCENE_DETECTOR_PRESET,
   PLAY_SCENE_ENABLE_DEBUG_OVERLAY,
   PLAY_SCENE_MINIMAP_ENABLED,
   DIFFICULTY_PRESETS,
@@ -15,7 +16,7 @@ import type { AudioInputMode } from '../types/audioInputMode';
 import { DEFAULT_AUDIO_INPUT_MODE } from '../types/audioInputMode';
 import type { JzzTinySynth } from '../audio/jzzTinySynth';
 import type { MidiScrubPlayer } from '../audio/midiScrubPlayer';
-import type { PitchDetectorProfilingSnapshot, PitchDetectorService } from '../audio/pitchDetector';
+import type { PitchDetectorPreset, PitchDetectorProfilingSnapshot, PitchDetectorService } from '../audio/pitchDetector';
 import { summarizeScores } from '../game/scoring';
 import {
   createInitialRuntimeState,
@@ -121,6 +122,7 @@ export class PlayScene extends Phaser.Scene {
   public lastKnownBackingAudioSeconds = 0;
   public playbackSpeedMultiplier = PlayScene.PLAYBACK_SPEED_DEFAULT;
   public audioInputMode: AudioInputMode = DEFAULT_AUDIO_INPUT_MODE;
+  public detectorPreset: PitchDetectorPreset = PLAY_SCENE_DETECTOR_PRESET;
   public detectorLegacyFallback = false;
   public readonly realtimeGameplayValidator = new RealtimeGameplayValidator({
     noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG

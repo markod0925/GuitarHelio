@@ -190,7 +190,8 @@ export class RealtimeGameplayValidator {
       output,
       input.frameEvidence,
       this.targetState.target,
-      this.config.noteDecisionConfig.note.minExpectedConfidence
+      this.config.noteDecisionConfig.note.minExpectedConfidence,
+      this.config.noteDecisionConfig.note.minMicRms
     );
     return this.lastOutput;
   }
@@ -240,6 +241,7 @@ function buildFallbackNoteEvidence(midi: number, timestampMs: number): Validator
     timestampMs,
     midi,
     targetSemitoneTolerance: 0,
+    micRms: null,
     matchedMidi: null,
     matchedSemitoneDistance: null,
     detectorAccepted: false,
@@ -272,13 +274,30 @@ function applyLiveFrameEvidenceGuard(
   output: RuntimeValidatorOutput,
   frameEvidence: RuntimeValidatorInput['frameEvidence'],
   target: ValidationTarget,
-  minExpectedConfidence: number
+  minExpectedConfidence: number,
+  minMicRms: number
 ): RuntimeValidatorOutput {
   if (!output.acceptedPostGate) {
     return output;
   }
 
   const maxExpectedCentsError = Math.max(0, target.semitoneTolerance * 100);
+  const currentMicRms = resolveFrameMicRms(frameEvidence);
+  if (currentMicRms !== null && currentMicRms < minMicRms) {
+    const rejectReasons = output.rejectReasons.includes('gate:mic_rms_below_floor')
+      ? output.rejectReasons
+      : [...output.rejectReasons, 'gate:mic_rms_below_floor'];
+
+    return {
+      ...output,
+      accepted: false,
+      acceptedPostGate: false,
+      rejectReasons,
+      rejectStage: 'gate',
+      gateRejectReason: 'mic_rms_below_floor'
+    };
+  }
+
   const hasCurrentTargetEvidence = frameEvidence.notes.some((note) => (
     note.detectorAccepted &&
     note.matchedMidi !== null &&
@@ -303,6 +322,22 @@ function applyLiveFrameEvidenceGuard(
     rejectStage: 'gate',
     gateRejectReason: 'no_live_frame_evidence'
   };
+}
+
+function resolveFrameMicRms(frameEvidence: RuntimeValidatorInput['frameEvidence']): number | null {
+  if (Number.isFinite(frameEvidence.micRms ?? Number.NaN)) {
+    return frameEvidence.micRms ?? null;
+  }
+
+  const noteMicRms = frameEvidence.notes
+    .map((note) => note.micRms)
+    .filter((value): value is number => Number.isFinite(value));
+
+  if (noteMicRms.length === 0) {
+    return null;
+  }
+
+  return Math.max(...noteMicRms);
 }
 
 function mapNoteDecision(

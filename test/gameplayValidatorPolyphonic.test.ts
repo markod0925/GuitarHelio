@@ -95,6 +95,7 @@ function config(overrides: DeepPartialValidatorDecisionConfig = {}): ValidatorDe
       minExpectedVsBestRatio: 1,
       minExpectedVsOctaveMargin: 0,
       ignoreAttackMs: 0,
+      minMicRms: 0.008,
       minExpectedTop1FrameRatio: 0,
       minExpectedTop3FrameRatio: 0,
       minExpectedPairwiseWinRate: 0,

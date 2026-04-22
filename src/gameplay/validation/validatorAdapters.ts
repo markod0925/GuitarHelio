@@ -65,7 +65,8 @@ export function buildValidatorFrameEvidenceFromPitchResult(
     candidates,
     timestampMs,
     target,
-    rawDetectedMidis: candidates.map((candidate) => candidate.midi)
+    rawDetectedMidis: candidates.map((candidate) => candidate.midi),
+    micRms: finiteNumberOrNull((result.debug as { mic_rms?: number } | undefined)?.mic_rms)
   }, {
     detectorAccepted: result.accepted,
     detectorConfidence: result.confidence ?? 0,
@@ -96,7 +97,8 @@ export function buildValidatorFrameEvidenceFromPitchFrame(
     candidates,
     timestampMs,
     target,
-    rawDetectedMidis
+    rawDetectedMidis,
+    micRms: finiteNumberOrNull(frame.mic_rms ?? frame.native_debug?.mic_rms)
   }, {
     detectorAccepted: frame.midi_estimate !== null || candidates.length > 0,
     detectorConfidence: frame.confidence ?? 0,
@@ -120,6 +122,7 @@ function buildValidatorFrameEvidenceFromCandidates(
     timestampMs: number;
     target?: ValidationTarget | null;
     rawDetectedMidis: number[];
+    micRms?: number | null;
   },
   shared: {
     detectorAccepted: boolean;
@@ -137,6 +140,7 @@ function buildValidatorFrameEvidenceFromCandidates(
   if (!target || target.midiNotes.length === 0) {
     return {
       timestampMs: input.timestampMs,
+      micRms: input.micRms ?? null,
       notes: [],
       rawDetectedMidis: input.rawDetectedMidis,
       rawDetectionMaxConfidence: shared.detectorConfidence,
@@ -199,6 +203,7 @@ function buildValidatorFrameEvidenceFromCandidates(
 
   return {
     timestampMs: input.timestampMs,
+    micRms: input.micRms ?? null,
     notes,
     rawDetectedMidis: input.rawDetectedMidis,
     rawDetectionMaxConfidence: shared.detectorConfidence,

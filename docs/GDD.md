@@ -113,6 +113,15 @@ The start-screen tuner MUST use `ac14` for both live tuning and calibration capt
 On Capacitor Android runtime, gameplay/tuner/practice microphone capture MUST avoid `getUserMedia` and use the native input plugin instead.
 On Electron Windows runtime, gameplay/tuner/practice microphone capture MUST avoid WebAudio `getUserMedia` and use the native addon pipeline instead.
 Native gameplay detector payloads MUST expose `mic_rms` alongside the existing contamination/reference diagnostics when the runtime backend provides it.
+Gameplay validator runtime MUST treat `mic_rms < 0.008` as silent evidence for Gameplay note accumulation and live acceptance. This floor is explicit, derived from the `session_20260403_174852` take analysis, and MUST remain visible in validator config.
+
+Gameplay runtime summary:
+
+* Gameplay MUST explicitly default to `spectral_game_runtime_unified_v3`; MASP is no longer the implicit Gameplay backend.
+* Gameplay detector selection MUST be centralized and inspectable in PlayScene/PlaybackController wiring, not inherited from a shared fallback.
+* Live gameplay debug output MUST show `detector_engine`, detector preset/config id, `noteDecisionConfigId`, `aggregationPolicyId`, and `activationGatePolicyId`.
+* Gameplay runtime logs MUST warn when the active backend does not match the explicit Gameplay spectral preset.
+* Gameplay validator MUST reject near-silence by floor-gating `mic_rms < 0.008` before note evidence can accumulate or persist post-gate.
 
 ---
 
@@ -649,12 +658,15 @@ Native Android detectors that MUST be supported in this pipeline:
 - `pyin`
 - `spectral_game_runtime_unified_v3`
 
+Gameplay MUST explicitly default to `spectral_game_runtime_unified_v3`.
+`masp_game_scene_ts_v1` remains available only as an explicit legacy/debug path and MUST NOT be selected by Gameplay through fallback behavior.
+
 Pitch analysis MUST run through a DSP stage with preset-dependent analysis signal:
 
 - `baseline` / `ac14`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> pitch detector`
 - `spectral_game_runtime_unified_v3`: `mic + reference -> delay estimate -> aligned reference diagnostics + clean mic analysis -> spectral pitch detector`
 - `pyin`: `mic -> rolling frame window -> pYIN f0 + voiced probability -> canonical detector event`
-- `masp_game_scene_ts_v1` (PlayScene only): configurable by `PLAY_SCENE_ENABLE_ECHO_SUPPRESSION`:
+- `masp_game_scene_ts_v1` (explicit legacy/debug path only): configurable by `PLAY_SCENE_ENABLE_ECHO_SUPPRESSION`:
   - `true`: `mic + reference -> delay estimate -> NLMS echo suppression -> residual -> MASP score-informed validator`
   - `false` (current default): `mic -> residual passthrough -> MASP score-informed validator` (echo suppression path disabled)
 
@@ -1348,6 +1360,8 @@ Gameplay validator suite requirements:
 * validator metrics (TAR/FAR/precision/recall/F1/confusion) MUST be primary; generic detector cents tables MUST NOT be the headline result for MASP validator mode
 * gameplay validator decision logic MUST be explicit and mode-driven, with at least `note_only` and `exact_position` modes
 * final ACCEPT decisions MUST depend on expected-target evidence and competitor-aware checks; generic plausibility-only acceptance is not sufficient
+* Gameplay validator note accumulation and live acceptance MUST ignore frames with `mic_rms` below the explicit Gameplay floor (`0.008`) so near-silence cannot accumulate as target evidence
+* the Gameplay validator floor and detector observability rules MUST be documented in the runtime spec and reflected in benchmark fixtures/configs
 * gameplay validator benchmark outputs MUST include per-case diagnostics (expected target, detected target summary, expected-vs-competitor evidence, and accept/reject reason)
 * gameplay validator sweep tooling MUST rank configs TAR-first (TAR=100% hard pass group), then FAR and mismatch FAR breakdowns
 * accepted gameplay-validator candidate configs MUST preserve TAR = 100% on the current locked benchmark dataset

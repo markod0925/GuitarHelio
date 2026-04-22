@@ -133,6 +133,7 @@ export type NoteEvidenceConfig = {
   minExpectedVsBestRatio: number;
   minExpectedVsOctaveMargin: number;
   ignoreAttackMs: number;
+  minMicRms: number;
   minExpectedTop1FrameRatio: number;
   minExpectedTop3FrameRatio: number;
   minExpectedPairwiseWinRate: number;
@@ -334,6 +335,7 @@ export const LEGACY_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     minExpectedVsBestRatio: 0,
     minExpectedVsOctaveMargin: Number.NEGATIVE_INFINITY,
     ignoreAttackMs: 0,
+    minMicRms: 0.008,
     minExpectedTop1FrameRatio: 0,
     minExpectedTop3FrameRatio: 0,
     minExpectedPairwiseWinRate: 0,
@@ -365,6 +367,7 @@ export const DEFAULT_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     minExpectedVsBestRatio: 0,
     minExpectedVsOctaveMargin: -1000000,
     ignoreAttackMs: 0,
+    minMicRms: 0.008,
     minExpectedTop1FrameRatio: 0,
     minExpectedTop3FrameRatio: 0,
     minExpectedPairwiseWinRate: 0,

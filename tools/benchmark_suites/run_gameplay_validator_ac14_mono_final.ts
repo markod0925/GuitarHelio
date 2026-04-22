@@ -138,11 +138,35 @@ type CombinedRow = {
   guitarset: MonoAggregateMetrics;
 };
 
+const RESUME_VERSION = 'ac14_streaming_resume_v1';
+
+type FileSweepProgressDoc = {
+  resumeVersion: string;
+  dataset: DatasetName;
+  fileKey: string;
+  fileId: string;
+  relativeFilePath: string;
+  variantAccumulators: VariantAccumulator[];
+  traceAccumulators: Array<[string, TraceAccumulator]>;
+};
+
+type FileDetailedProgressDoc = {
+  resumeVersion: string;
+  dataset: DatasetName;
+  fileKey: string;
+  fileId: string;
+  relativeFilePath: string;
+  configKey: string;
+  results: MonoWindowResult[];
+  diagnostics: Array<Record<string, unknown>>;
+};
+
 async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const outputDir = path.join(repoRoot, OUTPUT_ROOT);
   await fs.mkdir(outputDir, { recursive: true });
   await fs.mkdir(path.join(outputDir, 'sweep'), { recursive: true });
+  await fs.mkdir(path.join(outputDir, 'progress', RESUME_VERSION), { recursive: true });
 
   const detector = new DspCoreDetector('ac14', PitchDetectorPreset.Ac14, null);
   await detector.init();
@@ -157,14 +181,16 @@ async function main(): Promise<void> {
       seeds: androidSeeds,
       detector,
       windowConfig: DEFAULT_ANDROID_WINDOW_CONFIG,
-      sweepVariants
+      sweepVariants,
+      progressRoot: path.join(outputDir, 'progress', RESUME_VERSION)
     });
     const guitarset = await runDatasetSweep({
       dataset: 'guitarset_solo',
       seeds: guitarsetSeeds,
       detector,
       windowConfig: DEFAULT_GUITARSET_WINDOW_CONFIG,
-      sweepVariants
+      sweepVariants,
+      progressRoot: path.join(outputDir, 'progress', RESUME_VERSION)
     });
 
     const combinedRows = combineVariantRows(android.variantSummaries, guitarset.variantSummaries);
@@ -218,39 +244,205 @@ async function loadGuitarSetSeeds(repoRoot: string): Promise<Array<{ fileId: str
   return out;
 }
 
+function describeDatasetSeed(
+  dataset: DatasetName,
+  seed: DatasetSeed
+): { fileKey: string; fileId: string; relativeFilePath: string } {
+  if (dataset === 'android') {
+    const androidSeed = seed as Awaited<ReturnType<typeof loadAndroidSeeds>>[number];
+    return {
+      fileKey: buildProgressKey(androidSeed.row.fileId, androidSeed.row.relativeFilePath),
+      fileId: androidSeed.row.fileId,
+      relativeFilePath: androidSeed.row.relativeFilePath
+    };
+  }
+
+  const guitarSeed = seed as Awaited<ReturnType<typeof loadGuitarSetSeeds>>[number];
+  return {
+    fileKey: buildProgressKey(guitarSeed.fileId, guitarSeed.wavRelativePath),
+    fileId: guitarSeed.fileId,
+    relativeFilePath: guitarSeed.wavRelativePath
+  };
+}
+
+function buildProgressKey(fileId: string, relativeFilePath: string): string {
+  return encodeURIComponent(`${fileId}::${relativeFilePath}`);
+}
+
+async function loadSweepProgressDocs(dir: string): Promise<Map<string, FileSweepProgressDoc>> {
+  const docs = new Map<string, FileSweepProgressDoc>();
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    const raw = await fs.readFile(path.join(dir, entry.name), 'utf8');
+    const parsed = JSON.parse(raw) as FileSweepProgressDoc;
+    if (parsed.resumeVersion !== RESUME_VERSION) continue;
+    docs.set(parsed.fileKey, parsed);
+  }
+  return docs;
+}
+
+async function loadDetailedProgressDocs(dir: string): Promise<Map<string, FileDetailedProgressDoc>> {
+  const docs = new Map<string, FileDetailedProgressDoc>();
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    const raw = await fs.readFile(path.join(dir, entry.name), 'utf8');
+    const parsed = JSON.parse(raw) as FileDetailedProgressDoc;
+    if (parsed.resumeVersion !== RESUME_VERSION) continue;
+    docs.set(parsed.fileKey, parsed);
+  }
+  return docs;
+}
+
+function applySweepProgressDoc(
+  accumulators: {
+    variantAccumulators: Map<string, VariantAccumulator>;
+    traceAccumulators: Map<string, TraceAccumulator>;
+  },
+  doc: FileSweepProgressDoc
+): void {
+  for (const traceEntry of doc.traceAccumulators) {
+    const [key, traceAccumulator] = traceEntry;
+    const accumulator = accumulators.traceAccumulators.get(key) ?? { runtimeSamples: [] };
+    mergeTraceAccumulator(accumulator, traceAccumulator);
+    accumulators.traceAccumulators.set(key, accumulator);
+  }
+
+  for (const variantAccumulator of doc.variantAccumulators) {
+    const accumulator = accumulators.variantAccumulators.get(variantAccumulator.key) ?? {
+      ...variantAccumulator,
+      confirmationLatencies: [],
+      confirmationLatenciesFromOnset: [],
+      firstTargetHitLatencies: [],
+      firstAnyHitLatencies: [],
+      validatorRuntimeSamples: [],
+      totalRuntimeSamples: []
+    };
+    mergeVariantAccumulator(accumulator, variantAccumulator);
+    accumulators.variantAccumulators.set(accumulator.key, accumulator);
+  }
+}
+
+function mergeTraceAccumulator(target: TraceAccumulator, source: TraceAccumulator): void {
+  target.runtimeSamples.push(...source.runtimeSamples);
+}
+
+function mergeVariantAccumulator(target: VariantAccumulator, source: VariantAccumulator): void {
+  target.windows += source.windows;
+  target.positiveWindows += source.positiveWindows;
+  target.negativeWindows += source.negativeWindows;
+  target.stableWindows += source.stableWindows;
+  target.transitionWindows += source.transitionWindows;
+  target.guardWindows += source.guardWindows;
+  target.confirmedWindows += source.confirmedWindows;
+  target.positiveConfirmedWindows += source.positiveConfirmedWindows;
+  target.negativeConfirmedWindows += source.negativeConfirmedWindows;
+  target.noteMismatchConfirmedWindows += source.noteMismatchConfirmedWindows;
+  target.lowBandPositiveWindows += source.lowBandPositiveWindows;
+  target.lowBandNegativeWindows += source.lowBandNegativeWindows;
+  target.lowBandConfirmedWindows += source.lowBandConfirmedWindows;
+  target.stableAccepted += source.stableAccepted;
+  target.transitionAccepted += source.transitionAccepted;
+  target.guardAccepted += source.guardAccepted;
+  target.totalSelectedFrameCount += source.totalSelectedFrameCount;
+  target.totalTargetHitCount += source.totalTargetHitCount;
+  target.totalWrongNoteCount += source.totalWrongNoteCount;
+  target.totalNoDetectCount += source.totalNoDetectCount;
+  target.supportSecondsSum += source.supportSecondsSum;
+  target.targetHitRatioSum += source.targetHitRatioSum;
+  target.wrongNoteRatioSum += source.wrongNoteRatioSum;
+  target.noDetectFrameRatioSum += source.noDetectFrameRatioSum;
+  target.resetCountSum += source.resetCountSum;
+  target.confirmationLatencies.push(...source.confirmationLatencies);
+  target.confirmationLatenciesFromOnset.push(...source.confirmationLatenciesFromOnset);
+  target.firstTargetHitLatencies.push(...source.firstTargetHitLatencies);
+  target.firstAnyHitLatencies.push(...source.firstAnyHitLatencies);
+  target.validatorRuntimeSamples.push(...source.validatorRuntimeSamples);
+  target.totalRuntimeSamples.push(...source.totalRuntimeSamples);
+}
+
+async function writeSweepProgressDoc(dir: string, doc: FileSweepProgressDoc): Promise<void> {
+  await writeJsonAtomic(path.join(dir, `${doc.fileKey}.json`), doc);
+}
+
+async function writeDetailedProgressDoc(dir: string, doc: FileDetailedProgressDoc): Promise<void> {
+  await writeJsonAtomic(path.join(dir, `${doc.fileKey}.json`), doc);
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await fs.rename(tempPath, filePath);
+}
+
 async function runDatasetSweep(input: {
   dataset: DatasetName;
   seeds: DatasetSeed[];
   detector: DspCoreDetector;
   windowConfig: AndroidWindowConfig | GuitarSetWindowConfig;
   sweepVariants: MonoBenchmarkConfig[];
+  progressRoot: string;
 }): Promise<DatasetRun> {
+  const progressEvery = input.dataset === 'guitarset_solo' ? 1 : 8;
+  const datasetProgressDir = path.join(input.progressRoot, input.dataset, 'sweep');
+  await fs.mkdir(datasetProgressDir, { recursive: true });
   const traceConfigs = uniqueTraceConfigs(input.sweepVariants);
   const validationConfigs = uniqueValidationConfigs(input.sweepVariants);
   const variantAccumulators = new Map<string, VariantAccumulator>();
   const traceAccumulators = new Map<string, TraceAccumulator>();
+  const existingDocs = await loadSweepProgressDocs(datasetProgressDir);
+
+  for (const doc of existingDocs.values()) {
+    applySweepProgressDoc({ variantAccumulators, traceAccumulators }, doc);
+  }
 
   for (let index = 0; index < input.seeds.length; index += 1) {
-    const entry = await buildFileEntry(input.dataset, input.seeds[index], input.windowConfig);
+    const seed = input.seeds[index];
+    const identity = describeDatasetSeed(input.dataset, seed);
+    const existingDoc = existingDocs.get(identity.fileKey);
+    if (existingDoc) {
+      if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
+        console.log(`[ac14-streaming] ${input.dataset} ${index + 1}/${input.seeds.length} skip ${existingDoc.relativeFilePath}`);
+      }
+      continue;
+    }
+
+    const entry = await buildFileEntry(input.dataset, seed, input.windowConfig);
     const decoded = await decodeMonoAudio(entry.filePath);
+    const fileTraceAccumulators = new Map<string, TraceAccumulator>();
+    const fileVariantAccumulators = new Map<string, VariantAccumulator>();
 
     for (const traceConfig of traceConfigs) {
       const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, traceConfig);
       updateTraceAccumulator(traceAccumulators, traceConfig, trace);
+      updateTraceAccumulator(fileTraceAccumulators, traceConfig, trace);
 
       for (const validationConfig of validationConfigs) {
         const config = buildFullVariantConfig(traceConfig, validationConfig);
         const key = buildBenchmarkVariantKey(config);
         const traceKey = buildTraceKey(traceConfig);
         const accumulator = getOrCreateVariantAccumulator(variantAccumulators, input.dataset, config, key, traceKey);
+        const fileAccumulator = getOrCreateVariantAccumulator(fileVariantAccumulators, input.dataset, config, key, traceKey);
         for (const spec of entry.windows) {
           const result = evaluateMonoWindow({ spec, observations: trace.observations, config });
           updateVariantAccumulator(accumulator, result);
+          updateVariantAccumulator(fileAccumulator, result);
         }
       }
     }
 
-    if (index % 16 === 0 || index + 1 === input.seeds.length) {
+    await writeSweepProgressDoc(datasetProgressDir, {
+      resumeVersion: RESUME_VERSION,
+      dataset: input.dataset,
+      fileKey: identity.fileKey,
+      fileId: entry.fileId,
+      relativeFilePath: entry.relativeFilePath,
+      variantAccumulators: [...fileVariantAccumulators.values()],
+      traceAccumulators: [...fileTraceAccumulators.entries()]
+    });
+
+    if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
       console.log(`[ac14-streaming] ${input.dataset} ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
     }
   }
@@ -267,7 +459,8 @@ async function runDatasetSweep(input: {
     seeds: input.seeds,
     detector: input.detector,
     windowConfig: input.windowConfig,
-    config: bestVariant.config
+    config: bestVariant.config,
+    progressRoot: input.progressRoot
   });
 
   return {
@@ -348,14 +541,34 @@ async function runDetailedVariant(input: {
   detector: DspCoreDetector;
   windowConfig: AndroidWindowConfig | GuitarSetWindowConfig;
   config: MonoBenchmarkConfig;
+  progressRoot: string;
 }): Promise<DatasetRun['detailed']> {
   const results: MonoWindowResult[] = [];
   const diagnostics: Array<Record<string, unknown>> = [];
+  const progressEvery = input.dataset === 'guitarset_solo' ? 1 : 8;
+  const configKey = buildBenchmarkVariantKey(input.config);
+  const datasetProgressDir = path.join(input.progressRoot, input.dataset, 'detailed', configKey);
+  await fs.mkdir(datasetProgressDir, { recursive: true });
+  const existingDocs = await loadDetailedProgressDocs(datasetProgressDir);
 
-  for (const seed of input.seeds) {
+  for (let index = 0; index < input.seeds.length; index += 1) {
+    const seed = input.seeds[index];
+    const identity = describeDatasetSeed(input.dataset, seed);
+    const existingDoc = existingDocs.get(identity.fileKey);
+    if (existingDoc) {
+      results.push(...existingDoc.results);
+      diagnostics.push(...existingDoc.diagnostics);
+      if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
+        console.log(`[ac14-streaming] ${input.dataset} detailed ${index + 1}/${input.seeds.length} skip ${existingDoc.relativeFilePath}`);
+      }
+      continue;
+    }
+
     const entry = await buildFileEntry(input.dataset, seed, input.windowConfig);
     const decoded = await decodeMonoAudio(entry.filePath);
     const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, input.config);
+    const fileResults: MonoWindowResult[] = [];
+    const fileDiagnostics: Array<Record<string, unknown>> = [];
 
     for (const spec of entry.windows) {
       const result = evaluateMonoWindow({
@@ -367,7 +580,25 @@ async function runDetailedVariant(input: {
         }
       });
       results.push(result);
-      diagnostics.push(compactResult(result));
+      const compacted = compactResult(result);
+      diagnostics.push(compacted);
+      fileResults.push(result);
+      fileDiagnostics.push(compacted);
+    }
+
+    await writeDetailedProgressDoc(datasetProgressDir, {
+      resumeVersion: RESUME_VERSION,
+      dataset: input.dataset,
+      fileKey: identity.fileKey,
+      fileId: entry.fileId,
+      relativeFilePath: entry.relativeFilePath,
+      configKey,
+      results: fileResults,
+      diagnostics: fileDiagnostics
+    });
+
+    if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
+      console.log(`[ac14-streaming] ${input.dataset} detailed ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
     }
   }
 

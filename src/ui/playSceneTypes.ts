@@ -142,12 +142,17 @@ export type GameplayValidationDebugSnapshot = {
     latestConfidence: number | null;
   };
   detector: {
+    detectorEngine: string | null;
+    detectorPreset: string | null;
     latestMidiEstimate: number | null;
     latestConfidence: number | null;
     selectedNoteCount: number;
     bestNoteId: string | null;
     micRms: number | null;
     nativePayloadMicRms: number | null;
+    nativeDiagnosticsBackendName: string | null;
+    nativeDiagnosticsRms: number | null;
+    nativeDiagnosticsPeak: number | null;
     referenceMidi: number | null;
     referenceCorrelation: number | null;
     nativePayloadReferenceCorrelation: number | null;

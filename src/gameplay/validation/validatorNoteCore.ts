@@ -28,8 +28,10 @@ export function buildValidatorNoteEvidence(
   const normalizedConfig = normalizeNoteDecisionConfig(config);
   const pitchToleranceCents = Math.max(0, Math.abs(targetSemitoneTolerance) * 100);
   const attackCutoffMs = targetStartedAtMs === null ? normalizedConfig.note.ignoreAttackMs : targetStartedAtMs + normalizedConfig.note.ignoreAttackMs;
-  const eligibleFrames = frames.filter((frame) => frame.timestampMs >= attackCutoffMs);
-  const usableFrames = eligibleFrames.length > 0 ? eligibleFrames : frames;
+  const micRmsFloor = Math.max(0, normalizedConfig.note.minMicRms);
+  const eligibleFrames = frames.filter((frame) => frame.timestampMs >= attackCutoffMs && isFrameAboveMicFloor(frame.micRms, micRmsFloor));
+  const framesHaveMicRms = frames.some((frame) => frame.micRms !== undefined && frame.micRms !== null);
+  const usableFrames = framesHaveMicRms ? eligibleFrames : frames;
 
   const expectedDetectorHit = usableFrames.map((frame) => (
     frame.detectorAccepted &&
@@ -734,4 +736,14 @@ function estimateFrameIntervalSeconds(frames: Array<{ timestampMs: number }>): n
     .map((frame, index) => (frame.timestampMs - frames[index].timestampMs) / 1000)
     .filter((delta) => Number.isFinite(delta) && delta > 0);
   return Math.max(0.02, median(deltas) ?? 0.02);
+}
+
+function isFrameAboveMicFloor(micRms: number | null | undefined, floor: number): boolean {
+  if (!Number.isFinite(floor) || floor <= 0) {
+    return true;
+  }
+  if (micRms === null || micRms === undefined) {
+    return true;
+  }
+  return micRms >= floor;
 }

@@ -10,6 +10,7 @@ export type NoteEvidenceConfig = {
   minExpectedVsBestRatio: number;
   minExpectedVsOctaveMargin: number;
   ignoreAttackMs: number;
+  minMicRms: number;
   minExpectedTop1FrameRatio: number;
   minExpectedTop3FrameRatio: number;
   minExpectedPairwiseWinRate: number;
@@ -125,6 +126,7 @@ export type ValidatorFrameCandidateEvidence = {
   detectedMidi?: number | null;
   detectedString?: number | null;
   detectedFret?: number | null;
+  micRms?: number | null;
   targetSemitoneTolerance: number;
   matchedMidi: number | null;
   matchedSemitoneDistance: number | null;
@@ -192,6 +194,7 @@ export type ValidatorFrameCandidateEvidence = {
 export type ValidatorFrameEvidence = {
   frameIndex?: number;
   timestampMs: number;
+  micRms?: number | null;
   notes: ValidatorFrameCandidateEvidence[];
   rawDetectedMidis?: number[];
   rawDetectionMaxConfidence?: number | null;
@@ -231,6 +234,7 @@ export type ActivationGateRejectReason =
   | 'disabled'
   | 'pre_gate_inactive'
   | 'no_live_frame_evidence'
+  | 'mic_rms_below_floor'
   | 'empty_window_requires_quiet'
   | 'empty_window_validated_notes_exceeded'
   | 'empty_window_extra_notes_exceeded'

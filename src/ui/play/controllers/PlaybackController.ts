@@ -3,7 +3,6 @@ import Phaser from 'phaser';
 import { JzzTinySynth } from '../../../audio/jzzTinySynth';
 import { MidiScrubPlayer } from '../../../audio/midiScrubPlayer';
 import { PitchDetectorService } from '../../../audio/pitchDetector';
-import { MASP_GAME_SCENE_PRESET } from '../../../audio/maspShared';
 import { PitchStabilityFilter } from '../../../audio/pitchStabilityFilter';
 import { buildPlaybackNotes } from '../../../audio/playbackNotes';
 import { buildSpectralRuntimeModelFromTargets } from '../../../audio/spectralRuntimeModel';
@@ -20,9 +19,11 @@ import {
   sanitizeSongSeconds
 } from '../../playbackResumeState';
 import {
+  PLAY_SCENE_DETECTOR_PRESET,
   DEFAULT_GATING_TIMEOUT_SECONDS,
   PLAY_SCENE_ENABLE_ECHO_SUPPRESSION,
-  PLAY_SCENE_ENABLE_PROFILING
+  PLAY_SCENE_ENABLE_PROFILING,
+  resolvePlaySceneDetectorPreset
 } from '../../../app/config';
 import {
   getSongSecondsFromClock as getSongSecondsFromClockValue,
@@ -140,11 +141,18 @@ export class PlaybackController {
 }
 
 async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNote[]): Promise<void> {
+  const detectorPreset = resolvePlaySceneDetectorPreset();
+  this.detectorPreset = detectorPreset;
   runtimeLog(
     { scene: 'PlayScene', subsystem: 'scene' },
     'INFO',
     'Setting up play-scene audio stack.',
-    { targetCount: sourceNotes.length, audioInputMode: this.audioInputMode }
+    {
+      targetCount: sourceNotes.length,
+      audioInputMode: this.audioInputMode,
+      detector_engine: detectorPreset,
+      detector_preset: detectorPreset
+    }
   );
   const audioCtx = new AudioContext();
   this.audioCtx = audioCtx;
@@ -195,7 +203,7 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       enableDspCore: true,
       enableEchoSuppression: PLAY_SCENE_ENABLE_ECHO_SUPPRESSION,
       enableProfiling: PLAY_SCENE_ENABLE_PROFILING,
-      detectorPreset: MASP_GAME_SCENE_PRESET,
+      detectorPreset,
       spectralModel
     });
     await detector.init();
@@ -275,11 +283,29 @@ async function setupAudioStackImpl(this: PlaySceneContext, sourceNotes: SourceNo
       detector.isLegacyFallback() ? 'WARN' : 'INFO',
       'Play-scene microphone pipeline active.',
       {
-        detectorPreset: MASP_GAME_SCENE_PRESET,
+        detector_engine: detector.getNativeDiagnostics()?.backend_name ?? detectorPreset,
+        detector_preset: detectorPreset,
+        native_backend_name: detector.getNativeDiagnostics()?.backend_name ?? null,
         legacyFallback: detector.isLegacyFallback(),
         fallbackReason: detector.getLegacyFallbackReason()
       }
     );
+    const nativeBackendName = detector.getNativeDiagnostics()?.backend_name ?? null;
+    if (
+      nativeBackendName !== null &&
+      detectorPreset === PLAY_SCENE_DETECTOR_PRESET &&
+      nativeBackendName !== PLAY_SCENE_DETECTOR_PRESET
+    ) {
+      runtimeLog(
+        { scene: 'PlayScene', subsystem: 'mic' },
+        'WARN',
+        'Gameplay detector backend does not match the explicit PlayScene preset.',
+        {
+          detector_engine: nativeBackendName,
+          detector_preset: detectorPreset
+        }
+      );
+    }
     this.detectorLegacyFallback = detector.isLegacyFallback();
     if (this.detectorLegacyFallback) {
       const reason = detector.getLegacyFallbackReason();

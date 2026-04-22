@@ -316,6 +316,7 @@ describe('play validation debug overlay', () => {
 
     const snapshot = buildGameplayValidationDebugSnapshot({
       sceneData: { difficulty: 'Medium' },
+      detectorPreset: 'spectral_game_runtime_unified_v3',
       playbackStarted: true,
       pausedSongSeconds: 0,
       runtime: {
@@ -371,6 +372,13 @@ describe('play validation debug overlay', () => {
         lastOutput: null,
         noteDecisions: []
       } as any,
+      detector: {
+        getNativeDiagnostics: () => ({
+          backend_name: 'spectral_game_runtime_unified_v3',
+          rms: 0.00005,
+          peak: 0.018
+        })
+      } as any,
       latestRuntimeValidationSnapshot: {
         timestampMs: 140,
         detectorFrame: runtimeFrame,
@@ -421,5 +429,9 @@ describe('play validation debug overlay', () => {
     expect(snapshot.target.targetKey).toBe(previousTarget.id);
     expect(snapshot.runtime.validatedNotes).toEqual([57]);
     expect(snapshot.spectral.topCandidates[0]?.midi).toBe(57);
+    const lines = formatGameplayValidationDebugSnapshot(snapshot);
+    expect(lines.some((line) => line.includes('detector_engine=spectral_game_runtime_unified_v3'))).toBe(true);
+    expect(lines.some((line) => line.includes('detector_preset=spectral_game_runtime_unified_v3'))).toBe(true);
+    expect(lines.some((line) => line.includes('diagRms=0.000'))).toBe(true);
   });
 });

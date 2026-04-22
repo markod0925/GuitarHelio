@@ -73,6 +73,9 @@ export function buildGameplayValidationDebugSnapshot(
   const runtimeOutput = runtimeSnapshot?.output ?? scene.realtimeValidationOutput;
   const noteEvidence = runtimeState?.noteDecisions?.[0]?.evidence;
   const liveTraceMetrics = scene.gameplayValidationLiveTrace ? summarizeGameplayValidationLiveTrace(scene.gameplayValidationLiveTrace) : null;
+  const nativeDiagnostics = scene.detector?.getNativeDiagnostics?.() ?? null;
+  const activeDetectorPreset = scene.detectorPreset ?? scene.audioProfilingSnapshot?.detectorPreset ?? null;
+  const detectorEngine = nativeDiagnostics?.backend_name ?? activeDetectorPreset;
   const allCandidates = buildTopCandidates(latestFrame, expectedMidis, semitoneTolerance ?? Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
   const topCandidates = allCandidates.slice(0, TOP_CANDIDATE_LIMIT);
   const bestCompetitor = resolveBestCompetitor(allCandidates, expectedMidis, semitoneTolerance);
@@ -149,12 +152,17 @@ export function buildGameplayValidationDebugSnapshot(
       latestConfidence: latestFrameEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null
     },
     detector: {
+      detectorEngine,
+      detectorPreset: activeDetectorPreset,
       latestMidiEstimate: latestFrame?.midi_estimate ?? null,
       latestConfidence: latestFrameEvidence?.rawDetectionMaxConfidence ?? latestFrame?.confidence ?? null,
       selectedNoteCount,
       bestNoteId: latestFrame?.best_note_id ?? null,
       micRms: latestFrame?.mic_rms ?? null,
       nativePayloadMicRms: latestFrame?.native_debug?.mic_rms ?? null,
+      nativeDiagnosticsBackendName: nativeDiagnostics?.backend_name ?? null,
+      nativeDiagnosticsRms: nativeDiagnostics?.rms ?? null,
+      nativeDiagnosticsPeak: nativeDiagnostics?.peak ?? null,
       referenceMidi: latestFrame?.reference_midi ?? null,
       referenceCorrelation: latestFrame?.reference_correlation ?? null,
       nativePayloadReferenceCorrelation: latestFrame?.native_debug?.reference_correlation ?? null,
@@ -242,10 +250,11 @@ export function formatGameplayValidationDebugSnapshot(snapshot: GameplayValidati
   const lines = [
     `Gameplay Validation Debug [${paletteLabel}]`,
     `Timing: phase=${snapshot.window.phase} dead=${formatDebugBool(snapshot.window.deadTime)} activeWindow=${activeWindowLabel} difficulty=${snapshot.target.difficulty ?? '-'} tol=${toleranceLabel} song=${formatDebugNumber(snapshot.playbackSongSeconds, 3)}s target=${formatDebugNumber(snapshot.targetSongSeconds, 3)}s dt=${formatSignedMs(snapshot.targetDeltaMs ?? undefined)} early=${formatDebugNumber(snapshot.window.earlyToleranceSeconds, 3)}s late=${formatDebugNumber(snapshot.window.lateToleranceSeconds, 3)}s`,
+    `Detector: detector_engine=${snapshot.detector.detectorEngine ?? '-'} detector_preset=${snapshot.detector.detectorPreset ?? '-'} native_backend=${snapshot.detector.nativeDiagnosticsBackendName ?? '-'} selected=${snapshot.detector.selectedNoteCount} locked=${snapshot.detector.stabilizerLockedMidi ?? '-'}`,
     `Target: mode=${targetLabel} armed=${snapshot.window.currentArmedTargetId ?? '-'} key=${snapshot.target.targetKey ?? '-'} expected=${formatCanonicalTargets(snapshot.target.expectedMidis, snapshot.target.expectedNames, snapshot.target.semitoneTolerance)} ranks=${snapshot.spectral.expectedRanks} agg=${snapshot.target.aggregationPolicyId ?? '-'} gate=${snapshot.target.activationGatePolicyId ?? '-'} noteCfg=${snapshot.target.noteDecisionConfigId ?? '-'}`,
     `Spectral: top5=${topCandidateSummary}`,
     `Spectral: bestComp=${formatCandidatePeer(snapshot.spectral.bestCompetitor)} octave=${formatCandidatePeer(snapshot.spectral.octaveCompetitor)} rawMax=${formatDebugNumber(snapshot.spectral.rawDetectionMaxConfidence, 2)} frameRatio=${formatDebugNumber(snapshot.spectral.rawDetectionFrameRatio, 2)} expectedPresent=${formatDebugBool(snapshot.spectral.expectedNotePresent)} bestNote=${snapshot.spectral.bestNoteId ?? '-'}`,
-    `Detector: midi=${formatDebugNumber(snapshot.detector.latestMidiEstimate, 2)} conf=${formatDebugNumber(snapshot.detector.latestConfidence, 2)} selected=${snapshot.detector.selectedNoteCount} locked=${snapshot.detector.stabilizerLockedMidi ?? '-'} micRms=${formatDebugNumber(snapshot.detector.micRms, 3)} rawMicRms=${formatDebugNumber(snapshot.detector.nativePayloadMicRms, 3)} ref=${formatDebugNumber(snapshot.detector.referenceMidi, 2)} corr=${formatDebugNumber(snapshot.detector.referenceCorrelation, 3)} rawCorr=${formatDebugNumber(snapshot.detector.nativePayloadReferenceCorrelation, 3)} eDb=${formatDebugNumber(snapshot.detector.energyRatioDb, 2)} rawEDb=${formatDebugNumber(snapshot.detector.nativePayloadEnergyRatioDb, 2)} onset=${formatDebugNumber(snapshot.detector.onsetStrength, 3)} rawOnset=${formatDebugNumber(snapshot.detector.nativePayloadOnsetStrength, 3)} contam=${formatDebugNumber(snapshot.detector.contaminationScore, 3)} rawContam=${formatDebugNumber(snapshot.detector.nativePayloadContaminationScore, 3)} bleed=${referenceBleedLabel}`,
+    `Detector: midi=${formatDebugNumber(snapshot.detector.latestMidiEstimate, 2)} conf=${formatDebugNumber(snapshot.detector.latestConfidence, 2)} micRms=${formatDebugNumber(snapshot.detector.micRms, 3)} rawMicRms=${formatDebugNumber(snapshot.detector.nativePayloadMicRms, 3)} diagRms=${formatDebugNumber(snapshot.detector.nativeDiagnosticsRms, 3)} diagPeak=${formatDebugNumber(snapshot.detector.nativeDiagnosticsPeak, 3)} ref=${formatDebugNumber(snapshot.detector.referenceMidi, 2)} corr=${formatDebugNumber(snapshot.detector.referenceCorrelation, 3)} rawCorr=${formatDebugNumber(snapshot.detector.nativePayloadReferenceCorrelation, 3)} eDb=${formatDebugNumber(snapshot.detector.energyRatioDb, 2)} rawEDb=${formatDebugNumber(snapshot.detector.nativePayloadEnergyRatioDb, 2)} onset=${formatDebugNumber(snapshot.detector.onsetStrength, 3)} rawOnset=${formatDebugNumber(snapshot.detector.nativePayloadOnsetStrength, 3)} contam=${formatDebugNumber(snapshot.detector.contaminationScore, 3)} rawContam=${formatDebugNumber(snapshot.detector.nativePayloadContaminationScore, 3)} bleed=${referenceBleedLabel}`,
     `Runtime: pre=${formatDebugBool(snapshot.runtime.acceptedPreGate)} post=${formatDebugBool(snapshot.runtime.acceptedPostGate)} ratio=${formatDebugNumber(snapshot.runtime.noteValidationRatio, 2)} conf=${formatDebugNumber(snapshot.runtime.confidence, 2)} validated=${formatMidiList(snapshot.runtime.validatedNotes)} missing=${formatMidiList(snapshot.runtime.missingNotes)} extra=${formatMidiList(snapshot.runtime.extraNotes)} stage=${snapshot.runtime.rejectStage}`,
     `Runtime: history=frames${snapshot.runtime.frameCount} targetAge=${formatSignedMs(targetAgeMs ?? undefined)} targetStarted=${snapshot.runtime.targetStartedAtMs !== null ? formatSignedMs(snapshot.capturedAtMs - snapshot.runtime.targetStartedAtMs) : '-'}`,
     `Runtime: notes=${noteDecisionSummary}`,
