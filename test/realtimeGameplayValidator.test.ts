@@ -131,6 +131,22 @@ describe('RealtimeGameplayValidator', () => {
     expect(validator.getState().noteDecisions[0]?.evidence.matchedMidi).toBe(63);
   });
 
+  test('accepts a mono target even when side candidates remain in rawDetectedMidis', () => {
+    const validator = new RealtimeGameplayValidator();
+    const target = monoTarget(60);
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0)], [60, 62, 64]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16)], [60, 62, 64]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32)], [60, 62, 64]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(true);
+    expect(output.acceptedPreGate).toBe(true);
+    expect(output.validatedNotes).toEqual([60]);
+    expect(output.extraNotes).toEqual([62, 64]);
+  });
+
   test('rejects a mono target when the matched note falls outside medium tolerance', () => {
     const validator = new RealtimeGameplayValidator();
     const target = monoTarget(60);

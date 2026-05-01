@@ -507,7 +507,22 @@ function finalizePreGateDecision(input: {
     }
   }
 
-  if (accept && input.expectedMidis.length > 0 && noteSetPolicy.maxExtraDetectedNotes !== null && input.extraNotes.length > noteSetPolicy.maxExtraDetectedNotes) {
+  // Mono Gameplay already resolves ambiguity in the note-stage evidence. Treating side candidates as blocking
+  // extra notes here causes false negatives even when the target note has already been validated in-window.
+  const ignoreExtraDetectedNotesForMonoValidatedTarget =
+    accept &&
+    input.target.mode === 'mono' &&
+    input.expectedMidis.length === 1 &&
+    input.missingNotes.length === 0 &&
+    noteSetPolicy.mode === 'all_notes_required';
+
+  if (
+    accept &&
+    !ignoreExtraDetectedNotesForMonoValidatedTarget &&
+    input.expectedMidis.length > 0 &&
+    noteSetPolicy.maxExtraDetectedNotes !== null &&
+    input.extraNotes.length > noteSetPolicy.maxExtraDetectedNotes
+  ) {
     accept = false;
   }
 

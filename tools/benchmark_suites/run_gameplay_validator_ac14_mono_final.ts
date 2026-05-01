@@ -146,6 +146,8 @@ type FileSweepProgressDoc = {
   fileKey: string;
   fileId: string;
   relativeFilePath: string;
+  status: 'ok' | 'error';
+  errorMessage?: string;
   variantAccumulators: VariantAccumulator[];
   traceAccumulators: Array<[string, TraceAccumulator]>;
 };
@@ -157,6 +159,8 @@ type FileDetailedProgressDoc = {
   fileId: string;
   relativeFilePath: string;
   configKey: string;
+  status: 'ok' | 'error';
+  errorMessage?: string;
   results: MonoWindowResult[];
   diagnostics: Array<Record<string, unknown>>;
 };
@@ -302,6 +306,10 @@ function applySweepProgressDoc(
   },
   doc: FileSweepProgressDoc
 ): void {
+  if (doc.status === 'error') {
+    return;
+  }
+
   for (const traceEntry of doc.traceAccumulators) {
     const [key, traceAccumulator] = traceEntry;
     const accumulator = accumulators.traceAccumulators.get(key) ?? { runtimeSamples: [] };
@@ -409,41 +417,58 @@ async function runDatasetSweep(input: {
     }
 
     const entry = await buildFileEntry(input.dataset, seed, input.windowConfig);
-    const decoded = await decodeMonoAudio(entry.filePath);
-    const fileTraceAccumulators = new Map<string, TraceAccumulator>();
-    const fileVariantAccumulators = new Map<string, VariantAccumulator>();
+    try {
+      const decoded = await decodeMonoAudio(entry.filePath);
+      const fileTraceAccumulators = new Map<string, TraceAccumulator>();
+      const fileVariantAccumulators = new Map<string, VariantAccumulator>();
 
-    for (const traceConfig of traceConfigs) {
-      const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, traceConfig);
-      updateTraceAccumulator(traceAccumulators, traceConfig, trace);
-      updateTraceAccumulator(fileTraceAccumulators, traceConfig, trace);
+      for (const traceConfig of traceConfigs) {
+        const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, traceConfig);
+        updateTraceAccumulator(traceAccumulators, traceConfig, trace);
+        updateTraceAccumulator(fileTraceAccumulators, traceConfig, trace);
 
-      for (const validationConfig of validationConfigs) {
-        const config = buildFullVariantConfig(traceConfig, validationConfig);
-        const key = buildBenchmarkVariantKey(config);
-        const traceKey = buildTraceKey(traceConfig);
-        const accumulator = getOrCreateVariantAccumulator(variantAccumulators, input.dataset, config, key, traceKey);
-        const fileAccumulator = getOrCreateVariantAccumulator(fileVariantAccumulators, input.dataset, config, key, traceKey);
-        for (const spec of entry.windows) {
-          const result = evaluateMonoWindow({ spec, observations: trace.observations, config });
-          updateVariantAccumulator(accumulator, result);
-          updateVariantAccumulator(fileAccumulator, result);
+        for (const validationConfig of validationConfigs) {
+          const config = buildFullVariantConfig(traceConfig, validationConfig);
+          const key = buildBenchmarkVariantKey(config);
+          const traceKey = buildTraceKey(traceConfig);
+          const accumulator = getOrCreateVariantAccumulator(variantAccumulators, input.dataset, config, key, traceKey);
+          const fileAccumulator = getOrCreateVariantAccumulator(fileVariantAccumulators, input.dataset, config, key, traceKey);
+          for (const spec of entry.windows) {
+            const result = evaluateMonoWindow({ spec, observations: trace.observations, config });
+            updateVariantAccumulator(accumulator, result);
+            updateVariantAccumulator(fileAccumulator, result);
+          }
         }
       }
-    }
 
-    await writeSweepProgressDoc(datasetProgressDir, {
-      resumeVersion: RESUME_VERSION,
-      dataset: input.dataset,
-      fileKey: identity.fileKey,
-      fileId: entry.fileId,
-      relativeFilePath: entry.relativeFilePath,
-      variantAccumulators: [...fileVariantAccumulators.values()],
-      traceAccumulators: [...fileTraceAccumulators.entries()]
-    });
+      await writeSweepProgressDoc(datasetProgressDir, {
+        resumeVersion: RESUME_VERSION,
+        dataset: input.dataset,
+        fileKey: identity.fileKey,
+        fileId: entry.fileId,
+        relativeFilePath: entry.relativeFilePath,
+        status: 'ok',
+        variantAccumulators: [...fileVariantAccumulators.values()],
+        traceAccumulators: [...fileTraceAccumulators.entries()]
+      });
 
-    if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
-      console.log(`[ac14-streaming] ${input.dataset} ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
+      if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
+        console.log(`[ac14-streaming] ${input.dataset} ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
+      }
+    } catch (error) {
+      const errorMessage = serializeErrorMessage(error);
+      await writeSweepProgressDoc(datasetProgressDir, {
+        resumeVersion: RESUME_VERSION,
+        dataset: input.dataset,
+        fileKey: identity.fileKey,
+        fileId: entry.fileId,
+        relativeFilePath: entry.relativeFilePath,
+        status: 'error',
+        errorMessage,
+        variantAccumulators: [],
+        traceAccumulators: []
+      });
+      console.error(`[ac14-streaming] ${input.dataset} ${index + 1}/${input.seeds.length} failed ${entry.relativeFilePath}: ${errorMessage}`);
     }
   }
 
@@ -565,40 +590,58 @@ async function runDetailedVariant(input: {
     }
 
     const entry = await buildFileEntry(input.dataset, seed, input.windowConfig);
-    const decoded = await decodeMonoAudio(entry.filePath);
-    const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, input.config);
-    const fileResults: MonoWindowResult[] = [];
-    const fileDiagnostics: Array<Record<string, unknown>> = [];
+    try {
+      const decoded = await decodeMonoAudio(entry.filePath);
+      const trace = runTraceForConfig(input.detector, decoded.samples, decoded.sampleRate, input.config);
+      const fileResults: MonoWindowResult[] = [];
+      const fileDiagnostics: Array<Record<string, unknown>> = [];
 
-    for (const spec of entry.windows) {
-      const result = evaluateMonoWindow({
-        spec,
-        observations: trace.observations,
-        config: {
-          ...input.config,
-          frameSizeSamples: input.config.fftSize
-        }
+      for (const spec of entry.windows) {
+        const result = evaluateMonoWindow({
+          spec,
+          observations: trace.observations,
+          config: {
+            ...input.config,
+            frameSizeSamples: input.config.fftSize
+          }
+        });
+        results.push(result);
+        const compacted = compactResult(result);
+        diagnostics.push(compacted);
+        fileResults.push(result);
+        fileDiagnostics.push(compacted);
+      }
+
+      await writeDetailedProgressDoc(datasetProgressDir, {
+        resumeVersion: RESUME_VERSION,
+        dataset: input.dataset,
+        fileKey: identity.fileKey,
+        fileId: entry.fileId,
+        relativeFilePath: entry.relativeFilePath,
+        configKey,
+        status: 'ok',
+        results: fileResults,
+        diagnostics: fileDiagnostics
       });
-      results.push(result);
-      const compacted = compactResult(result);
-      diagnostics.push(compacted);
-      fileResults.push(result);
-      fileDiagnostics.push(compacted);
-    }
 
-    await writeDetailedProgressDoc(datasetProgressDir, {
-      resumeVersion: RESUME_VERSION,
-      dataset: input.dataset,
-      fileKey: identity.fileKey,
-      fileId: entry.fileId,
-      relativeFilePath: entry.relativeFilePath,
-      configKey,
-      results: fileResults,
-      diagnostics: fileDiagnostics
-    });
-
-    if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
-      console.log(`[ac14-streaming] ${input.dataset} detailed ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
+      if (index % progressEvery === 0 || index + 1 === input.seeds.length) {
+        console.log(`[ac14-streaming] ${input.dataset} detailed ${index + 1}/${input.seeds.length} ${entry.relativeFilePath}`);
+      }
+    } catch (error) {
+      const errorMessage = serializeErrorMessage(error);
+      await writeDetailedProgressDoc(datasetProgressDir, {
+        resumeVersion: RESUME_VERSION,
+        dataset: input.dataset,
+        fileKey: identity.fileKey,
+        fileId: entry.fileId,
+        relativeFilePath: entry.relativeFilePath,
+        configKey,
+        status: 'error',
+        errorMessage,
+        results: [],
+        diagnostics: []
+      });
+      console.error(`[ac14-streaming] ${input.dataset} detailed ${index + 1}/${input.seeds.length} failed ${entry.relativeFilePath}: ${errorMessage}`);
     }
   }
 
@@ -1266,6 +1309,20 @@ function compareSampleRatePreference(left: SampleRateMode, right: SampleRateMode
     force_44100: 2
   };
   return compareNumbers(order[left], order[right]);
+}
+
+function serializeErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
 }
 
 function buildTraceKey(config: MonoBenchmarkConfig): string {

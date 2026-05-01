@@ -122,6 +122,7 @@ Gameplay runtime summary:
 * Live gameplay debug output MUST show `detector_engine`, detector preset/config id, `noteDecisionConfigId`, `aggregationPolicyId`, and `activationGatePolicyId`.
 * Gameplay runtime logs MUST warn when the active backend does not match the explicit Gameplay spectral preset.
 * Gameplay validator MUST reject near-silence by floor-gating `mic_rms < 0.008` before note evidence can accumulate or persist post-gate.
+* Gameplay mono validation MUST NOT reject an already validated target solely because additional side candidates remain in `rawDetectedMidis`; mono ambiguity belongs to the note-stage competitor logic, not to extra-note aggregation vetoes.
 
 ---
 
@@ -1361,6 +1362,7 @@ Gameplay validator suite requirements:
 * gameplay validator decision logic MUST be explicit and mode-driven, with at least `note_only` and `exact_position` modes
 * final ACCEPT decisions MUST depend on expected-target evidence and competitor-aware checks; generic plausibility-only acceptance is not sufficient
 * Gameplay validator note accumulation and live acceptance MUST ignore frames with `mic_rms` below the explicit Gameplay floor (`0.008`) so near-silence cannot accumulate as target evidence
+* mono Gameplay validator aggregation MUST not fail a frame purely because non-target side candidates are still present once the expected note has already passed mono note-stage validation
 * the Gameplay validator floor and detector observability rules MUST be documented in the runtime spec and reflected in benchmark fixtures/configs
 * gameplay validator benchmark outputs MUST include per-case diagnostics (expected target, detected target summary, expected-vs-competitor evidence, and accept/reject reason)
 * gameplay validator sweep tooling MUST rank configs TAR-first (TAR=100% hard pass group), then FAR and mismatch FAR breakdowns
