@@ -242,6 +242,24 @@ describe('RealtimeGameplayValidator', () => {
     expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_confidence_failed'))).toBe(true);
   });
 
+  test('rejects a PlayScene mono target at exactly half expectedTop1 coverage', () => {
+    const validator = new RealtimeGameplayValidator({
+      noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG
+    });
+    const target = monoTarget(60);
+    const frames: RuntimeValidatorInput[] = [
+      { timestampMs: 0, frameEvidence: frameEvidence(0, [noteFrame(60, 0, { expectedTop1: true })]), target },
+      { timestampMs: 16, frameEvidence: frameEvidence(16, [noteFrame(60, 16, { expectedTop1: false })]), target },
+      { timestampMs: 32, frameEvidence: frameEvidence(32, [noteFrame(60, 32, { expectedTop1: true })]), target },
+      { timestampMs: 48, frameEvidence: frameEvidence(48, [noteFrame(60, 48, { expectedTop1: false })]), target }
+    ];
+
+    const output = runFrames(validator, target, frames);
+    expect(output.accepted).toBe(false);
+    expect(output.rejectStage).toBe('note_level');
+    expect(output.rejectReasons.some((reason) => reason.includes('stage_a_expected_top1_ratio_failed'))).toBe(true);
+  });
+
   test('rejects low micRms frames before they can accumulate note evidence', () => {
     const validator = new RealtimeGameplayValidator({
       noteDecisionConfig: PLAY_SCENE_VALIDATOR_DECISION_CONFIG

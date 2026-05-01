@@ -50,6 +50,8 @@ export const PLAY_SCENE_VALIDATOR_DECISION_CONFIG: ValidatorDecisionConfig = {
     ...DEFAULT_VALIDATOR_DECISION_CONFIG.note,
     maxExpectedCentsError: 50,
     minExpectedConfidence: 0.65,
+    // Use a tiny epsilon above 0.5 so the inclusive note-stage comparator behaves as a strict > 0.5 guard.
+    minExpectedTop1FrameRatio: 0.500001,
     minExpectedVsSourceFrameRatio: 0.6,
     minExpectedTargetConfirmationFrameRatio: 0.6,
     minExpectedVsBestMargin: -1_000_000,
